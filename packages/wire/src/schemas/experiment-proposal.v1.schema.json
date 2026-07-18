@@ -1,0 +1,194 @@
+{
+  "$ref": "#/definitions/experiment-proposal",
+  "definitions": {
+    "experiment-proposal": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/experiment-proposal/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "proposalId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "autoresearchId": {
+          "type": "string",
+          "pattern": "^ar_[0-9a-f]{32}$"
+        },
+        "experimentId": {
+          "type": "string",
+          "pattern": "^exp_[0-9a-f]{32}$"
+        },
+        "parentExperimentId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "round": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "hypothesis": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "primaryChange": {
+          "type": "object",
+          "properties": {
+            "category": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            },
+            "expectedFiles": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "maxItems": 200
+            }
+          },
+          "required": [
+            "category",
+            "description",
+            "expectedFiles"
+          ],
+          "additionalProperties": false
+        },
+        "expectedEffect": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "guardrailRisks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "maxItems": 200
+        },
+        "novelty": {
+          "type": "object",
+          "properties": {
+            "ideaFingerprint": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "nearestAttemptFingerprint": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "difference": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            },
+            "duplicateStatus": {
+              "type": "string",
+              "enum": [
+                "distinct",
+                "suspected_duplicate",
+                "approved_replication"
+              ]
+            }
+          },
+          "required": [
+            "ideaFingerprint",
+            "nearestAttemptFingerprint",
+            "difference",
+            "duplicateStatus"
+          ],
+          "additionalProperties": false
+        },
+        "evaluationContractHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "estimatedGpuSeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "proposedByAgentId": {
+          "type": "string",
+          "pattern": "^agt_[0-9a-f]{32}$"
+        },
+        "submittedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "proposalId",
+        "autoresearchId",
+        "experimentId",
+        "parentExperimentId",
+        "round",
+        "hypothesis",
+        "rationale",
+        "primaryChange",
+        "expectedEffect",
+        "guardrailRisks",
+        "novelty",
+        "evaluationContractHash",
+        "estimatedGpuSeconds",
+        "proposedByAgentId",
+        "submittedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/experiment-proposal/v1"
+}

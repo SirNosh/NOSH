@@ -1,0 +1,10 @@
+{
+  "name": "NOSH Research",
+  "short_name": "NOSH",
+  "description": "Networked Orchestrated Science Harness",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#111923",
+  "theme_color": "#111923",
+  "icons": []
+}

@@ -8,3 +8,4 @@ coverage/
 *.sqlite-shm
 *.sqlite-wal
 *.tsbuildinfo
+release/

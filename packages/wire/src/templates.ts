@@ -1,4 +1,4 @@
-import { id, schemaUri, schemaVersion, templateVersion, timestamp } from "./common.js";
+import { id, observedVersionsSchema, schemaUri, schemaVersion, scopeSchema, templateVersion, timestamp } from "./common.js";
 import { jsonValueSchema } from "./json.js";
 import { z } from "zod";
 
@@ -61,6 +61,11 @@ const responseType = z.enum([
   "review.verdict",
   "task.blocked",
   "task.failure",
+  "graph.change_proposed",
+  "handoff.created",
+  "handoff.teachback",
+  "user_input.requested",
+  "steering.disposition",
 ]);
 
 export const responseEnvelopeSchema = z
@@ -71,11 +76,31 @@ export const responseEnvelopeSchema = z
     responseId: id("rsp"),
     responseType,
     taskId: id("tsk").nullable(),
+    attempt: z.number().int().positive().nullable(),
     role: z.enum(["nosh", "mission_director", "research_director", "librarian_researcher", "general_worker", "reviewer"]),
+    agentId: id("agt"),
+    scope: scopeSchema.extend({ graphNodeId: z.string().min(1).max(128).nullable() }).omit({ jobId: true, agentId: true }),
+    observedVersions: observedVersionsSchema,
     status: z.enum(["completed", "partial", "blocked", "failed", "cancelled", "superseded"]),
     summary: z.string().max(2000),
-    recordIds: z.array(z.string().min(1).max(128)).max(100),
+    goalAlignment: z
+      .object({
+        projectGoalId: z.string().min(1).max(128),
+        missionCriterionIds: z.array(z.string().min(1).max(128)).max(100),
+        directionQuestionId: z.string().min(1).max(128).nullable(),
+        graphNodeId: z.string().min(1).max(128).nullable(),
+        contribution: z.string().min(1).max(2000),
+      })
+      .strict(),
+    artifactIds: z.array(id("art")).max(100),
+    evidenceIds: z.array(id("evd")).max(100),
+    decisionIds: z.array(z.string().min(1).max(128)).max(100),
+    blockerIds: z.array(id("blk")).max(100),
+    requestIds: z.array(z.string().min(1).max(128)).max(100),
+    nextActionCandidates: z.array(jsonValueSchema).max(100),
+    validationClaims: z.array(jsonValueSchema).max(100),
     payload: jsonValueSchema,
+    startedAt: timestamp,
     submittedAt: timestamp,
   })
   .strict();

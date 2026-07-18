@@ -1,0 +1,232 @@
+{
+  "$ref": "#/definitions/runtime-intervention",
+  "definitions": {
+    "runtime-intervention": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/runtime-intervention/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "interventionId": {
+          "type": "string",
+          "pattern": "^ivn_[0-9a-f]{32}$"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^prj_[0-9a-f]{32}$"
+        },
+        "instructionId": {
+          "type": "string",
+          "pattern": "^ins_[0-9a-f]{32}$"
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "THREAD_OPEN",
+            "THREAD_STEP",
+            "THREAD_FORK",
+            "THREAD_AWAIT",
+            "THREAD_COMPOSE",
+            "THREAD_PAUSE",
+            "THREAD_CANCEL",
+            "SKILL_APPLY",
+            "DIRECT_ACTION",
+            "STOP"
+          ]
+        },
+        "proposed": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "eligibility": {
+          "type": "object",
+          "properties": {
+            "eligible": {
+              "type": "boolean"
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "maxItems": 200
+            }
+          },
+          "required": [
+            "eligible",
+            "reasons"
+          ],
+          "additionalProperties": false
+        },
+        "assignment": {
+          "type": "string",
+          "enum": [
+            "execute",
+            "suppress",
+            "replace"
+          ]
+        },
+        "executed": {
+          "type": "boolean"
+        },
+        "inputRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "outputRefs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "stateBefore": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {}
+            },
+            {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          ]
+        },
+        "stateAfter": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {}
+            },
+            {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          ]
+        },
+        "cost": {
+          "type": "object",
+          "properties": {
+            "toolCalls": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "modelTokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "wallClockSeconds": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "toolCalls",
+            "modelTokens",
+            "wallClockSeconds"
+          ],
+          "additionalProperties": false
+        },
+        "latencyMilliseconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "downstreamEpisodeIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^epi_[0-9a-f]{32}$"
+          }
+        },
+        "recordedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "interventionId",
+        "projectId",
+        "instructionId",
+        "operation",
+        "proposed",
+        "eligibility",
+        "assignment",
+        "executed",
+        "inputRefs",
+        "outputRefs",
+        "stateBefore",
+        "stateAfter",
+        "cost",
+        "latencyMilliseconds",
+        "downstreamEpisodeIds",
+        "recordedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/runtime-intervention/v1"
+}

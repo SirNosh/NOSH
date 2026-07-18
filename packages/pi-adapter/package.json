@@ -1,0 +1,19 @@
+{
+  "name": "@nosh/pi-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./dist/index.js" },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.80.10",
+    "@earendil-works/pi-ai": "0.80.10",
+    "@nosh/core": "workspace:*",
+    "@nosh/wire": "workspace:*"
+  }
+}

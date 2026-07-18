@@ -1,0 +1,183 @@
+{
+  "$ref": "#/definitions/episode-draft",
+  "definitions": {
+    "episode-draft": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/episode-draft/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "episodeType": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "statement": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20000
+              },
+              "evidenceRefs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                },
+                "maxItems": 500
+              },
+              "confidence": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            },
+            "required": [
+              "statement",
+              "evidenceRefs",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 200
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "statement": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20000
+              },
+              "rationale": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20000
+              },
+              "evidenceRefs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                },
+                "maxItems": 500
+              }
+            },
+            "required": [
+              "statement",
+              "rationale",
+              "evidenceRefs"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 100
+        },
+        "artifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^art_[0-9a-f]{32}$"
+          },
+          "maxItems": 200
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^evd_[0-9a-f]{32}$"
+          },
+          "maxItems": 200
+        },
+        "changedFiles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "maxItems": 200
+        },
+        "unresolvedQuestions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "maxItems": 200
+        },
+        "recommendedNextActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "THREAD_OPEN",
+                  "THREAD_STEP",
+                  "THREAD_FORK",
+                  "THREAD_AWAIT",
+                  "THREAD_COMPOSE",
+                  "THREAD_PAUSE",
+                  "THREAD_CANCEL",
+                  "SKILL_APPLY",
+                  "DIRECT_ACTION",
+                  "STOP"
+                ]
+              },
+              "objective": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20000
+              }
+            },
+            "required": [
+              "operation",
+              "objective"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 50
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "episodeType",
+        "summary",
+        "facts",
+        "decisions",
+        "artifactIds",
+        "evidenceIds",
+        "changedFiles",
+        "unresolvedQuestions",
+        "recommendedNextActions"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/episode-draft/v1"
+}

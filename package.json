@@ -8,15 +8,25 @@
   "engines": {
     "node": ">=22.19.0"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3", "node-pty"]
+  },
   "scripts": {
     "build": "tsc -b",
-    "test": "pnpm build && pnpm -r test",
-    "typecheck": "tsc -b"
+    "test": "corepack pnpm build && corepack pnpm -r test",
+    "typecheck": "tsc -b",
+    "notices": "node scripts/generate-notices.mjs",
+    "sbom": "node scripts/generate-sbom.mjs",
+    "package:windows": "node scripts/package-release.mjs",
+    "soak": "node scripts/soak.mjs",
+    "schemas": "corepack pnpm build && node scripts/generate-schema-fixtures.mjs",
+    "release:check": "corepack pnpm install --frozen-lockfile && corepack pnpm test && corepack pnpm --filter @nosh/web build && corepack pnpm notices && corepack pnpm run sbom"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3",
-    "vitest": "^3.1.3"
+    "vitest": "^3.1.3",
+    "zod-to-json-schema": "3.24.6"
   }
 }

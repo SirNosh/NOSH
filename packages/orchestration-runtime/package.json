@@ -1,0 +1,12 @@
+{
+  "name": "@nosh/orchestration-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./dist/index.js" },
+  "types": "./dist/index.d.ts",
+  "scripts": { "build": "tsc -p tsconfig.json", "test": "vitest run --passWithNoTests", "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@nosh/core": "workspace:*", "@nosh/episodes": "workspace:*", "@nosh/persistence": "workspace:*", "@nosh/pi-adapter": "workspace:*", "@nosh/skills": "workspace:*", "@nosh/threads": "workspace:*", "@nosh/wire": "workspace:*"
+  }
+}

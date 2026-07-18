@@ -1,0 +1,191 @@
+{
+  "$ref": "#/definitions/autoresearch-status",
+  "definitions": {
+    "autoresearch-status": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/autoresearch-status/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "autoresearchId": {
+          "type": "string",
+          "pattern": "^ar_[0-9a-f]{32}$"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "running",
+            "paused",
+            "blocked",
+            "completed",
+            "stopped",
+            "failed"
+          ]
+        },
+        "evaluationContractHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "currentRound": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rootExperimentId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "acceptedFrontierExperimentIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "activeExperimentIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "activeJobIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^job_[0-9a-f]{32}$"
+          }
+        },
+        "experimentCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "focus": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "candidateStopReasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "maxItems": 200
+        },
+        "latestPersistentSequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "autoresearchId",
+        "state",
+        "evaluationContractHash",
+        "currentRound",
+        "rootExperimentId",
+        "acceptedFrontierExperimentIds",
+        "activeExperimentIds",
+        "activeJobIds",
+        "experimentCounts",
+        "budget",
+        "focus",
+        "candidateStopReasons",
+        "latestPersistentSequence",
+        "updatedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/autoresearch-status/v1"
+}

@@ -1,0 +1,274 @@
+{
+  "$ref": "#/definitions/review-request",
+  "definitions": {
+    "review-request": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/review-request/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "reviewRequestId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "reviewId": {
+          "type": "string",
+          "pattern": "^rev_[0-9a-f]{32}$"
+        },
+        "reviewType": {
+          "type": "string",
+          "enum": [
+            "task",
+            "experiment",
+            "experiment_round",
+            "autoresearch_closure",
+            "direction_closure",
+            "claim",
+            "paper_section",
+            "mission_completion"
+          ]
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "targetType": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "targetId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "targetVersion": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "targetType",
+            "targetId",
+            "targetVersion"
+          ],
+          "additionalProperties": false
+        },
+        "scope": {
+          "type": "object",
+          "properties": {
+            "projectId": {
+              "type": "string",
+              "pattern": "^prj_[0-9a-f]{32}$"
+            },
+            "missionId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^mis_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "directionId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^dir_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "autoresearchId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^ar_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "projectId",
+            "missionId",
+            "directionId",
+            "autoresearchId"
+          ],
+          "additionalProperties": false
+        },
+        "producerAgentIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^agt_[0-9a-f]{32}$"
+          },
+          "minItems": 1
+        },
+        "reviewerAgentId": {
+          "type": "string",
+          "pattern": "^agt_[0-9a-f]{32}$"
+        },
+        "independenceCheck": {
+          "type": "string",
+          "const": "pass"
+        },
+        "contractRefs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "hash": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "hash"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "requiredArtifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^art_[0-9a-f]{32}$"
+          }
+        },
+        "requiredEvidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^evd_[0-9a-f]{32}$"
+          }
+        },
+        "deterministicPostflight": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "fail"
+              ]
+            },
+            "validatorRunIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              }
+            }
+          },
+          "required": [
+            "status",
+            "validatorRunIds"
+          ],
+          "additionalProperties": false
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "criterionId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "severityIfFailed": {
+                "type": "string",
+                "enum": [
+                  "blocking",
+                  "major",
+                  "minor",
+                  "observation"
+                ]
+              }
+            },
+            "required": [
+              "criterionId",
+              "statement",
+              "required",
+              "severityIfFailed"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "allowedVerdicts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "PASS",
+              "REVISE",
+              "REDESIGN",
+              "BLOCKED"
+            ]
+          },
+          "minItems": 1
+        },
+        "issuedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "reviewRequestId",
+        "reviewId",
+        "reviewType",
+        "target",
+        "scope",
+        "producerAgentIds",
+        "reviewerAgentId",
+        "independenceCheck",
+        "contractRefs",
+        "requiredArtifactIds",
+        "requiredEvidenceIds",
+        "deterministicPostflight",
+        "criteria",
+        "allowedVerdicts",
+        "issuedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/review-request/v1"
+}

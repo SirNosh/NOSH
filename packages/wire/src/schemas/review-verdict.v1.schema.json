@@ -1,0 +1,377 @@
+{
+  "$ref": "#/definitions/review-verdict",
+  "definitions": {
+    "review-verdict": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/review-verdict/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "templateVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "reviewId": {
+          "type": "string",
+          "pattern": "^rev_[0-9a-f]{32}$"
+        },
+        "reviewRequestId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "reviewType": {
+          "type": "string",
+          "enum": [
+            "task",
+            "experiment",
+            "experiment_round",
+            "autoresearch_closure",
+            "direction_closure",
+            "claim",
+            "paper_section",
+            "mission_completion"
+          ]
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "targetType": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "targetId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "targetVersion": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "targetType",
+            "targetId",
+            "targetVersion"
+          ],
+          "additionalProperties": false
+        },
+        "reviewerAgentId": {
+          "type": "string",
+          "pattern": "^agt_[0-9a-f]{32}$"
+        },
+        "independenceCheck": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "PASS",
+            "REVISE",
+            "REDESIGN",
+            "BLOCKED"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "criterionId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "PASS",
+                  "FAIL",
+                  "INCONCLUSIVE",
+                  "NOT_APPLICABLE"
+                ]
+              },
+              "finding": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "evidenceRefs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "refType": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                      "maxLength": 128
+                    },
+                    "refId": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                      "maxLength": 128
+                    },
+                    "locator": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1000
+                    }
+                  },
+                  "required": [
+                    "refType",
+                    "refId",
+                    "locator"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "confidence": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              "defectIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                }
+              }
+            },
+            "required": [
+              "criterionId",
+              "status",
+              "finding",
+              "evidenceRefs",
+              "confidence",
+              "defectIds"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "defects": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "defectId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "blocking",
+                  "major",
+                  "minor",
+                  "observation"
+                ]
+              },
+              "category": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "criterionIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                }
+              },
+              "evidenceRefs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "refType": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                      "maxLength": 128
+                    },
+                    "refId": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                      "maxLength": 128
+                    },
+                    "locator": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1000
+                    }
+                  },
+                  "required": [
+                    "refType",
+                    "refId",
+                    "locator"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "requiredRemediation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "acceptanceTest": {
+                "type": "object",
+                "properties": {
+                  "validatorId": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                    "maxLength": 128
+                  },
+                  "expected": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "validatorId",
+                  "expected"
+                ],
+                "additionalProperties": false
+              },
+              "suggestedOwnerRole": {
+                "type": "string",
+                "enum": [
+                  "librarian_researcher",
+                  "general_worker",
+                  "reviewer",
+                  "director"
+                ]
+              },
+              "blocking": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "defectId",
+              "severity",
+              "category",
+              "title",
+              "description",
+              "criterionIds",
+              "evidenceRefs",
+              "requiredRemediation",
+              "acceptanceTest",
+              "suggestedOwnerRole",
+              "blocking"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "missingRequiredInputs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          }
+        },
+        "scientificIntegrityFlags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "maxItems": 100
+        },
+        "recommendedGraphAction": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "recommendedPromotion": {
+          "type": "string",
+          "enum": [
+            "promote",
+            "hold",
+            "reject",
+            "not_applicable"
+          ]
+        },
+        "reviewedArtifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^art_[0-9a-f]{32}$"
+          }
+        },
+        "reviewedEvidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^evd_[0-9a-f]{32}$"
+          }
+        },
+        "submittedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "templateVersion",
+        "reviewId",
+        "reviewRequestId",
+        "reviewType",
+        "target",
+        "reviewerAgentId",
+        "independenceCheck",
+        "verdict",
+        "summary",
+        "criteria",
+        "defects",
+        "missingRequiredInputs",
+        "scientificIntegrityFlags",
+        "recommendedGraphAction",
+        "recommendedPromotion",
+        "reviewedArtifactIds",
+        "reviewedEvidenceIds",
+        "submittedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/review-verdict/v1"
+}

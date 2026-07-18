@@ -1,0 +1,316 @@
+{
+  "$ref": "#/definitions/general-worker-completion",
+  "definitions": {
+    "general-worker-completion": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/general-worker-completion/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "taskOutcome": {
+          "type": "string",
+          "enum": [
+            "completed",
+            "partial",
+            "blocked",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "workPerformed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "subject": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "artifactIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^art_[0-9a-f]{32}$"
+                }
+              }
+            },
+            "required": [
+              "action",
+              "subject",
+              "artifactIds"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "codeChanges": {
+          "type": "object",
+          "properties": {
+            "startingCommit": {
+              "type": "string"
+            },
+            "endingCommit": {
+              "type": "string"
+            },
+            "changedPaths": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "maxItems": 100
+            },
+            "diffArtifactId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^art_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "branch": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "startingCommit",
+            "endingCommit",
+            "changedPaths",
+            "diffArtifactId",
+            "branch"
+          ],
+          "additionalProperties": false
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "commandId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "displayCommand": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "exitCode": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "resultArtifactId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^art_[0-9a-f]{32}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "commandId",
+              "displayCommand",
+              "exitCode",
+              "resultArtifactId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "criterionId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "workerClaim": {
+                "type": "string",
+                "enum": [
+                  "satisfied",
+                  "unsatisfied",
+                  "inconclusive",
+                  "not_applicable"
+                ]
+              },
+              "validatorRunIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                }
+              },
+              "artifactIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^art_[0-9a-f]{32}$"
+                }
+              },
+              "notes": {
+                "type": "string",
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "criterionId",
+              "workerClaim",
+              "validatorRunIds",
+              "artifactIds",
+              "notes"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "scientificImpact": {
+          "type": "object",
+          "properties": {
+            "claimIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^clm_[0-9a-f]{32}$"
+              }
+            },
+            "evidenceIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^evd_[0-9a-f]{32}$"
+              }
+            },
+            "interpretation": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            }
+          },
+          "required": [
+            "claimIds",
+            "evidenceIds",
+            "interpretation"
+          ],
+          "additionalProperties": false
+        },
+        "deviations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "maxItems": 100
+        },
+        "newRisks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "maxItems": 100
+        },
+        "unresolvedItems": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "maxItems": 100
+        },
+        "suggestedNextActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "actionType": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "targetId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "priority": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "normal",
+                  "high",
+                  "critical"
+                ]
+              }
+            },
+            "required": [
+              "actionType",
+              "targetId",
+              "reason",
+              "priority"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "readyForDeterministicPostflight": {
+          "type": "boolean"
+        },
+        "readyForReview": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "taskOutcome",
+        "workPerformed",
+        "codeChanges",
+        "commands",
+        "criteria",
+        "scientificImpact",
+        "deviations",
+        "newRisks",
+        "unresolvedItems",
+        "suggestedNextActions",
+        "readyForDeterministicPostflight",
+        "readyForReview"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/general-worker-completion/v1"
+}

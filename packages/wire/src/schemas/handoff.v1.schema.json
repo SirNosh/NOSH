@@ -1,0 +1,389 @@
+{
+  "$ref": "#/definitions/handoff",
+  "definitions": {
+    "handoff": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/handoff/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "templateVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "handoffId": {
+          "type": "string",
+          "pattern": "^hnd_[0-9a-f]{32}$"
+        },
+        "logicalOwnerId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "fromAgentId": {
+          "type": "string",
+          "pattern": "^agt_[0-9a-f]{32}$"
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "scope": {
+          "type": "object",
+          "properties": {
+            "projectId": {
+              "type": "string",
+              "pattern": "^prj_[0-9a-f]{32}$"
+            },
+            "missionId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^mis_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "directionId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^dir_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "autoresearchId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^ar_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "projectId",
+            "missionId",
+            "directionId",
+            "autoresearchId"
+          ],
+          "additionalProperties": false
+        },
+        "goalStack": {
+          "type": "object",
+          "properties": {
+            "projectGoalId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "missionCriterionIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              }
+            },
+            "directionQuestionId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "currentGraphNodeId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "projectGoalId",
+            "missionCriterionIds",
+            "directionQuestionId",
+            "currentGraphNodeId"
+          ],
+          "additionalProperties": false
+        },
+        "observedVersions": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "completedNodeIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          }
+        },
+        "acceptedArtifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^art_[0-9a-f]{32}$"
+          }
+        },
+        "acceptedEvidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^evd_[0-9a-f]{32}$"
+          }
+        },
+        "branch": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "head": {
+              "type": "string"
+            },
+            "uncommittedChanges": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "name",
+            "head",
+            "uncommittedChanges"
+          ],
+          "additionalProperties": false
+        },
+        "activeJobs": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "openDefects": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "openBlockerIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^blk_[0-9a-f]{32}$"
+          }
+        },
+        "failedHypothesisIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          }
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "readyNodeIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          }
+        },
+        "recommendedNextAction": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "nodeId": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "requiredInputIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                    "maxLength": 128
+                  }
+                }
+              },
+              "required": [
+                "nodeId",
+                "reason",
+                "requiredInputIds"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "knownRisks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "maxItems": 100
+        },
+        "contextArtifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^art_[0-9a-f]{32}$"
+          }
+        },
+        "oldLeaseReleaseId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "templateVersion",
+        "handoffId",
+        "logicalOwnerId",
+        "fromAgentId",
+        "reason",
+        "scope",
+        "goalStack",
+        "observedVersions",
+        "completedNodeIds",
+        "acceptedArtifactIds",
+        "acceptedEvidenceIds",
+        "branch",
+        "activeJobs",
+        "openDefects",
+        "openBlockerIds",
+        "failedHypothesisIds",
+        "decisions",
+        "readyNodeIds",
+        "recommendedNextAction",
+        "knownRisks",
+        "contextArtifactIds",
+        "oldLeaseReleaseId",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/handoff/v1"
+}

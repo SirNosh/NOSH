@@ -1,0 +1,156 @@
+{
+  "$ref": "#/definitions/task-failure",
+  "definitions": {
+    "task-failure": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/task-failure/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "taskId": {
+          "type": "string",
+          "pattern": "^tsk_[0-9a-f]{32}$"
+        },
+        "attempt": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "failureCode": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "phase": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "diagnosticArtifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^art_[0-9a-f]{32}$"
+          }
+        },
+        "failedValidatorIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          }
+        },
+        "workState": {
+          "type": "object",
+          "properties": {
+            "branch": {
+              "type": "string"
+            },
+            "startingCommit": {
+              "type": "string"
+            },
+            "endingCommit": {
+              "type": "string"
+            },
+            "uncommittedChanges": {
+              "type": "boolean"
+            },
+            "activeJobIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^job_[0-9a-f]{32}$"
+              }
+            }
+          },
+          "required": [
+            "branch",
+            "startingCommit",
+            "endingCommit",
+            "uncommittedChanges",
+            "activeJobIds"
+          ],
+          "additionalProperties": false
+        },
+        "attemptedResolutionFingerprints": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        },
+        "retriable": {
+          "type": "boolean"
+        },
+        "sameApproachAllowed": {
+          "type": "boolean"
+        },
+        "changedPremiseRequired": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recommendedDisposition": {
+          "type": "string",
+          "enum": [
+            "retry_transient",
+            "revise_same_node",
+            "redesign",
+            "reduce_scope",
+            "record_negative_result",
+            "stop"
+          ]
+        },
+        "artifactIdsWorthRetaining": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^art_[0-9a-f]{32}$"
+          }
+        },
+        "reportedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "taskId",
+        "attempt",
+        "failureCode",
+        "phase",
+        "summary",
+        "diagnosticArtifactIds",
+        "failedValidatorIds",
+        "workState",
+        "attemptedResolutionFingerprints",
+        "retriable",
+        "sameApproachAllowed",
+        "changedPremiseRequired",
+        "recommendedDisposition",
+        "artifactIdsWorthRetaining",
+        "reportedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/task-failure/v1"
+}

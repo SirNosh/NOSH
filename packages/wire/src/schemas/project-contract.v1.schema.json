@@ -1,0 +1,304 @@
+{
+  "$ref": "#/definitions/project-contract",
+  "definitions": {
+    "project-contract": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/project-contract/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "templateVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^prj_[0-9a-f]{32}$"
+        },
+        "contractVersion": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "workingTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "domainTags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "maxItems": 200
+        },
+        "northStar": {
+          "type": "object",
+          "properties": {
+            "goalId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "question": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            },
+            "contributionType": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "decisionUse": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            }
+          },
+          "required": [
+            "goalId",
+            "question",
+            "contributionType",
+            "decisionUse"
+          ],
+          "additionalProperties": false
+        },
+        "scope": {
+          "type": "object",
+          "properties": {
+            "included": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "maxItems": 200
+            },
+            "excluded": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "maxItems": 200
+            }
+          },
+          "required": [
+            "included",
+            "excluded"
+          ],
+          "additionalProperties": false
+        },
+        "datasets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {}
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          }
+        },
+        "licensingConstraints": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "maxItems": 200
+        },
+        "computeEnvelope": {
+          "type": "object",
+          "properties": {
+            "maximumGpuHours": {
+              "type": "number",
+              "minimum": 0
+            },
+            "maximumDiskBytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "allowedHardwareClasses": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "maxItems": 200
+            }
+          },
+          "required": [
+            "maximumGpuHours",
+            "maximumDiskBytes",
+            "allowedHardwareClasses"
+          ],
+          "additionalProperties": false
+        },
+        "reproducibilityStandard": {
+          "type": "object",
+          "properties": {
+            "minimumSeeds": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "environmentLockRequired": {
+              "type": "boolean"
+            },
+            "immutableEvaluatedCommitRequired": {
+              "type": "boolean"
+            },
+            "rawLogsRetained": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "minimumSeeds",
+            "environmentLockRequired",
+            "immutableEvaluatedCommitRequired",
+            "rawLogsRetained"
+          ],
+          "additionalProperties": false
+        },
+        "paper": {
+          "type": "object",
+          "properties": {
+            "intendedVenue": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "requiredSections": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "maxItems": 200
+            },
+            "claimPolicy": {
+              "type": "string",
+              "const": "evidence_link_required"
+            }
+          },
+          "required": [
+            "intendedVenue",
+            "requiredSections",
+            "claimPolicy"
+          ],
+          "additionalProperties": false
+        },
+        "policies": {
+          "type": "object",
+          "properties": {
+            "network": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "privacy": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "publication": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "protectedPaths": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "maxItems": 200
+            }
+          },
+          "required": [
+            "network",
+            "privacy",
+            "publication",
+            "protectedPaths"
+          ],
+          "additionalProperties": false
+        },
+        "canonicalDefaultBranch": {
+          "type": "string"
+        },
+        "createdBy": {
+          "type": "string",
+          "enum": [
+            "user",
+            "import"
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "approvedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "templateVersion",
+        "projectId",
+        "contractVersion",
+        "workingTitle",
+        "domainTags",
+        "northStar",
+        "scope",
+        "datasets",
+        "licensingConstraints",
+        "computeEnvelope",
+        "reproducibilityStandard",
+        "paper",
+        "policies",
+        "canonicalDefaultBranch",
+        "createdBy",
+        "createdAt",
+        "approvedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/project-contract/v1"
+}

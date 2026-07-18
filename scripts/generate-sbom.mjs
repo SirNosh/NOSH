@@ -1,0 +1,12 @@
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+
+const projects = pnpm(["list", "-r", "--prod", "--depth", "Infinity", "--json"]); const licenses = pnpm(["licenses", "list", "--prod", "--json"]); const licenseByPackage = new Map();
+for (const [license, entries] of Object.entries(licenses)) for (const entry of entries) for (const version of entry.versions) licenseByPackage.set(`${entry.name}@${version}`, license);
+const components = new Map(); for (const project of projects) collect(project);
+const bom = { bomFormat: "CycloneDX", specVersion: "1.6", serialNumber: `urn:uuid:${crypto.randomUUID()}`, version: 1, metadata: { timestamp: new Date().toISOString(), component: { type: "application", "bom-ref": "pkg:npm/nosh-research@0.1.0", name: "nosh-research", version: "0.1.0" }, properties: [{ name: "nosh:pnpm-lock-sha256", value: createHash("sha256").update(readFileSync("pnpm-lock.yaml")).digest("hex") }] }, components: [...components.values()].sort((a, b) => a["bom-ref"].localeCompare(b["bom-ref"])) };
+mkdirSync("release", { recursive: true }); writeFileSync("release/nosh.cdx.json", `${JSON.stringify(bom, null, 2)}\n`, "utf8");
+
+function collect(node) { for (const dependency of Object.values(node.dependencies ?? {})) { const version = String(dependency.version ?? "unknown").replace(/^link:/, "workspace:"); const key = `${dependency.from ?? dependency.name}@${version}`; if (!components.has(key)) { const name = dependency.from ?? dependency.name; const external = !version.startsWith("workspace:"); const reference = external ? `pkg:npm/${encodeURIComponent(name)}@${encodeURIComponent(version)}` : `pkg:nosh/${encodeURIComponent(name)}@0.1.0`; components.set(key, { type: "library", "bom-ref": reference, name, version: external ? version : "0.1.0", ...(licenseByPackage.has(`${name}@${version}`) ? { licenses: [{ license: { id: licenseByPackage.get(`${name}@${version}`) } }] } : {}), properties: [{ name: "nosh:source", value: external ? "pnpm-lock.yaml" : "workspace" }] }); } collect(dependency); } }
+function pnpm(args) { const result = spawnSync("corepack", ["pnpm", ...args], { encoding: "utf8", windowsHide: true, shell: process.platform === "win32", maxBuffer: 50_000_000 }); if (result.status !== 0) throw new Error(result.stderr || result.error?.message || "pnpm dependency scan failed"); return JSON.parse(result.stdout); }

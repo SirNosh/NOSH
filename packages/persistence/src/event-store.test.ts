@@ -58,4 +58,14 @@ describe("EventStore", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("commits projection, graph version, event, and idempotency receipt atomically", () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-projection-")); const projectId = createId("prj"); const missionId = createId("mis"); const path = join(directory, "project.sqlite");
+    try { const store = new EventStore(path); const first = store.mutateProjection("projection-command-0001", 0, { ...persistentDraft(projectId, "mission.created"), scope: { ...persistentDraft(projectId).scope, missionId } }, { entityType: "mission", entityId: missionId, state: "draft", value: { title: "Test" }, graph: { scopeType: "mission", version: 1, value: { nodes: [] }, rationale: "initial" } }); expect(first.projection.version).toBe(1); expect(store.graphVersions(projectId, "mission", missionId)).toHaveLength(1); expect(store.mutateProjection("projection-command-0001", 0, persistentDraft(projectId, "mission.created"), { entityType: "mission", entityId: missionId, state: "draft", value: { title: "Test" } }).replayed).toBe(true); expect(() => store.mutateProjection("projection-command-0002", 0, persistentDraft(projectId, "mission.updated"), { entityType: "mission", entityId: missionId, state: "running", value: { title: "Test" } })).toThrow("conflict"); store.close(); const recovered = new EventStore(path); expect(recovered.projection(projectId, "mission", missionId)?.state).toBe("draft"); recovered.close(); } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("recovers durable external-operation intents without accepting key reuse", () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-intent-")); const projectId = createId("prj"); const path = join(directory, "project.sqlite");
+    try { const first = new EventStore(path); const intent = first.beginOperation(projectId, "job.launch", "launch-job-1", { jobId: "job_1", command: ["node"] }); expect(intent.state).toBe("pending"); expect(first.beginOperation(projectId, "job.launch", "launch-job-1", { jobId: "job_1", command: ["node"] }).intentId).toBe(intent.intentId); expect(() => first.beginOperation(projectId, "job.launch", "launch-job-1", { jobId: "job_2" })).toThrow("different request"); first.close(); const recovered = new EventStore(path); expect(recovered.operationIntents(projectId, "pending")).toHaveLength(1); recovered.completeOperation(projectId, intent.intentId, { jobId: "job_1", verified: true }); expect(recovered.operationIntents(projectId, "pending")).toEqual([]); expect(recovered.operationIntents(projectId, "completed")[0]?.result).toEqual({ jobId: "job_1", verified: true }); recovered.close(); } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
 });

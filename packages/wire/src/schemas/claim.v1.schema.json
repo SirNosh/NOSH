@@ -1,0 +1,140 @@
+{
+  "$ref": "#/definitions/claim",
+  "definitions": {
+    "claim": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/claim/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "claimId": {
+          "type": "string",
+          "pattern": "^clm_[0-9a-f]{32}$"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^prj_[0-9a-f]{32}$"
+        },
+        "claimVersion": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "claimType": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "hypothesis",
+            "under_test",
+            "supported",
+            "partially_supported",
+            "not_supported",
+            "contradicted",
+            "limited",
+            "withdrawn",
+            "qualified"
+          ]
+        },
+        "supportingEvidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^evd_[0-9a-f]{32}$"
+          }
+        },
+        "contradictingEvidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^evd_[0-9a-f]{32}$"
+          }
+        },
+        "qualifyingEvidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^evd_[0-9a-f]{32}$"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "maxItems": 200
+        },
+        "paperLocations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "maxItems": 200
+        },
+        "requiredReviewId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^rev_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "supersedesClaimVersion": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "claimId",
+        "projectId",
+        "claimVersion",
+        "text",
+        "claimType",
+        "status",
+        "supportingEvidenceIds",
+        "contradictingEvidenceIds",
+        "qualifyingEvidenceIds",
+        "limitations",
+        "paperLocations",
+        "requiredReviewId",
+        "supersedesClaimVersion",
+        "updatedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/claim/v1"
+}

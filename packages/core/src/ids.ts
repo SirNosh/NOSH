@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 export const idPrefixes = [
   "prj",
   "mis",
@@ -8,6 +6,7 @@ export const idPrefixes = [
   "exp",
   "run",
   "job",
+  "trm",
   "tsk",
   "rev",
   "art",
@@ -20,6 +19,12 @@ export const idPrefixes = [
   "evt",
   "cmd",
   "snap",
+  "thr",
+  "epi",
+  "skl",
+  "prg",
+  "ins",
+  "ivn",
 ] as const;
 
 export type IdPrefix = (typeof idPrefixes)[number];
@@ -27,7 +32,7 @@ export type IdPrefix = (typeof idPrefixes)[number];
 const idPattern = new RegExp(`^(${idPrefixes.join("|")})_[0-9a-f]{32}$`);
 
 export function createId(prefix: IdPrefix): string {
-  return `${prefix}_${randomUUID().replaceAll("-", "")}`;
+  return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
 }
 
 export function isNoshId(value: string, prefix?: IdPrefix): boolean {

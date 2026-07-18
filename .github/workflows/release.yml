@@ -1,0 +1,40 @@
+name: Windows release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.28.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm --filter @nosh/web build
+      - run: pnpm notices
+      - run: pnpm sbom
+      - run: pnpm package:windows
+      - shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          Compress-Archive -Path "release/NOSH-Research-$version/*" -DestinationPath "release/NOSH-Research-$version-windows.zip"
+          (Get-FileHash "release/NOSH-Research-$version-windows.zip" -Algorithm SHA256).Hash.ToLower() + "  NOSH-Research-$version-windows.zip" | Set-Content "release/NOSH-Research-$version-windows.zip.sha256"
+      - uses: actions/attest-build-provenance@v2
+        with: { subject-path: "release/NOSH-Research-*-windows.zip" }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/NOSH-Research-*-windows.zip
+            release/NOSH-Research-*-windows.zip.sha256
+            release/nosh.cdx.json
+            THIRD_PARTY_NOTICES.md

@@ -1,0 +1,22 @@
+{
+  "name": "@nosh/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "nosh": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nosh/core": "workspace:*",
+    "@nosh/crypto": "workspace:*",
+    "@nosh/evidence": "workspace:*",
+    "@nosh/persistence": "workspace:*",
+    "@nosh/wire": "workspace:*",
+    "qrcode-terminal": "0.12.0"
+  }
+}

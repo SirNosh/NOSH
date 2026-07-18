@@ -1,0 +1,542 @@
+{
+  "$ref": "#/definitions/task-packet",
+  "definitions": {
+    "task-packet": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/task-packet/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "templateVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "taskId": {
+          "type": "string",
+          "pattern": "^tsk_[0-9a-f]{32}$"
+        },
+        "attempt": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "taskType": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "assignedRole": {
+          "type": "string",
+          "enum": [
+            "librarian_researcher",
+            "general_worker",
+            "reviewer"
+          ]
+        },
+        "assignedAgentId": {
+          "type": "string",
+          "pattern": "^agt_[0-9a-f]{32}$"
+        },
+        "scope": {
+          "type": "object",
+          "properties": {
+            "projectId": {
+              "type": "string",
+              "pattern": "^prj_[0-9a-f]{32}$"
+            },
+            "missionId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^mis_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "directionId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^dir_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "autoresearchId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^ar_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "experimentId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^exp_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "graphNodeId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "projectId",
+            "missionId",
+            "directionId",
+            "autoresearchId",
+            "experimentId",
+            "graphNodeId"
+          ],
+          "additionalProperties": false
+        },
+        "goalStack": {
+          "type": "object",
+          "properties": {
+            "projectGoalId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "projectGoalSummary": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "missionCriterionIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              }
+            },
+            "missionCriterionSummary": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "directionQuestionId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "directionQuestionSummary": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "nodeObjective": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            }
+          },
+          "required": [
+            "projectGoalId",
+            "projectGoalSummary",
+            "missionCriterionIds",
+            "missionCriterionSummary",
+            "directionQuestionId",
+            "directionQuestionSummary",
+            "nodeObjective"
+          ],
+          "additionalProperties": false
+        },
+        "whyNow": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "instructions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "maxItems": 100
+        },
+        "inScope": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "maxItems": 100
+        },
+        "outOfScope": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "maxItems": 100
+        },
+        "inputArtifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^art_[0-9a-f]{32}$"
+          }
+        },
+        "inputEvidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^evd_[0-9a-f]{32}$"
+          }
+        },
+        "requiredOutputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "outputId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "required": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "outputId",
+              "kind",
+              "required"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "acceptanceCriteria": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "criterionId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "validatorIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                }
+              },
+              "reviewRubricIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                }
+              },
+              "required": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "criterionId",
+              "statement",
+              "validatorIds",
+              "reviewRubricIds",
+              "required"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "workspace": {
+          "type": "object",
+          "properties": {
+            "worktreeId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "branch": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "startingCommit": {
+              "type": "string",
+              "minLength": 7,
+              "maxLength": 128
+            },
+            "writeScopes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "maxItems": 100
+            },
+            "protectedScopes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "maxItems": 100
+            }
+          },
+          "required": [
+            "worktreeId",
+            "branch",
+            "startingCommit",
+            "writeScopes",
+            "protectedScopes"
+          ],
+          "additionalProperties": false
+        },
+        "permissions": {
+          "type": "object",
+          "properties": {
+            "network": {
+              "type": "string",
+              "enum": [
+                "disabled",
+                "allowlisted",
+                "enabled"
+              ]
+            },
+            "subprocess": {
+              "type": "string",
+              "enum": [
+                "disabled",
+                "allowlisted",
+                "enabled"
+              ]
+            },
+            "gitCommit": {
+              "type": "boolean"
+            },
+            "gitPush": {
+              "type": "boolean"
+            },
+            "delegation": {
+              "type": "string",
+              "const": "request_only"
+            },
+            "allowedToolIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              }
+            }
+          },
+          "required": [
+            "network",
+            "subprocess",
+            "gitCommit",
+            "gitPush",
+            "delegation",
+            "allowedToolIds"
+          ],
+          "additionalProperties": false
+        },
+        "budget": {
+          "type": "object",
+          "properties": {
+            "deadline": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "maximumWallClockSeconds": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "maximumModelTokens": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "maximumToolCalls": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "maximumRepairAttempts": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "deadline",
+            "maximumWallClockSeconds",
+            "maximumModelTokens",
+            "maximumToolCalls",
+            "maximumRepairAttempts"
+          ],
+          "additionalProperties": false
+        },
+        "progressPolicy": {
+          "type": "object",
+          "properties": {
+            "milestoneIntervalSeconds": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "emitOnFirstDurableDelta": {
+              "type": "boolean"
+            },
+            "emitOnBlocker": {
+              "type": "boolean"
+            },
+            "emitOnAnomaly": {
+              "type": "boolean"
+            },
+            "maximumSilentSeconds": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "milestoneIntervalSeconds",
+            "emitOnFirstDurableDelta",
+            "emitOnBlocker",
+            "emitOnAnomaly",
+            "maximumSilentSeconds"
+          ],
+          "additionalProperties": false
+        },
+        "responseSchema": {
+          "type": "string",
+          "format": "uri"
+        },
+        "observedVersions": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "lease": {
+          "type": "object",
+          "properties": {
+            "leaseId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "expiresAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "heartbeatSeconds": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "leaseId",
+            "expiresAt",
+            "heartbeatSeconds"
+          ],
+          "additionalProperties": false
+        },
+        "issuedBy": {
+          "type": "string",
+          "enum": [
+            "nosh",
+            "mission_director",
+            "research_director"
+          ]
+        },
+        "issuedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "templateVersion",
+        "taskId",
+        "attempt",
+        "taskType",
+        "assignedRole",
+        "assignedAgentId",
+        "scope",
+        "goalStack",
+        "whyNow",
+        "instructions",
+        "inScope",
+        "outOfScope",
+        "inputArtifactIds",
+        "inputEvidenceIds",
+        "requiredOutputs",
+        "acceptanceCriteria",
+        "workspace",
+        "permissions",
+        "budget",
+        "progressPolicy",
+        "responseSchema",
+        "observedVersions",
+        "lease",
+        "issuedBy",
+        "issuedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/task-packet/v1"
+}

@@ -1,0 +1,207 @@
+{
+  "$ref": "#/definitions/experiment-manifest",
+  "definitions": {
+    "experiment-manifest": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/experiment-manifest/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "experimentId": {
+          "type": "string",
+          "pattern": "^exp_[0-9a-f]{32}$"
+        },
+        "autoresearchId": {
+          "type": "string",
+          "pattern": "^ar_[0-9a-f]{32}$"
+        },
+        "proposalId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "parentExperimentId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "treeDepth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "round": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "hypothesis": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "primaryChange": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "ideaFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "attemptFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "worktreeId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "parentCommit": {
+          "type": "string",
+          "minLength": 7
+        },
+        "implementationCommit": {
+          "type": "string",
+          "minLength": 7
+        },
+        "evaluatedCommit": {
+          "type": "string",
+          "minLength": 7
+        },
+        "evaluationContractHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "proposed",
+            "preparing",
+            "ready",
+            "running",
+            "evaluating",
+            "accepted",
+            "rejected",
+            "inconclusive",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "runIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^run_[0-9a-f]{32}$"
+          }
+        },
+        "resultRecordSequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reviewId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^rev_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "promotionDecision": {
+          "type": "string",
+          "enum": [
+            "promoted",
+            "held",
+            "rejected",
+            "pending"
+          ]
+        },
+        "artifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^art_[0-9a-f]{32}$"
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "evaluatedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "experimentId",
+        "autoresearchId",
+        "proposalId",
+        "parentExperimentId",
+        "treeDepth",
+        "round",
+        "hypothesis",
+        "primaryChange",
+        "ideaFingerprint",
+        "attemptFingerprint",
+        "branch",
+        "worktreeId",
+        "parentCommit",
+        "implementationCommit",
+        "evaluatedCommit",
+        "evaluationContractHash",
+        "state",
+        "runIds",
+        "resultRecordSequence",
+        "reviewId",
+        "promotionDecision",
+        "artifactIds",
+        "createdAt",
+        "evaluatedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/experiment-manifest/v1"
+}

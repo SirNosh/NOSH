@@ -1,0 +1,238 @@
+{
+  "$ref": "#/definitions/research-director-cycle",
+  "definitions": {
+    "research-director-cycle": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/research-director-cycle/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "cycleId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "directionId": {
+          "type": "string",
+          "pattern": "^dir_[0-9a-f]{32}$"
+        },
+        "directorAgentId": {
+          "type": "string",
+          "pattern": "^agt_[0-9a-f]{32}$"
+        },
+        "observedGraphVersion": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "evaluationContractHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "consumedEventRange": {
+          "type": "object",
+          "properties": {
+            "fromSequence": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "toSequence": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "fromSequence",
+            "toSequence"
+          ],
+          "additionalProperties": false
+        },
+        "questionCheck": {
+          "type": "object",
+          "properties": {
+            "questionId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "currentDisposition": {
+              "type": "string",
+              "enum": [
+                "unresolved",
+                "supported",
+                "refuted",
+                "inconclusive"
+              ]
+            },
+            "remainingUncertaintyIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              }
+            },
+            "currentWorkContributes": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "questionId",
+            "currentDisposition",
+            "remainingUncertaintyIds",
+            "currentWorkContributes"
+          ],
+          "additionalProperties": false
+        },
+        "acceptedFrontierExperimentIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          }
+        },
+        "failedHypothesisIdsAdded": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          }
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "targetId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "action",
+              "targetId",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "createdTaskIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^tsk_[0-9a-f]{32}$"
+          }
+        },
+        "invokedAutoresearchIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^ar_[0-9a-f]{32}$"
+          }
+        },
+        "graphChangeProposalIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          }
+        },
+        "directionSuggestionIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          }
+        },
+        "userInputRequestId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nextWake": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "event",
+                "deadline",
+                "event_or_deadline"
+              ]
+            },
+            "deadline": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "deadline"
+          ],
+          "additionalProperties": false
+        },
+        "submittedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "cycleId",
+        "directionId",
+        "directorAgentId",
+        "observedGraphVersion",
+        "evaluationContractHash",
+        "consumedEventRange",
+        "questionCheck",
+        "acceptedFrontierExperimentIds",
+        "failedHypothesisIdsAdded",
+        "decisions",
+        "createdTaskIds",
+        "invokedAutoresearchIds",
+        "graphChangeProposalIds",
+        "directionSuggestionIds",
+        "userInputRequestId",
+        "nextWake",
+        "submittedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/research-director-cycle/v1"
+}

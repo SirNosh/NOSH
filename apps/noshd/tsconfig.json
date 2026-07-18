@@ -6,5 +6,17 @@
     "outDir": "dist"
   },
   "include": ["src"],
-  "references": [{ "path": "../../packages/core" }, { "path": "../../packages/wire" }, { "path": "../../packages/persistence" }]
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/crypto" },
+    { "path": "../../packages/evidence" },
+    { "path": "../../packages/graph" },
+    { "path": "../../packages/wire" },
+    { "path": "../../packages/persistence" },
+    { "path": "../../packages/agent-runtime" },
+    { "path": "../../packages/pi-adapter" }
+    ,{ "path": "../../packages/orchestration-runtime" }
+    ,{ "path": "../../packages/scheduler" }
+    ,{ "path": "../../packages/jobs" }
+  ]
 }

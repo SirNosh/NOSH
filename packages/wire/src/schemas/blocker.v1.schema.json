@@ -1,0 +1,234 @@
+{
+  "$ref": "#/definitions/blocker",
+  "definitions": {
+    "blocker": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/blocker/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "blockerId": {
+          "type": "string",
+          "pattern": "^blk_[0-9a-f]{32}$"
+        },
+        "taskId": {
+          "type": "string",
+          "pattern": "^tsk_[0-9a-f]{32}$"
+        },
+        "scopeType": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "scopeId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "missing_input",
+            "missing_credential",
+            "approval_required",
+            "resource_unavailable",
+            "external_service",
+            "contract_conflict",
+            "scientific_ambiguity",
+            "safety_policy",
+            "workspace_conflict",
+            "unknown_after_diagnosis"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "evidenceArtifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^art_[0-9a-f]{32}$"
+          }
+        },
+        "workCompletedBeforeBlock": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "maxItems": 100
+        },
+        "safeState": {
+          "type": "object",
+          "properties": {
+            "branch": {
+              "type": "string"
+            },
+            "head": {
+              "type": "string"
+            },
+            "activeJobIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^job_[0-9a-f]{32}$"
+              }
+            },
+            "uncommittedChanges": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "branch",
+            "head",
+            "activeJobIds",
+            "uncommittedChanges"
+          ],
+          "additionalProperties": false
+        },
+        "attemptedResolutions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "result": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "attemptFingerprint": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "action",
+              "result",
+              "attemptFingerprint"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "requiredAuthority": {
+          "type": "string",
+          "enum": [
+            "user",
+            "mission_director",
+            "research_director",
+            "daemon_policy"
+          ]
+        },
+        "requestedAction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "resumePredicate": {
+          "type": "object",
+          "properties": {
+            "validatorId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "parameters": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {}
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          },
+          "required": [
+            "validatorId",
+            "parameters"
+          ],
+          "additionalProperties": false
+        },
+        "fallbackOptions": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "reportedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "blockerId",
+        "taskId",
+        "scopeType",
+        "scopeId",
+        "category",
+        "summary",
+        "evidenceArtifactIds",
+        "workCompletedBeforeBlock",
+        "safeState",
+        "attemptedResolutions",
+        "requiredAuthority",
+        "requestedAction",
+        "resumePredicate",
+        "fallbackOptions",
+        "reportedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/blocker/v1"
+}

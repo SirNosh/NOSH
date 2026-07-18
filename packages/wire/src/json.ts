@@ -1,5 +1,6 @@
 import { canonicalize } from "json-canonicalize";
-import { createHash } from "node:crypto";
+import { sha256 as hashSha256 } from "@noble/hashes/sha2";
+import { bytesToHex } from "@noble/hashes/utils";
 import { z } from "zod";
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
@@ -20,5 +21,5 @@ export function canonicalJson(value: JsonValue): string {
 }
 
 export function sha256(value: JsonValue): string {
-  return `sha256:${createHash("sha256").update(canonicalJson(value)).digest("hex")}`;
+  return `sha256:${bytesToHex(hashSha256(new TextEncoder().encode(canonicalJson(value))))}`;
 }
