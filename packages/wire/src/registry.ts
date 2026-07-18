@@ -1,0 +1,42 @@
+import { z } from "zod";
+import { commandSchema } from "./commands.js";
+import { eventEnvelopeSchema } from "./events.js";
+import { templateRegistry } from "./templates.js";
+
+const entries: Array<[string, z.ZodTypeAny]> = [
+  ["https://nosh.dev/schemas/command/v1", commandSchema],
+  ["https://nosh.dev/schemas/event/v1", eventEnvelopeSchema],
+  ...Object.entries(templateRegistry),
+];
+
+const schemas: ReadonlyMap<string, z.ZodTypeAny> = new Map(entries);
+
+export function schemaFor(uri: string): z.ZodTypeAny | undefined {
+  return schemas.get(uri);
+}
+
+export function validateRecord(uri: string, value: unknown):
+  | { ok: true; value: unknown }
+  | { ok: false; errors: Array<{ pointer: string; code: string; message: string }> } {
+  const schema = schemaFor(uri);
+  if (!schema) {
+    return { ok: false, errors: [{ pointer: "/$schema", code: "unknown_schema", message: `Unsupported schema: ${uri}` }] };
+  }
+
+  const result = schema.safeParse(value);
+  if (result.success) return { ok: true, value: result.data };
+
+  const errors: Array<{ pointer: string; code: string; message: string }> = [];
+  for (const issue of result.error.issues) {
+    if (issue.code === "unrecognized_keys") {
+      for (const key of issue.keys) errors.push({ pointer: pointerFor([key]), code: issue.code, message: `Unrecognized key: ${key}` });
+    } else {
+      errors.push({ pointer: pointerFor(issue.path), code: issue.code, message: issue.message });
+    }
+  }
+  return { ok: false, errors };
+}
+
+function pointerFor(path: PropertyKey[]): string {
+  return path.length === 0 ? "" : `/${path.map((part) => String(part).replaceAll("~", "~0").replaceAll("/", "~1")).join("/")}`;
+}

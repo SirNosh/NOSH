@@ -1,0 +1,25 @@
+{
+  "name": "noshd",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "noshd": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.80.10",
+    "@nosh/core": "workspace:*",
+    "@nosh/persistence": "workspace:*",
+    "@nosh/wire": "workspace:*",
+    "ws": "^8.18.2"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.14"
+  }
+}

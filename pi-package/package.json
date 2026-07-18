@@ -1,0 +1,13 @@
+{
+  "name": "nosh-research",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NOSH resources for Pi",
+  "keywords": ["pi-package"],
+  "pi": {
+    "skills": ["./skills"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
