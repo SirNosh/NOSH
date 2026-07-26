@@ -3,6 +3,22 @@ export type Project = {
     repositoryRoot: string;
     registeredAt: string;
 };
+export type ProjectContract = {
+    projectId: string;
+    contractVersion: number;
+    workingTitle: string;
+    northStar: {
+        question: string;
+        contributionType: string;
+        decisionUse: string;
+    };
+    computeEnvelope: {
+        maximumGpuHours: number;
+        maximumDiskBytes: number;
+        allowedHardwareClasses: string[];
+    };
+    approvedAt: string | null;
+};
 export type Agent = {
     agentId: string;
     projectId: string;
@@ -189,5 +205,6 @@ export type EpisodeRecord = {
     completedAt: string;
 };
 export declare function token(): string;
+export declare function connectLocal(rawBootstrap: string): Promise<string>;
 export declare function api<T>(path: string, init?: RequestInit): Promise<T>;
 export declare function subscribe(projectId: string, after: number, receive: (event: NoshEvent) => void): () => void;

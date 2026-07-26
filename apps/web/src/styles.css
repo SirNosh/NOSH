@@ -151,6 +151,10 @@ h1, h2, h3, p { margin-top: 0; }
 .message h1 { margin: 5px 0; font-size: 20px; }
 .message p { max-width: 720px; color: var(--nosh-text-muted); font-size: 15px; line-height: 24px; }
 .message-meta { color: var(--nosh-text-muted); font: 11px var(--nosh-font-mono); }
+.message.user { grid-template-columns: 1fr; margin-left: 44px; padding: 10px 12px; border: 1px solid var(--nosh-border); background: var(--nosh-surface); }
+.message.user p, .message.assistant p { white-space: pre-wrap; }
+.discovery-note { max-width: 880px; margin: 0 0 16px 44px; padding: 10px 12px; border: 1px solid var(--nosh-accent-border); background: var(--nosh-accent-surface); }
+.discovery-note p { margin: 7px 0 0; color: var(--nosh-text-muted); line-height: 1.5; }
 .quick-actions, .button-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .event-card { display: grid; grid-template-columns: 1fr auto; max-width: 880px; margin: 0 0 6px 44px; padding: 8px 10px; border: 1px solid var(--nosh-border); border-radius: 3px; }
 .event-card span { color: var(--nosh-live); font: 10px var(--nosh-font-mono); text-transform: uppercase; }
@@ -293,6 +297,8 @@ th { color: var(--nosh-text-muted); font: 9px var(--nosh-font-mono); text-transf
 .sheet h2 { font-size: 18px; }
 .sheet textarea { min-height: 80px; }
 .project-setup { display: grid; align-content: start; gap: 10px; }
+.path-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.optional { color: var(--nosh-text-faint); font: 10px var(--nosh-font-mono); }
 .check-row { grid-template-columns: auto 1fr; align-items: center; }
 .check-row input { width: auto; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

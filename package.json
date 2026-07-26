@@ -19,6 +19,8 @@
     "sbom": "node scripts/generate-sbom.mjs",
     "package:windows": "node scripts/package-release.mjs",
     "soak": "node scripts/soak.mjs",
+    "delegate": "node scripts/delegate.mjs",
+    "context:audit": "node scripts/context-audit.mjs",
     "schemas": "corepack pnpm build && node scripts/generate-schema-fixtures.mjs",
     "release:check": "corepack pnpm install --frozen-lockfile && corepack pnpm test && corepack pnpm --filter @nosh/web build && corepack pnpm notices && corepack pnpm run sbom"
   },

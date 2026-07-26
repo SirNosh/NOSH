@@ -1,11 +1,29 @@
 import { remoteActive, remoteApi, subscribeRemote } from "./remote.js";
 export function token() { return sessionStorage.getItem("nosh.sessionToken") ?? localStorage.getItem("nosh.bootstrapToken") ?? ""; }
 let exchange = null;
+export async function connectLocal(rawBootstrap) {
+    const bootstrap = rawBootstrap.trim();
+    if (!bootstrap)
+        throw new Error("Enter the loopback bootstrap token");
+    let response;
+    try {
+        response = await fetch("/api/session", { method: "POST", headers: { authorization: `Bearer ${bootstrap}` } });
+    }
+    catch {
+        throw new Error("noshd is not reachable. Run `nosh start`, then try again.");
+    }
+    if (!response.ok)
+        throw new Error(response.status === 401 ? "The bootstrap token was rejected" : `Local connection failed (${response.status})`);
+    const value = await response.json();
+    sessionStorage.setItem("nosh.sessionToken", value.token);
+    sessionStorage.setItem("nosh.sessionExpiresAt", value.expiresAt);
+    localStorage.removeItem("nosh.bootstrapToken");
+    return value.token;
+}
 async function localToken() { const session = sessionStorage.getItem("nosh.sessionToken"); const expiresAt = Date.parse(sessionStorage.getItem("nosh.sessionExpiresAt") ?? ""); if (session && expiresAt > Date.now() + 5_000)
     return session; if (exchange)
-    return exchange; exchange = (async () => { const bootstrap = localStorage.getItem("nosh.bootstrapToken"); if (!bootstrap)
-    throw new Error("Enter the loopback bootstrap token in Settings"); const response = await fetch("/api/session", { method: "POST", headers: { authorization: `Bearer ${bootstrap}` } }); if (!response.ok)
-    throw new Error("Local session exchange failed"); const value = await response.json(); sessionStorage.setItem("nosh.sessionToken", value.token); sessionStorage.setItem("nosh.sessionExpiresAt", value.expiresAt); localStorage.removeItem("nosh.bootstrapToken"); return value.token; })().finally(() => { exchange = null; }); return exchange; }
+    return exchange; const bootstrap = localStorage.getItem("nosh.bootstrapToken"); if (!bootstrap)
+    throw new Error("Enter the loopback bootstrap token in Settings"); exchange = connectLocal(bootstrap).finally(() => { exchange = null; }); return exchange; }
 export async function api(path, init) {
     if (remoteActive())
         return remoteApi(path, init);

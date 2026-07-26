@@ -17,6 +17,7 @@ const toolSchemas: Record<string, readonly string[]> = {
   nosh_evidence_submit: ["evidence"],
   nosh_episode_submit: ["episode-draft"],
   nosh_runtime_instruct: ["runtime-instruction"],
+  nosh_project_contract_submit: ["project-contract"],
 };
 
 export class StructuredSubmissionGate {

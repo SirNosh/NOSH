@@ -1,6 +1,7 @@
 import { remoteActive, remoteApi, subscribeRemote } from "./remote.js";
 
 export type Project = { projectId: string; repositoryRoot: string; registeredAt: string };
+export type ProjectContract = { projectId: string; contractVersion: number; workingTitle: string; northStar: { question: string; contributionType: string; decisionUse: string }; computeEnvelope: { maximumGpuHours: number; maximumDiskBytes: number; allowedHardwareClasses: string[] }; approvedAt: string | null };
 export type Agent = { agentId: string; projectId: string; missionId: string | null; directionId: string | null; autoresearchId: string | null; experimentId: string | null; runId: string | null; jobId: string | null; role: string; status: string; currentTool: string | null; startedAt: string; lastEventAt: string; taskId: string | null; modelProvider: string | null; modelId: string | null; modelName: string | null; thinkingLevel: string; contextTokens: number | null; contextWindow: number | null; contextPercent: number | null };
 export type Job = { jobId: string; experimentId: string; state: string; startedAt: string | null; command: string[] };
 export type NoshEvent = { eventId: string; sequence: number | null; timestamp: string; type: string; source: string; payload: unknown; scope: { projectId: string; missionId: string | null; directionId: string | null; autoresearchId: string | null; experimentId: string | null; runId: string | null; agentId: string | null; jobId: string | null } };
@@ -15,7 +16,21 @@ export type EpisodeRecord = { episodeId: string; threadId: string; instructionId
 export function token(): string { return sessionStorage.getItem("nosh.sessionToken") ?? localStorage.getItem("nosh.bootstrapToken") ?? ""; }
 
 let exchange: Promise<string> | null = null;
-async function localToken(): Promise<string> { const session = sessionStorage.getItem("nosh.sessionToken"); const expiresAt = Date.parse(sessionStorage.getItem("nosh.sessionExpiresAt") ?? ""); if (session && expiresAt > Date.now() + 5_000) return session; if (exchange) return exchange; exchange = (async () => { const bootstrap = localStorage.getItem("nosh.bootstrapToken"); if (!bootstrap) throw new Error("Enter the loopback bootstrap token in Settings"); const response = await fetch("/api/session", { method: "POST", headers: { authorization: `Bearer ${bootstrap}` } }); if (!response.ok) throw new Error("Local session exchange failed"); const value = await response.json() as { token: string; expiresAt: string }; sessionStorage.setItem("nosh.sessionToken", value.token); sessionStorage.setItem("nosh.sessionExpiresAt", value.expiresAt); localStorage.removeItem("nosh.bootstrapToken"); return value.token; })().finally(() => { exchange = null; }); return exchange; }
+export async function connectLocal(rawBootstrap: string): Promise<string> {
+  const bootstrap = rawBootstrap.trim();
+  if (!bootstrap) throw new Error("Enter the loopback bootstrap token");
+  let response: Response;
+  try { response = await fetch("/api/session", { method: "POST", headers: { authorization: `Bearer ${bootstrap}` } }); }
+  catch { throw new Error("noshd is not reachable. Run `nosh start`, then try again."); }
+  if (!response.ok) throw new Error(response.status === 401 ? "The bootstrap token was rejected" : `Local connection failed (${response.status})`);
+  const value = await response.json() as { token: string; expiresAt: string };
+  sessionStorage.setItem("nosh.sessionToken", value.token);
+  sessionStorage.setItem("nosh.sessionExpiresAt", value.expiresAt);
+  localStorage.removeItem("nosh.bootstrapToken");
+  return value.token;
+}
+
+async function localToken(): Promise<string> { const session = sessionStorage.getItem("nosh.sessionToken"); const expiresAt = Date.parse(sessionStorage.getItem("nosh.sessionExpiresAt") ?? ""); if (session && expiresAt > Date.now() + 5_000) return session; if (exchange) return exchange; const bootstrap = localStorage.getItem("nosh.bootstrapToken"); if (!bootstrap) throw new Error("Enter the loopback bootstrap token in Settings"); exchange = connectLocal(bootstrap).finally(() => { exchange = null; }); return exchange; }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (remoteActive()) return remoteApi<T>(path, init);

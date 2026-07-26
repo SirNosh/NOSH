@@ -17,7 +17,7 @@ export const projectContractSchema = z.object({
   computeEnvelope: z.object({ maximumGpuHours: z.number().nonnegative(), maximumDiskBytes: z.number().int().nonnegative(), allowedHardwareClasses: strings }).strict(),
   reproducibilityStandard: z.object({ minimumSeeds: z.number().int().positive(), environmentLockRequired: z.boolean(), immutableEvaluatedCommitRequired: z.boolean(), rawLogsRetained: z.boolean() }).strict(),
   paper: z.object({ intendedVenue: z.string().nullable(), requiredSections: strings, claimPolicy: z.literal("evidence_link_required") }).strict(),
-  policies: z.object({ network: ref, privacy: ref, publication: ref, protectedPaths: strings }).strict(), canonicalDefaultBranch: z.string(), createdBy: z.enum(["user", "import"]), createdAt: timestamp, approvedAt: timestamp,
+  policies: z.object({ network: ref, privacy: ref, publication: ref, protectedPaths: strings }).strict(), canonicalDefaultBranch: z.string(), createdBy: z.enum(["user", "import"]), createdAt: timestamp, approvedAt: timestamp.nullable(),
 }).strict();
 
 export const missionContractSchema = z.object({

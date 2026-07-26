@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomBytes } from "node:crypto";
+import { execFile } from "node:child_process";
 import type { Duplex } from "node:stream";
 import { URL } from "node:url";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -66,6 +67,8 @@ export class LocalApiServer {
         this.send(response, 200, { projects: this.daemon.projects() });
         return;
       }
+      if (request.method === "POST" && pathname === "/directories/select") { this.send(response, 200, { path: await selectWindowsDirectory() }); return; }
+      if (request.method === "GET" && /^\/projects\/[^/]+\/contract$/.test(pathname)) { this.send(response, 200, { contract: this.daemon.projectContract(pathname.split("/")[2]!) }); return; }
       if (request.method === "GET" && pathname === "/models") { this.send(response, 200, { models: await this.daemon.agents.availableModels() }); return; }
       if (request.method === "POST" && pathname === "/terminals") { const body = await readJson(request) as { projectId?: string; profile?: "powershell" | "wsl" }; requiredStrings(body, ["projectId"]); if (body.profile && !["powershell", "wsl"].includes(body.profile)) throw new Error("profile must be powershell or wsl"); const project = this.daemon.projects().find((item) => item.projectId === body.projectId); if (!project) throw new Error("Project is not registered on this host"); this.send(response, 201, { terminal: this.terminals.create(project.projectId, project.repositoryRoot, body.profile ?? "powershell") }); return; }
       if (request.method === "GET" && /^\/terminals\/[^/]+$/.test(pathname)) { this.send(response, 200, { terminal: this.terminals.get(pathname.split("/")[2]!) }); return; }
@@ -75,7 +78,7 @@ export class LocalApiServer {
         this.send(response, 201, { project: this.daemon.registerProject(project as { projectId: string; repositoryRoot: string; databasePath: string }) });
         return;
       }
-      if (request.method === "POST" && pathname === "/projects/open") { const body = await readJson(request) as { path?: string; createRepository?: boolean; workingTitle?: string; northStarQuestion?: string; contributionType?: string; maximumGpuHours?: number; maximumDiskBytes?: number }; requiredStrings(body, ["path", "workingTitle", "northStarQuestion", "contributionType"]); if (typeof body.createRepository !== "boolean" || typeof body.maximumGpuHours !== "number" || body.maximumGpuHours < 0 || typeof body.maximumDiskBytes !== "number" || body.maximumDiskBytes < 1) throw new Error("repository mode and compute envelope are required"); this.send(response, 201, { project: this.daemon.initializeProject({ path: body.path!, createRepository: body.createRepository, workingTitle: body.workingTitle!, northStarQuestion: body.northStarQuestion!, contributionType: body.contributionType!, maximumGpuHours: body.maximumGpuHours, maximumDiskBytes: body.maximumDiskBytes }) }); return; }
+      if (request.method === "POST" && pathname === "/projects/open") { const body = await readJson(request) as { path?: string; createRepository?: boolean; workingTitle?: string; githubRepositoryUrl?: string; model?: { provider?: string; id?: string } }; requiredStrings(body, ["path", "workingTitle"]); if (typeof body.createRepository !== "boolean" || body.githubRepositoryUrl !== undefined && typeof body.githubRepositoryUrl !== "string" || body.model && (typeof body.model.provider !== "string" || typeof body.model.id !== "string")) throw new Error("repository mode, GitHub link, or Pi model is invalid"); const project = this.daemon.initializeProject({ path: body.path!, createRepository: body.createRepository, workingTitle: body.workingTitle!, ...(body.githubRepositoryUrl ? { githubRepositoryUrl: body.githubRepositoryUrl } : {}) }); void this.daemon.beginProjectIntake(project.projectId, body.model as { provider: string; id: string } | undefined).catch(() => undefined); this.send(response, 201, { project }); return; }
       if (request.method === "GET" && pathname === "/events") {
         const projectId = url.searchParams.get("projectId");
         const after = Number(url.searchParams.get("after") ?? "0");
@@ -288,4 +291,11 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
 }
 
 function requiredQuery(url: URL, name: string): string { const value = url.searchParams.get(name); if (!value) throw new Error(`${name} is required`); return value; }
+
+async function selectWindowsDirectory(): Promise<string | null> {
+  if (process.platform !== "win32") throw new Error("Native directory selection is available only on Windows");
+  const script = `Add-Type -AssemblyName System.Windows.Forms\n$dialog = New-Object System.Windows.Forms.FolderBrowserDialog\n$dialog.Description = 'Select the Project repository root'\n$dialog.ShowNewFolderButton = $true\nif ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.SelectedPath) }`;
+  const encoded = Buffer.from(script, "utf16le").toString("base64");
+  return await new Promise((resolveSelection, rejectSelection) => execFile("powershell.exe", ["-NoProfile", "-STA", "-EncodedCommand", encoded], { windowsHide: false, timeout: 300_000 }, (error, stdout) => { if (error && error.killed) rejectSelection(new Error("Directory selection timed out")); else if (error) rejectSelection(new Error("Windows directory selection failed")); else resolveSelection(stdout.trim() || null); }));
+}
 function requiredStrings(value: object, names: string[], allowEmptyName?: string): void { const record = value as Record<string, unknown>; for (const name of names) if (typeof record[name] !== "string" || (name !== allowEmptyName && !(record[name] as string).trim()) || (name === "idempotencyKey" && (record[name] as string).length < 16)) throw new Error(`${name} is required`); }
