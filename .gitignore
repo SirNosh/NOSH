@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+test-results/
 .DS_Store
 .env
 .nosh/
@@ -9,3 +10,5 @@ coverage/
 *.sqlite-wal
 *.tsbuildinfo
 release/
+/timeline.md
+/project.md

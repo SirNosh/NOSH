@@ -24,8 +24,9 @@ describe("structured agent control", () => {
   });
 
   it("transfers ownership only after exact teach-back", () => {
-    const state = { handoffId: "hnd_1", logicalOwnerId: "owner_1", observedVersions: { graphVersion: 4 }, branchHead: "abc1234", defectIds: ["def_1"], blockerIds: [], readyNodeIds: ["node_2"] };
-    expect(validateTeachback(state, { handoffId: "hnd_1", logicalOwnerId: "owner_1", decision: "accepted", observedVersions: { graphVersion: 4 }, observedBranchHead: "abc1234", acknowledgedDefectIds: ["def_1"], acknowledgedBlockerIds: [], selectedNextNodeId: "node_2", conflicts: [] })).toEqual({ ok: true });
-    expect(validateTeachback(state, { handoffId: "hnd_1", logicalOwnerId: "owner_1", decision: "accepted", observedVersions: { graphVersion: 3 }, observedBranchHead: "abc1234", acknowledgedDefectIds: ["def_1"], acknowledgedBlockerIds: [], selectedNextNodeId: "node_2", conflicts: [] })).toMatchObject({ ok: false });
+    const goalStack = { projectGoalId: "goal_1", missionCriterionIds: ["criterion_1"], directionQuestionId: null, currentGraphNodeId: "node_2" };
+    const state = { handoffId: "hnd_1", logicalOwnerId: "owner_1", goalStack, observedVersions: { graphVersion: 4 }, branchHead: "abc1234", defectIds: ["def_1"], blockerIds: [], readyNodeIds: ["node_2"] };
+    expect(validateTeachback(state, { handoffId: "hnd_1", logicalOwnerId: "owner_1", understoodGoalStack: goalStack, decision: "accepted", observedVersions: { graphVersion: 4 }, observedBranchHead: "abc1234", acknowledgedDefectIds: ["def_1"], acknowledgedBlockerIds: [], selectedNextNodeId: "node_2", conflicts: [] })).toEqual({ ok: true });
+    expect(validateTeachback(state, { handoffId: "hnd_1", logicalOwnerId: "owner_1", understoodGoalStack: { ...goalStack, currentGraphNodeId: null }, decision: "accepted", observedVersions: { graphVersion: 3 }, observedBranchHead: "abc1234", acknowledgedDefectIds: ["def_1"], acknowledgedBlockerIds: [], selectedNextNodeId: "node_2", conflicts: [] })).toMatchObject({ ok: false });
   });
 });

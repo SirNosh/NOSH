@@ -2,14 +2,16 @@
 
 ## Supported versions
 
-Security fixes are applied to the latest tagged `0.x` release until a stable support policy is published.
+Security fixes target the latest tagged `0.x` release until a stable policy is published.
 
 ## Reporting
 
-Do not open a public issue for a suspected vulnerability involving credential exposure, remote-command authorization, cryptography, Project isolation, or protected Git paths. Use GitHub's private vulnerability-reporting feature for `SirNosh/NOSH`. Include the affected commit, reproduction, impact, and whether any relay or provider credentials may have been exposed. Do not include live secrets.
+Use GitHub private vulnerability reporting for `SirNosh/NOSH`. Do not post live secrets or public exploit details. Include the affected commit, reproduction, impact, and potential credential or research-data exposure.
 
 ## Release posture
 
-Remote control is release-blocked by any plaintext relay exposure, signature/revocation/replay bypass, arbitrary command execution, cross-Project access, or high/critical finding. GitHub release artifacts publish hashes, CycloneDX SBOM, dependency notices, and build provenance. Verify the release digest before running `scripts/install.ps1`.
+The current product is local and terminal-first. Browser/PWA, relay, remote pairing, and embedded shell services have been removed. Never expose `noshd` beyond loopback. Same-user native clients are trusted by design.
 
-NOSH never needs provider credentials: Pi owns provider authentication. Diagnostics report only credential presence, never values.
+Authorization bypass, arbitrary control-plane command execution, cross-Project/path escape, protected-branch bypass, secret exposure, or a high/critical finding blocks release. Verify release hashes and provenance before running installation scripts. Review the generated notices and SBOM, including Bun/OpenTUI runtime dependencies.
+
+Pi owns provider authentication. Diagnostics must report only credential presence, never values. Independent application-security review remains required; see [THREAT_MODEL.md](THREAT_MODEL.md).

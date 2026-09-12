@@ -39,7 +39,7 @@ Every instruction has a Project, immutable instruction ID, idempotency key, prop
 
 A thread is durable and a Pi session is replaceable. Thread records retain purpose, scientific owner scope, role, parent/children, selected inputs, active skills, capability scope, budgets, usage, Episode IDs, and the complete physical-session history. Rotation starts a new Pi session without copying a transcript.
 
-One `THREAD_STEP` has one terminal Episode boundary. Successful Pi work must call `nosh_episode_submit` exactly once with a schema-valid draft. Missing typed output is a failure; prose cannot advance state. A model or transport failure produces a durable failed Episode and then throws.
+One `THREAD_STEP` has one terminal Episode boundary. Successful Pi work returns exactly one schema-valid Episode draft in the host-enforced final assistant-text JSON envelope, not an `nosh_episode_submit` tool call. Task-scoped turns also require one terminal outcome. Missing typed output is a failure; prose cannot advance state. A model or transport failure produces a durable failed Episode and then throws. This is not provider-constrained decoding. See [terminal output](protocols/terminal-output.md).
 
 Each Episode retains:
 
@@ -63,7 +63,7 @@ These choices follow the shared prefix rule documented by [OpenAI](https://devel
 
 A skill manifest declares roles, capability and Episode activation conditions, prompt text, permitted tools, input and output Episode types, execution mode, and deterministic preflight/postflight checks. Skills disappear at the Episode boundary unless explicitly applied again.
 
-Tool permission is preventive and defensive. A skill Episode rotates into a Pi session created with the intersection of every active skill's tool allowlist. The runtime also audits emitted tool events afterward. Multiple skills therefore cannot widen each other's permissions. A skill must permit `nosh_episode_submit` because typed output is mandatory.
+Tool permission is preventive and defensive. A skill Episode rotates into a Pi session created with the intersection of every active skill's tool allowlist. The runtime also audits emitted tool events afterward. Multiple skills therefore cannot widen each other's permissions. A skill must permit the `nosh_episode_submit` capability because typed output is mandatory; the scoped Pi session hides that tool and the host authorizes the final-text Episode record against the capability.
 
 An orchestration skill points to a statically compiled program. Programs contain only runtime instructions, named declared state, guarded branches/loops, foreground steps, background spawns, explicit await instructions, failure targets, and hard step/token/tool/wall-clock bounds. State is type-checked and checkpointed after every transition. Agent results may bind only declared state fields.
 
@@ -73,7 +73,7 @@ Program instructions receive deterministic IDs. Operation intents make foregroun
 
 ## Foreground forks
 
-Foreground forks are the interactive skill mode. The local or encrypted remote PWA shows a global fork overlay, routes user messages as bounded foreground Episodes, and restores the owning view after explicit Finish/STOP. Remote devices receive only active foreground-thread projections and must hold the separate `thread.message` or `thread.stop` capability; the relay still has no arbitrary runtime or shell command. Mission and Direction supervisors do not schedule another cycle while a fork in their exact scope is active. A stopped fork cannot be reused.
+Foreground forks are the interactive skill mode in the backend. Mission and Direction supervisors do not schedule another cycle while a fork in their exact scope is active. A stopped fork cannot be reused. The former PWA takeover and remote controls were removed. The TUI has no foreground-fork takeover or message/Finish commands; use the local typed API for this workflow.
 
 ## Causal intervention boundary
 
@@ -81,7 +81,7 @@ Hooks run after schema and actor validation and before dispatch. A hook may exec
 
 ## Daemon and UI integration
 
-Mission, Direction, and Autoresearch worker sessions now pass through `THREAD_OPEN`, `THREAD_STEP`, and `STOP`. Pi also exposes `nosh_runtime_instruct` so an authorized model can choose typed operations directly. `noshd` exposes authenticated routes for instructions, threads, session rotation, foreground messages, Episodes/traces, skills, programs, program states, and program execution. The local PWA Threads view displays the operational graph, sessions, Episodes, and trace events; encrypted remote snapshots expose only currently active foreground forks for message/Finish control.
+Mission, Direction, and Autoresearch worker sessions now pass through `THREAD_OPEN`, `THREAD_STEP`, and `STOP`. Pi also exposes `nosh_runtime_instruct` so an authorized model can choose typed operations directly. `noshd` exposes authenticated routes for instructions, threads, session rotation, foreground messages, Episodes/traces, skills, programs, program states, and program execution. The TUI provides bounded status and event views, not a Threads graph or foreground-fork controls. There are no encrypted remote snapshots or remote devices.
 
 ## Phase completion and adversarial disposition
 
@@ -89,9 +89,9 @@ Mission, Direction, and Autoresearch worker sessions now pass through `THREAD_OP
 |---|---|
 | A | Parallel open/step/all-await, strict Episode output, compact projection, and exact trace/cost tests. |
 | B | Repeated steps, selective composition, restart recovery, logical continuity, and physical session rotation. |
-| C | Foreground fork state, director blocking, local/encrypted-remote PWA takeover/messages/Finish, capability-scoped remote control, cancellation, and no reuse after STOP. |
+| C | Backend foreground fork state, director blocking, cancellation, and no reuse after STOP. Former PWA and remote UI controls are removed, not validated in the TUI. |
 | D | Durable manifests, episode-scoped activation, preventive tool allowlists, capability/input/output checks, and deterministic gates. |
 | E | Static compilation, typed persistent state, guards/loops/branches/joins, durable spawns, budgets, checkpoints, failure state, STOP, deduplication, and restart resume. |
 | F | Execute/suppress/replace boundary with immutable authorization and durable causal records. |
 
-The local implementation passes its focused and repository-wide automated gates. It is not evidence for authenticated provider behavior, a physical mobile foreground-fork flow, a crash at every instruction boundary, or the original specification's Windows/WSL2/GPU/relay/accessibility/security acceptance matrix. Those gates remain mandatory and are listed in `docs/testing/release-gates.md`.
+The table lists automated test scope, not a release acceptance claim. Authenticated providers, crashes at every instruction boundary, Windows/WSL2/GPU workloads, terminal accessibility, and security review require separate evidence. Current gates are listed in `docs/testing/release-gates.md`; removed browser and relay features are not release gates.

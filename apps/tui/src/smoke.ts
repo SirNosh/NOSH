@@ -1,0 +1,43 @@
+import { createTestRenderer } from '@opentui/core/testing';
+import { DaemonClient } from './client.js';
+import { Controller } from './controller.js';
+import { createWorkspace } from './ui.js';
+const test = await createTestRenderer({width:100,height:30,kittyKeyboard:true});
+const client = new DaemonClient({baseUrl:'http://127.0.0.1',sessionToken:'test'});
+const controller = new Controller(client);
+const workspace = createWorkspace(test.renderer,controller,() => {});
+function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
+try {
+  await test.renderOnce();
+  let frame = test.captureCharFrame();
+  check(frame.includes('N O S H') && frame.includes('Ask NOSH'), 'OpenTUI workspace did not render');
+  await test.mockInput.typeText('research draft');
+  test.mockInput.pressEnter({shift:true});
+  await test.renderOnce();
+  check(workspace.input.value.includes('\n'), 'Shift+Enter must insert a newline');
+  const draft = workspace.input.value;
+  test.mockInput.pressKey('p',{ctrl:true});
+  await test.renderOnce();
+  check(workspace.dialogs.isOpen && test.captureCharFrame().includes('Commands'), 'Ctrl+P must open palette');
+  await test.mockInput.typeText('model'); await test.renderOnce();
+  check(test.captureCharFrame().includes('Select model'), 'Palette must filter command choices');
+  check(workspace.input.value === draft, 'Dialog typing leaked into composer');
+  test.mockInput.pressEscape(); await test.renderOnce();
+  check(!workspace.dialogs.isOpen && workspace.input.value === draft, 'Escape must restore unchanged composer');
+  workspace.input.value = '';
+  await test.mockInput.typeText('/'); await test.renderOnce();
+  check(workspace.dialogs.isOpen, 'Slash must open command search');
+  test.mockInput.pressEscape(); await test.renderOnce();
+  await test.mockInput.typeText('model example example low'); await test.renderOnce();
+  check(!workspace.dialogs.isOpen && workspace.input.value.startsWith('/model '), 'Dismissed slash menu must permit raw commands');
+  workspace.dialogs.openProjectForm(); await test.renderOnce();
+  check(test.captureCharFrame().includes('Repository path'), 'Project form missing');
+  test.mockInput.pressEscape(); await test.renderOnce();
+  controller.view = 'help'; controller.detail = 'Native help check'; workspace.render();
+  await test.renderOnce();
+  check(test.captureCharFrame().includes('Research workspace'), 'Session sidebar missing at wide size');
+  test.resize(60,20); workspace.render(); await test.renderOnce();
+  frame = test.captureCharFrame();
+  check(frame.includes('N O S H') && !frame.includes('Research workspace'), 'Narrow layout must hide sidebar');
+} finally { workspace.dispose(); controller.dispose(); client.close(); test.renderer.destroy(); }
+console.log('OpenTUI native smoke passed: home/session, multiline input, searchable palette, modal focus, form, resize.');

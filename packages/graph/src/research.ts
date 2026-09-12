@@ -1,5 +1,5 @@
 import { sha256, type JsonValue } from "@nosh/wire";
-import { VersionedDag, type GraphNode } from "./index.js";
+import { VersionedDag, isLegalDirectionTransition, isLegalMissionTransition, type DirectionState, type GraphNode, type MissionState } from "./index.js";
 
 export type Experiment = {
   experimentId: string; parentExperimentId: string | null; ideaFingerprint: string; attemptFingerprint: string; evaluationContractHash: string;
@@ -52,7 +52,6 @@ export class ExperimentTree {
   private required(id: string): Experiment { const experiment = this.experiments.get(id); if (!experiment) throw new Error(`Unknown experiment ${id}`); return experiment; }
 }
 
-export type DirectionState = "draft" | "proposed" | "active" | "paused" | "blocked" | "reviewing" | "closed" | "rejected" | "stopped";
 export class DirectionEngine {
   state: DirectionState = "draft";
   private baselineAccepted = false;
@@ -77,15 +76,14 @@ export class DirectionEngine {
     if (!this.baselineAccepted || !this.graph.completionReady() || [...this.autoresearch.values()].some((execution) => !execution.terminal) || !input.evidenceIds.length || input.openBlockingDefects.length || input.reviewVerdict !== "PASS") throw new Error("Direction closure gates are not satisfied");
     this.state = "closed";
   }
-  private move(next: DirectionState): void { const legal: Record<DirectionState, DirectionState[]> = { draft: ["proposed", "stopped"], proposed: ["active", "stopped"], active: ["paused", "blocked", "reviewing", "stopped"], paused: ["active", "stopped"], blocked: ["active", "stopped"], reviewing: ["active", "closed", "rejected"], closed: [], rejected: [], stopped: [] }; if (!legal[this.state].includes(next)) throw new Error(`Illegal Direction transition ${this.state} -> ${next}`); this.state = next; }
+  private move(next: DirectionState): void { if (!isLegalDirectionTransition(this.state, next)) throw new Error(`Illegal Direction transition ${this.state} -> ${next}`); this.state = next; }
 }
 
-export type MissionState = "draft" | "planning" | "awaiting_approval" | "running" | "pausing" | "paused" | "reviewing" | "blocked" | "stopping" | "completed" | "stopped" | "failed";
 export class MissionEngine {
   state: MissionState = "draft";
   readonly graph: VersionedDag;
   constructor(readonly projectId: string, readonly missionId: string, nodes: GraphNode[]) { this.graph = new VersionedDag(missionId, nodes); }
-  transition(next: MissionState): void { const legal: Record<MissionState, MissionState[]> = { draft: ["planning"], planning: ["awaiting_approval"], awaiting_approval: ["running"], running: ["pausing", "reviewing", "blocked", "stopping", "failed"], pausing: ["paused"], paused: ["running", "stopping"], reviewing: ["running", "completed"], blocked: ["running"], stopping: ["stopped"], completed: [], stopped: [], failed: [] }; if (!legal[this.state].includes(next)) throw new Error(`Illegal Mission transition ${this.state} -> ${next}`); this.state = next; }
+  transition(next: MissionState): void { if (!isLegalMissionTransition(this.state, next)) throw new Error(`Illegal Mission transition ${this.state} -> ${next}`); this.state = next; }
   requestCompletion(input: { exitProofsPass: boolean; artifactHashesResolve: boolean; unresolvedClaims: string[]; openBlockingDefects: string[]; budgetsReconciled: boolean }): void {
     if (this.state !== "running" || !this.graph.completionReady() || !input.exitProofsPass || !input.artifactHashesResolve || input.unresolvedClaims.length || input.openBlockingDefects.length || !input.budgetsReconciled) throw new Error("Mission completion packet failed deterministic gates");
     this.state = "reviewing";

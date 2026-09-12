@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { commandSchema } from "./commands.js";
 import { eventEnvelopeSchema } from "./events.js";
 import { templateRegistry } from "./templates.js";
 import { submissionRegistry } from "./submissions.js";
@@ -7,7 +6,6 @@ import { domainRegistry } from "./domain-records.js";
 import { runtimeRegistry } from "./runtime.js";
 
 const entries: Array<[string, z.ZodTypeAny]> = [
-  ["https://nosh.dev/schemas/command/v1", commandSchema],
   ["https://nosh.dev/schemas/event/v1", eventEnvelopeSchema],
   ...Object.entries(templateRegistry),
   ...Object.entries(submissionRegistry),

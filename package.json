@@ -9,7 +9,9 @@
     "node": ">=22.19.0"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3", "node-pty"]
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   },
   "scripts": {
     "build": "tsc -b",
@@ -18,14 +20,19 @@
     "notices": "node scripts/generate-notices.mjs",
     "sbom": "node scripts/generate-sbom.mjs",
     "package:windows": "node scripts/package-release.mjs",
-    "soak": "node scripts/soak.mjs",
+    "quality": "node scripts/quality-check.mjs",
+    "release:smoke": "node scripts/release-smoke.mjs",
     "delegate": "node scripts/delegate.mjs",
     "context:audit": "node scripts/context-audit.mjs",
     "schemas": "corepack pnpm build && node scripts/generate-schema-fixtures.mjs",
-    "release:check": "corepack pnpm install --frozen-lockfile && corepack pnpm test && corepack pnpm --filter @nosh/web build && corepack pnpm notices && corepack pnpm run sbom"
+    "release:check": "corepack pnpm install --frozen-lockfile && corepack pnpm quality && corepack pnpm test && corepack pnpm release:smoke && corepack pnpm notices && corepack pnpm run sbom"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
+    "@typescript-eslint/eslint-plugin": "^8.69.0",
+    "@typescript-eslint/parser": "^8.69.0",
+    "eslint": "^10.9.1",
+    "knip": "^6.34.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3",
     "vitest": "^3.1.3",

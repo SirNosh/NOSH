@@ -1,0 +1,28 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    "packages/*": {
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "apps/cli": {
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "apps/noshd": {
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "apps/tui": {
+      "entry": [
+        "src/smoke.ts"
+      ],
+      "project": [
+        "src/**/*.ts"
+      ]
+    }
+  }
+}

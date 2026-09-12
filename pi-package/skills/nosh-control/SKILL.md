@@ -5,7 +5,9 @@ description: Submit NOSH control records through typed tools.
 
 # NOSH control plane
 
-Operational state changes require a NOSH typed submission tool. Narrative text,
+Operational state changes require host validation of typed records. Task/runtime
+turns return the host-specified terminal JSON envelope. Keep acknowledgement and
+immediate commands as typed tools. Normal chat remains prose. Narrative text,
 Markdown, and code fences are commentary only and cannot accept work, mutate a
 graph, or complete a Mission.
 
@@ -19,8 +21,8 @@ the daemon authorizes the proposer, scope, parent/child relationship, budgets,
 and capabilities before executing it. Use `THREAD_FORK` when focused user input
 is required. Reviewers use a session distinct from all producers.
 
-At every logical step boundary, submit one `episode-draft` through
-`nosh_episode_submit`. Include only verified facts and decisions, canonical
+At every logical step boundary, include one `episode-draft` in the final host
+JSON envelope, alongside any required completion or review record. Include only verified facts and decisions, canonical
 Artifact/Evidence IDs, repository-relative changed files, unresolved questions,
 and recommended next operations. The daemon owns trace ranges, usage, reference
 validation, the immutable Episode ID/hash, and compact context rendering.

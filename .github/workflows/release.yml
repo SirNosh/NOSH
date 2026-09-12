@@ -18,9 +18,12 @@ jobs:
         with: { version: 10.28.0 }
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc, cache: pnpm }
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: "1.4.2" }
       - run: pnpm install --frozen-lockfile
+      - run: pnpm quality
       - run: pnpm test
-      - run: pnpm --filter @nosh/web build
+      - run: pnpm release:smoke
       - run: pnpm notices
       - run: pnpm sbom
       - run: pnpm package:windows

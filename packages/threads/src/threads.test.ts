@@ -22,7 +22,35 @@ describe("compact thread context", () => {
 
 function fixtureThread(): ExecutionThread {
   const now = new Date().toISOString();
-  return { $schema: "https://nosh.dev/schemas/execution-thread/v1", schemaVersion: 1, threadId: createId("thr"), projectId: createId("prj"), taskId: createId("tsk"), ownerScope: { missionId: null, directionId: null, autoresearchId: null, experimentId: null, graphNodeId: null }, role: "general_worker", purpose: "test", executionMode: "background", state: "open", parentThreadId: null, childThreadIds: [], currentAgentId: null, currentPiSessionId: null, activeInstructionId: null, sessionHistory: [], episodeIds: [], inputRefs: [], activeSkillIds: [], capabilities: [], budget: { maximumToolCalls: 20, maximumModelTokens: 1_000, maximumWallClockSeconds: 120 }, usage: { toolCalls: 0, modelTokens: 0, wallClockSeconds: 0 }, nextStepNumber: 1, createdAt: now, updatedAt: now };
+  return {
+    $schema: "https://nosh.dev/schemas/execution-thread/v1",
+    schemaVersion: 1,
+    threadId: createId("thr"),
+    projectId: createId("prj"),
+    taskId: createId("tsk"),
+    ownerScope: { missionId: null, directionId: null, autoresearchId: null, experimentId: null, graphNodeId: null },
+    role: "general_worker",
+    purpose: "test",
+    executionMode: "background",
+    state: "open",
+    parentThreadId: null,
+    childThreadIds: [],
+    currentAgentId: null,
+    currentPiSessionId: null,
+    activeInstructionId: null,
+    sessionHistory: [],
+    episodeIds: [],
+    inputRefs: [],
+    activeSkillIds: [],
+    capabilities: [],
+    taskPermissions: null,
+    taskWorkspace: null,
+    budget: { maximumToolCalls: 20, maximumModelTokens: 1_000, maximumWallClockSeconds: 120 },
+    usage: { toolCalls: 0, modelTokens: 0, wallClockSeconds: 0 },
+    nextStepNumber: 1,
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 function fixtureEpisode(thread: ExecutionThread, index: number): Episode {

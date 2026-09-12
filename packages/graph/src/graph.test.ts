@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { DirectionEngine, ExperimentTree, MissionEngine, VersionedDag, type GraphNode } from "./index.js";
+import { DirectionEngine, ExperimentTree, MissionEngine, VersionedDag, isLegalDirectionTransition, isLegalMissionTransition, isLegalNodeTransition, type GraphNode } from "./index.js";
 
-const node = (id: string, dependencies: string[] = []): GraphNode => ({ id, type: "implementation", title: id, required: true, hardDependencies: dependencies, softDependencies: [], state: "pending", attempt: 0, maximumAttempts: 3, priority: 1, criticalWeight: 1, createdAt: new Date().toISOString(), lease: null });
+const node = (id: string, dependencies: string[] = []): GraphNode => ({ id, type: "implementation", title: id, required: true, criterionIds: [], hardDependencies: dependencies, softDependencies: [], state: "pending", attempt: 0, maximumAttempts: 3, priority: 1, criticalWeight: 1, createdAt: new Date().toISOString(), lease: null });
 
 describe("versioned research graphs", () => {
   it("rejects cycles, stale mutations, and premature completion", () => {
@@ -9,6 +9,13 @@ describe("versioned research graphs", () => {
     expect(() => graph.apply(1, [{ type: "add_hard_edge", from: "b", to: "a" }], "bad", [])).toThrow("cycle");
     expect(() => graph.apply(0, [], "stale", [])).toThrow("Stale");
     expect(graph.completionReady()).toBe(false);
+  });
+
+  it("exports the canonical lifecycle transition authority", () => {
+    expect(isLegalNodeTransition("ready", "leased")).toBe(true);
+    expect(isLegalNodeTransition("ready", "working")).toBe(false);
+    expect(isLegalMissionTransition("awaiting_approval", "running")).toBe(true);
+    expect(isLegalDirectionTransition("proposed", "active")).toBe(true);
   });
 
   it("keeps experiments rooted, frozen, novel, and independently reviewed", () => {

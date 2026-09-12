@@ -7,3 +7,4 @@ export * from "./registry.js";
 export * from "./runtime.js";
 export * from "./submissions.js";
 export * from "./templates.js";
+export * from "./model-selection.js";

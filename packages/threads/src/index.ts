@@ -10,7 +10,7 @@ export function createThread(instruction: OpenInstruction): ExecutionThread {
     $schema: "https://nosh.dev/schemas/execution-thread/v1", schemaVersion: 1, threadId: instruction.threadId, projectId: instruction.projectId, taskId: instruction.taskId, ownerScope: instruction.ownerScope,
     role: instruction.role, purpose: instruction.purpose, executionMode: instruction.executionMode, state: instruction.executionMode === "foreground_fork" ? "awaiting_user" : "open",
     parentThreadId: instruction.operation === "THREAD_FORK" ? instruction.controllingThreadId : instruction.parentThreadId, childThreadIds: [], currentAgentId: null, currentPiSessionId: null, activeInstructionId: null, sessionHistory: [],
-    episodeIds: [], inputRefs: instruction.inputRefs, activeSkillIds: instruction.skillIds, capabilities: instruction.capabilities, budget: instruction.budget, usage: { toolCalls: 0, modelTokens: 0, wallClockSeconds: 0 }, nextStepNumber: 1, createdAt: now, updatedAt: now,
+    episodeIds: [], inputRefs: instruction.inputRefs, activeSkillIds: instruction.skillIds, capabilities: instruction.capabilities, taskPermissions: instruction.taskPermissions ?? null, taskWorkspace: instruction.taskWorkspace ?? null, budget: instruction.budget, usage: { toolCalls: 0, modelTokens: 0, wallClockSeconds: 0 }, nextStepNumber: 1, createdAt: now, updatedAt: now,
   });
 }
 

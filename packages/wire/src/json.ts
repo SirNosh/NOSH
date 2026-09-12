@@ -3,7 +3,8 @@ import { sha256 as hashSha256 } from "@noble/hashes/sha2";
 import { bytesToHex } from "@noble/hashes/utils";
 import { z } from "zod";
 
-export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+export type JsonObject = { [key: string]: JsonValue | undefined };
+export type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
 
 export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([

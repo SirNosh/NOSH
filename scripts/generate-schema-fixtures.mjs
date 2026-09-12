@@ -37,13 +37,32 @@ function sample(schema, full, key) {
 }
 
 function string(schema, key) {
+  if (key === "networkAllowlist") return "example.org";
   if (key === "$schema") throw new Error("Schema URI must be a literal"); if (schema._def.checks?.some((check) => check.kind === "url")) return "https://example.com/resource"; if (schema._def.checks?.some((check) => check.kind === "date")) return "2026-07-17"; if (/At$|Timestamp$|timestamp/i.test(key) || schema._def.checks?.some((check) => check.kind === "datetime")) return "2026-07-17T00:00:00.000Z";
   if (/Version$/i.test(key)) return "1.0.0";
   if (/Hash$|Digest$|checksum/i.test(key)) return `sha256:${"0".repeat(64)}`; const prefix = idPrefix(key); if (prefix) return `${prefix}_${"0".repeat(32)}`;
-  const regex = schema._def.checks?.find((check) => check.kind === "regex")?.regex?.source ?? ""; const id = /^\^([a-z]+)_/.exec(regex)?.[1]; if (id) return `${id}_${"0".repeat(32)}`; if (regex.includes("sha256:")) return `sha256:${"0".repeat(64)}`; if (regex.includes("(?:\\.[a-z]")) return "event.valid"; if (regex.includes("[a-z0-9.:-]")) return "ref_1"; if (regex.includes("[A-Za-z0-9_-]")) return "opaque_AA";
+  const regex = schema._def.checks?.find((check) => check.kind === "regex")?.regex?.source ?? ""; if (regex === "^(?:[0-9a-f]{40}|[0-9a-f]{64})$") return "0".repeat(40); if (regex === "^\\d+\\.\\d+\\.\\d+$") return "1.0.0"; const id = /^\^([a-z]+)_/.exec(regex)?.[1]; if (id) return `${id}_${"0".repeat(32)}`; if (regex.includes("sha256:")) return `sha256:${"0".repeat(64)}`; if (regex.includes("(?:\\.[a-z]")) return "event.valid"; if (regex.includes("[a-z0-9.:-]")) return "ref_1"; if (regex.includes("[A-Za-z0-9_-]")) return "opaque_AA";
   const minimum = schema._def.checks?.find((check) => check.kind === "min")?.value ?? 1; return "sample".padEnd(minimum, "x");
 }
 function idPrefix(key) { const values = [["project", "prj"], ["mission", "mis"], ["direction", "dir"], ["autoresearch", "ar"], ["experiment", "exp"], ["run", "run"], ["job", "job"], ["task", "tsk"], ["review", "rev"], ["artifact", "art"], ["evidence", "evd"], ["claim", "clm"], ["agent", "agt"], ["handoff", "hnd"], ["blocker", "blk"], ["response", "rsp"], ["event", "evt"], ["command", "cmd"], ["snapshot", "snap"]]; const lower = key.toLowerCase(); if (!lower.endsWith("id")) return undefined; return values.map(([name, prefix]) => ({ prefix, position: lower.lastIndexOf(name) })).filter((item) => item.position >= 0).sort((a, b) => b.position - a.position)[0]?.prefix; }
 function singular(key) { return key.endsWith("Ids") ? key.slice(0, -1) : key.endsWith("s") ? key.slice(0, -1) : key; }
-function special(name, value) { if (name === "claim" && !value.limitations?.length) value.limitations = ["No evidence yet"]; if (name === "event" && value.retention === "persistent") value.sequence = 1; if (name === "review-request") value.reviewerAgentId = `agt_${"1".repeat(32)}`; if (name === "review-verdict" && value.defects?.length) value.verdict = "REVISE"; if (name === "skill-manifest" && value.executionMode === "prompt") value.programId = null; if ("openDefectIds" in value) value.openDefectIds = []; if (value.claimAudit) value.claimAudit.unresolvedClaimIds = []; return value; }
+function special(name, value) {
+  if (name === "claim" && !value.limitations?.length) value.limitations = ["No evidence yet"];
+  if (name === "event" && value.retention === "persistent") value.sequence = 1;
+  if (name === "evidence") {
+    value.createdBy = value.createdByAgentId === null ? "user" : "agent";
+    value.quality.status = value.quality.reviewId === null ? "unreviewed" : "reviewed";
+  }
+  if (name === "review-request") value.reviewerAgentId = `agt_${"1".repeat(32)}`;
+  if (name === "review-verdict") {
+    value.missingRequiredInputs = [];
+    if (value.defects?.length) value.verdict = "REVISE";
+  }
+  if (name === "skill-manifest") value.programId = value.executionMode === "program" ? `prg_${"0".repeat(32)}` : null;
+  if (value.permissions?.networkAllowlist) value.permissions.networkAllowlist = ["example.org"];
+  if (value.taskPermissions?.networkAllowlist) value.taskPermissions.networkAllowlist = ["example.org"];
+  if ("openDefectIds" in value) value.openDefectIds = [];
+  if (value.claimAudit) value.claimAudit.unresolvedClaimIds = [];
+  return value;
+}
 function write(directory, name, value) { writeFileSync(join(directory, name), `${canonicalJson(value)}\n`, "utf8"); }

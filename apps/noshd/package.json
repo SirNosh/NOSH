@@ -16,7 +16,6 @@
     "@earendil-works/pi-coding-agent": "0.80.10",
     "@nosh/agent-runtime": "workspace:*",
     "@nosh/core": "workspace:*",
-    "@nosh/crypto": "workspace:*",
     "@nosh/evidence": "workspace:*",
     "@nosh/git-workspaces": "workspace:*",
     "@nosh/graph": "workspace:*",
@@ -26,7 +25,6 @@
     "@nosh/pi-adapter": "workspace:*",
     "@nosh/scheduler": "workspace:*",
     "@nosh/wire": "workspace:*",
-    "node-pty": "1.1.0",
     "ws": "^8.18.2"
   },
   "devDependencies": {
