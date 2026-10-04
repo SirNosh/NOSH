@@ -6,18 +6,20 @@ export interface PaletteItem {
   description?: string;
   keywords?: string;
   disabled?: boolean;
+  /** Workspace shortcut shown beside the title; must match ui.ts handleKey. */
+  keybind?: string;
 }
 export interface CommandItem extends PaletteItem {
   command: string;
   mode: 'dialog' | 'execute' | 'compose' | 'quit';
 }
 export const COMMANDS: readonly CommandItem[] = [
-  {id:'projects',title:'Switch project',category:'Project',description:'Choose a registered repository',keywords:'open directory workspace',command:'/projects',mode:'dialog'},
+  {id:'projects',title:'Switch project',category:'Project',description:'Choose a registered repository',keywords:'open directory workspace',command:'/projects',mode:'dialog',keybind:'ctrl+o'},
   {id:'open',title:'Open project',category:'Project',description:'Open an existing repository and begin intake',keywords:'directory folder path',command:'/open',mode:'dialog'},
   {id:'new',title:'New project',category:'Project',description:'Create a repository and begin intake',keywords:'create directory folder',command:'/new',mode:'dialog'},
-  {id:'models',title:'Select model',category:'Model',description:'Choose provider and model',keywords:'model provider authenticated',command:'/models',mode:'dialog'},
-  {id:'thinking',title:'Thinking level',category:'Model',description:'Choose a supported level for the selected model',keywords:'reasoning effort variant',command:'/thinking',mode:'dialog'},
-  {id:'chat',title:'Conversation',category:'Research',description:'Return to the current conversation',command:'/chat',mode:'execute'},
+  {id:'models',title:'Select model',category:'Model',description:'Choose provider and model',keywords:'model provider authenticated',command:'/models',mode:'dialog',keybind:'f2'},
+  {id:'thinking',title:'Thinking level',category:'Model',description:'Choose a supported level for the selected model',keywords:'reasoning effort variant',command:'/thinking',mode:'dialog',keybind:'ctrl+t'},
+  {id:'chat',title:'Conversation',category:'Research',description:'Return to the current conversation',command:'/chat',mode:'execute',keybind:'esc'},
   {id:'status',title:'Research status',category:'Research',description:'Missions, directions, autoresearch and agents',command:'/status',mode:'execute'},
   {id:'jobs',title:'Supervised jobs',category:'Research',description:'Inspect jobs and resource use',command:'/jobs',mode:'execute'},
   {id:'approvals',title:'Review approvals',category:'Research',description:'Inspect proposals and the project contract',command:'/approvals',mode:'execute'},
@@ -31,10 +33,13 @@ export const COMMANDS: readonly CommandItem[] = [
   {id:'checkpoint',title:'Stage job checkpoint',category:'Actions',description:'/checkpoint <job-id> — confirmation required',command:'/checkpoint ',mode:'compose'},
   {id:'approve',title:'Stage proposal approval',category:'Actions',description:'/approve <proposal-id> <inspected-version>',command:'/approve ',mode:'compose'},
   {id:'transition',title:'Stage state transition',category:'Actions',description:'/transition <family> <id> <inspected-version> <state>',command:'/transition ',mode:'compose'},
+  {id:'retry',title:'Stage node retry',category:'Actions',description:'/retry <missions|directions> <id> <inspected-version> <node-id>',command:'/retry ',mode:'compose'},
+  {id:'steer',title:'Stage Mission steer',category:'Actions',description:'/steer <mission-id> <inspected-version> <message>',command:'/steer ',mode:'compose'},
   {id:'control',title:'Stage mission control',category:'Actions',description:'/control <id> <inspected-version> <pause|resume|stop>',command:'/control ',mode:'compose'},
+  {id:'amend-contract',title:'Stage contract amendment',category:'Actions',description:'/amend-contract <JSON-file-path> — next approved Project contract version',command:'/amend-contract ',mode:'compose'},
   {id:'create',title:'Stage research entity creation',category:'Actions',description:'/create <family> <JSON-file-path>',command:'/create ',mode:'compose'},
   {id:'help',title:'Command reference',category:'Workspace',description:'All commands and safety notes',command:'/help',mode:'execute'},
-  {id:'quit',title:'Quit NOSH',category:'Workspace',description:'Detach only; daemon and jobs keep running',command:'/quit',mode:'quit'},
+  {id:'quit',title:'Quit NOSH',category:'Workspace',description:'Detach only; daemon and jobs keep running',command:'/quit',mode:'quit',keybind:'ctrl+c'},
 ];
 
 /** Strip terminal controls from display text, not from request data. */

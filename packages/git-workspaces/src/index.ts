@@ -23,7 +23,10 @@ export class GitWorkspaceManager {
     const path = resolve(this.worktreesRoot, worktreeId);
     if (relative(this.worktreesRoot, path).startsWith("..")) throw new Error("Worktree path escapes configured root");
     if (existsSync(path)) { const worktree = realpathSync(path); if (git(worktree, ["branch", "--show-current"]) !== branch || !succeeds(worktree, ["merge-base", "--is-ancestor", baseCommit, "HEAD"])) throw new Error(`Existing worktree ${path} does not match its durable intent`); return worktree; }
-    if (succeeds(this.repositoryRoot, ["show-ref", "--verify", `refs/heads/${branch}`])) git(this.repositoryRoot, ["worktree", "add", path, branch]); else git(this.repositoryRoot, ["worktree", "add", "-b", branch, path, baseCommit]);
+    // Check out exact blob bytes: NOSH's hardened Git plumbing ignores user config, so an autocrlf
+    // checkout would make every file look modified and break exact-path commits and workspace edits.
+    const exact = ["-c", "core.autocrlf=false", "-c", "core.eol=lf"];
+    if (succeeds(this.repositoryRoot, ["show-ref", "--verify", `refs/heads/${branch}`])) git(this.repositoryRoot, [...exact, "worktree", "add", path, branch]); else git(this.repositoryRoot, [...exact, "worktree", "add", "-b", branch, path, baseCommit]);
     return realpathSync(path);
   }
 
@@ -80,8 +83,29 @@ export class GitWorkspaceManager {
 }
 
 function git(cwd: string, args: string[]): string {
-  const result = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8", windowsHide: true });
+  const result = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8", windowsHide: true, env: worktreeGitEnvironment(cwd) });
   if (result.status !== 0) throw new Error(result.stderr.trim() || `git ${args[0]} failed`);
   return result.stdout.trim();
 }
-function succeeds(cwd: string, args: string[]): boolean { return spawnSync("git", ["-C", cwd, ...args], { windowsHide: true }).status === 0; }
+function succeeds(cwd: string, args: string[]): boolean { return spawnSync("git", ["-C", cwd, ...args], { windowsHide: true, env: worktreeGitEnvironment(cwd) }).status === 0; }
+const trustCache = new Map<string, NodeJS.ProcessEnv>();
+/**
+ * Environment for Git inside a NOSH-created linked worktree. Filesystems without ownership
+ * (FAT/exFAT, some network drives) need explicit safe.directory entries, and a user's global
+ * list names the repository, not NOSH's per-task worktrees. Trust the worktree only when Git
+ * already trusts its owning repository under the user's own configuration; never wider.
+ */
+export function worktreeGitEnvironment(cwd: string): NodeJS.ProcessEnv {
+  const key = resolve(cwd); const cached = trustCache.get(key); if (cached) return cached;
+  let environment: NodeJS.ProcessEnv = process.env;
+  try {
+    const gitDir = /^gitdir:\s*(.+)$/m.exec(readFileSync(resolve(key, ".git"), "utf8"))?.[1]?.trim();
+    const owner = gitDir ? dirname(dirname(dirname(resolve(key, gitDir)))) : null;
+    if (owner && spawnSync("git", ["-C", owner, "rev-parse", "--git-dir"], { windowsHide: true }).status === 0) {
+      const count = Number(process.env.GIT_CONFIG_COUNT ?? 0) || 0;
+      environment = { ...process.env, GIT_CONFIG_COUNT: String(count + 2), [`GIT_CONFIG_KEY_${count}`]: "safe.directory", [`GIT_CONFIG_VALUE_${count}`]: key.replaceAll("\\", "/"), [`GIT_CONFIG_KEY_${count + 1}`]: "safe.directory", [`GIT_CONFIG_VALUE_${count + 1}`]: owner.replaceAll("\\", "/") };
+    }
+  } catch { /* Not a linked worktree: use the caller's environment unchanged. */ }
+  trustCache.set(key, environment); return environment;
+}
+

@@ -2,13 +2,13 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, s
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createId } from "@nosh/core";
-import { ArtifactStore, exportPaper } from "@nosh/evidence";
+import { ArtifactStore, exportPaper, readProjectContract } from "@nosh/evidence";
 import { validateTeachback } from "@nosh/agent-runtime";
 import { VersionedDag, isLegalDirectionTransition, isLegalMissionTransition, type GraphNode, type GraphOperation, type MissionState, type DirectionState } from "@nosh/graph";
 import type { EntityProjection, EventStore, OperationIntent, RegisteredProject } from "@nosh/persistence";
-import { canonicalJson, isTaskTerminalRecord, schemaUri, sha256, validateRecord, type EventDraft, type EventEnvelope, type JsonValue } from "@nosh/wire";
+import { canonicalJson, eventBudgetTokens, isTaskTerminalRecord, schemaUri, sha256, validateRecord, type EventDraft, type EventEnvelope, type JsonValue } from "@nosh/wire";
 
-export type MissionProjection = { missionId: string; projectId: string; title: string; objective: string; nonObjectives: string[]; deliverables: string[]; successCriteria: string[]; startingEvidence: string[]; budgets: { maximumModelTokens: number; maximumWallClockSeconds: number; maximumGpuSeconds: number; maximumDiskBytes: number; maximumConcurrentAgents: number }; approvalBoundaries: string[]; externalActionRestrictions: string[]; pausePolicy: "safe"; finalReviewRubric: string[]; approvedGraphVersion: number | null; approvedAt: string | null; canonicalContract: JsonValue | null; state: MissionState; graphVersion: number; nodes: GraphNode[]; createdAt: string; updatedAt: string };
+export type MissionProjection = { missionId: string; projectId: string; title: string; objective: string; nonObjectives: string[]; deliverables: string[]; successCriteria: string[]; startingEvidence: string[]; budgets: { maximumModelTokens: number; maximumWallClockSeconds: number; maximumGpuSeconds: number; maximumDiskBytes: number; maximumConcurrentAgents: number }; approvalBoundaries: string[]; externalActionRestrictions: string[]; pausePolicy: "safe"; finalReviewRubric: string[]; approvedGraphVersion: number | null; approvedAt: string | null; canonicalContract: JsonValue | null; state: MissionState; /** Version written by the latest state transition; node churn after it does not change what a user inspected. */ stateVersion?: number; graphVersion: number; nodes: GraphNode[]; createdAt: string; updatedAt: string };
 export type DirectionProjection = { directionId: string; projectId: string; missionId: string | null; questionId: string; question: string; decisionUse: string; falsifiability: { supportingOutcome: string; refutingOutcome: string; inconclusiveOutcome: string }; projectClaimIds: string[]; scope: JsonValue; evaluationContractId: string; evaluationContract: JsonValue; evaluationContractHash: string; plannedBaselineExperimentId: string; integrationBranch: string; stoppingRules: Array<{ ruleId: string; statement: string }>; budget: JsonValue; closureRubric: Array<{ rubricId: string; statement: string }>; createdBy: "user"; approvedBy: "user" | null; activatedAt: string | null; canonicalContract: JsonValue | null; acceptedBaseline: { commit: string; reviewId: string } | null; state: DirectionState; graphVersion: number; nodes: GraphNode[]; createdAt: string; updatedAt: string };
 export type AutoresearchProjection = { autoresearchId: string; projectId: string; directionId: string | null; missionId: string | null; invokedByRole: "user"; decisionQuestion: string; familyTags: string[]; scope: string[]; fingerprint: string; state: "draft" | "running" | "paused" | "blocked" | "completed" | "stopped" | "failed"; evaluationContractId: string; evaluationContract: JsonValue; evaluationContractHash: string; rootExperimentId: string; acceptedFrontierExperimentIds: string[]; forbiddenChangeScopes: string[]; variantPolicy: JsonValue; stopConditions: Array<{ type: string; value: number }>; promotionRubricIds: string[]; currentRound: number; maximumExperiments: number; maximumRounds: number; maximumDepth: number; maximumChildrenPerParent: number; maximumWallClockSeconds: number; maximumModelTokens: number; maximumGpuSeconds: number; maximumDiskBytes: number; canonicalContract: JsonValue | null; createdAt: string; updatedAt: string };
 export type Stored<T> = Omit<EntityProjection, "value"> & { value: T };
@@ -38,6 +38,37 @@ type PendingHandoff = {
 
 const autoresearchTransitions: Record<AutoresearchProjection["state"], AutoresearchProjection["state"][]> = { draft: ["running", "stopped"], running: ["paused", "blocked", "completed", "stopped", "failed"], paused: ["running", "stopped"], blocked: ["running", "stopped", "failed"], completed: [], stopped: [], failed: [] };
 
+/** Librarian network reads need the active Project contract to opt in explicitly; the default policy (network_user.approved) grants none, fail closed. */
+export function librarianNetworkAllowed(project: RegisteredProject): boolean {
+  try { return readProjectContract(project.repositoryRoot).policies.network === "network_research.allowlisted"; } catch { return false; }
+}
+/** Commands the approved Project contract lets general workers run through nosh_run; none unless the contract opts in. */
+export function declaredTaskCommands(project: RegisteredProject): Array<{ commandId: string; description: string; argv: string[]; timeoutSeconds: number }> {
+  try { return readProjectContract(project.repositoryRoot).execution?.commands ?? []; } catch { return []; }
+}
+/** Task-packet instruction listing the runnable commands, or nothing when none are declared. */
+export function taskCommandInstructions(commands: ReturnType<typeof declaredTaskCommands>): string[] {
+  return commands.length ? [`You may run these Project-contract commands with nosh_run (by commandId) in your worktree: ${commands.map((command) => `${command.commandId} = ${command.argv.join(" ")} (${command.description})`).join("; ")}. To cite a run as a criterion validator, commit first, run on the clean final commit, and put its jobId in validatorRunIds.`] : [];
+}
+/** What a task reviewer must see besides the worker's claims: the daemon's own verified facts for that task. */
+export function daemonTaskFacts(research: ResearchControl, projectId: string, taskId: string): string {
+  const runs = taskCommandRuns(research)(projectId).filter((run) => run.taskId === taskId).map((run) => ({ jobId: run.jobId, commandId: run.commandId, description: run.description, argv: run.argv, commit: run.commit, cleanWorktree: run.dirty === false, state: run.state, exitCode: run.exitCode, stdoutTail: run.stdoutTail }));
+  return `Daemon-verified facts (authoritative; the worker cannot forge them): this completion passed the deterministic postflight (Git scope and branch, no protected or out-of-scope changes, every cited job_ validator is this task's own passing run on its clean ending commit). nosh_run Jobs of this task: ${JSON.stringify(runs)}.`;
+}
+/** What a Mission reviewer node must see: the accepted work mapped to each success criterion, with reviews and the daemon's run facts. */
+export function missionOutcomes(research: ResearchControl, projectId: string, missionId: string, maximumCharacters = 14_000): { artifactIds: string[]; evidenceIds: string[]; digest: string } {
+  const basis = research.missionCompletionBasis(projectId, missionId); const runs = taskCommandRuns(research)(projectId);
+  const digest = JSON.stringify({
+    criteria: basis.criteria.map((criterion) => ({ criterionId: criterion.criterionId, statement: criterion.statement, taskId: criterion.taskId, reviewId: criterion.reviewId, validatorRunIds: criterion.validatorRunIds })),
+    acceptedWork: basis.completions.map((entry) => ({ nodeId: entry.nodeId, taskId: entry.taskId, taskOutcome: entry.completion.taskOutcome, workerCriteria: entry.completion.criteria, review: { reviewId: entry.review.reviewId, verdict: entry.review.verdict, summary: entry.review.summary }, nosh_runs: runs.filter((run) => run.taskId === entry.taskId).map((run) => ({ jobId: run.jobId, commandId: run.commandId, description: run.description, commit: run.commit, cleanWorktree: run.dirty === false, exitCode: run.exitCode, stdoutTail: run.stdoutTail })) })),
+    openIssues: basis.issues.slice(0, 10),
+  }).slice(0, maximumCharacters);
+  return { artifactIds: basis.artifactIds, evidenceIds: basis.evidenceIds, digest };
+}
+/** Every nosh_run result recorded for the Project (payload of task.command_run). */
+export function taskCommandRuns(research: ResearchControl): (projectId: string) => Array<Record<string, unknown>> {
+  return (projectId) => research.eventsAfter(projectId, 0).filter((event) => event.type === "task.command_run").map((event) => event.payload as Record<string, unknown>);
+}
 export const librarianResearchHosts = ["api.crossref.org", "api.openalex.org", "api.semanticscholar.org", "arxiv.org", "export.arxiv.org", "eutils.ncbi.nlm.nih.gov", "pubmed.ncbi.nlm.nih.gov"] as const;
 
 export class ResearchControl {
@@ -76,6 +107,15 @@ export class ResearchControl {
     };
     return this.mutate(projectId, "mission", missionId, 0, "mission.created", input.idempotencyKey, value, { scopeType: "mission", version: 1, value: graph as unknown as JsonValue, rationale: "initial plan" });
   }
+  /** User controls (steer, pause, resume, stop) act on the Mission state the user inspected; node churn after that version does not invalidate them. */
+  assertInspectedMissionState(projectId: string, missionId: string, expectedVersion: number): Stored<MissionProjection> {
+    const mission = this.mission(projectId, missionId);
+    if (expectedVersion === mission.version) return mission;
+    // Missions written before stateVersion existed: each version is exactly one projection event, so a transition's version is its ordinal.
+    const since = mission.value.stateVersion ?? this.store(projectId).replay(projectId).filter((event) => event.type.startsWith("mission.") && (event.payload as { entityId?: string } | null)?.entityId === missionId).map((event) => missionStates.has(event.type.slice("mission.".length))).lastIndexOf(true) + 1;
+    if (since < 1 || expectedVersion < since || expectedVersion > mission.version) throw new Error("Mission version conflict: its state changed after the inspected version");
+    return mission;
+  }
   transitionMission(projectId: string, missionId: string, expectedVersion: number, next: MissionState, idempotencyKey: string): Stored<MissionProjection> {
     const intent = { command: "mission.transition", missionId, expectedVersion, next };
     const replay = projectionIntentReplay<MissionProjection>(this.store(projectId), projectId, idempotencyKey, "mission", missionId, intent);
@@ -89,7 +129,7 @@ export class ResearchControl {
       if (!packet || this.missionCompletionIssues(projectId, missionId).length || basis.issues.length || !sameMissionCriterionMappings(packet.criteria, basis.criteria) || !sameStringSet(packet.deliverableArtifactIds, basis.artifactIds) || !sameStringSet(packet.deterministicPreReview && isObject(packet.deterministicPreReview) ? packet.deterministicPreReview.validatorRunIds : null, basis.validatorRunIds) || !sameStringSet(packet.openDefectIds, basis.openDefectIds)) throw new Error("Mission completion requires an exact current completion packet, each contract criterion's task, validator, independent Review, artifact, and defect basis");
     }
     const now = new Date().toISOString(); const approving = current.value.state === "awaiting_approval" && next === "running"; const approvedAt = approving ? now : current.value.approvedAt;
-    return this.mutate(projectId, "mission", missionId, expectedVersion, `mission.${next}`, idempotencyKey, { ...current.value, approvedGraphVersion: approving ? current.value.graphVersion : current.value.approvedGraphVersion, approvedAt, state: next, updatedAt: now }, undefined, undefined, approving, intent);
+    return this.mutate(projectId, "mission", missionId, expectedVersion, `mission.${next}`, idempotencyKey, { ...current.value, approvedGraphVersion: approving ? current.value.graphVersion : current.value.approvedGraphVersion, approvedAt, state: next, stateVersion: expectedVersion + 1, updatedAt: now }, undefined, undefined, approving, intent);
   }
   mutateMissionGraph(projectId: string, missionId: string, expectedVersion: number, baseGraphVersion: number, operations: GraphOperation[], rationale: string, evidenceIds: string[], idempotencyKey: string, approved = false): Stored<MissionProjection> {
     const intent = { command: "mission.graph_mutation", missionId, expectedVersion, baseGraphVersion, operations, rationale, evidenceIds: [...evidenceIds].sort(), approved };
@@ -105,17 +145,18 @@ export class ResearchControl {
     assertMissionCriterionOwnership(current.value.successCriteria, version.nodes);
     return this.mutate(projectId, "mission", missionId, expectedVersion, "mission.graph_changed", idempotencyKey, { ...current.value, graphVersion: version.version, nodes: version.nodes, approvedGraphVersion: approved ? version.version : current.value.approvedGraphVersion, updatedAt: new Date().toISOString() }, { scopeType: "mission", version: version.version, value: version as unknown as JsonValue, rationale }, undefined, false, intent);
   }
-  transitionMissionNode(projectId: string, missionId: string, expectedVersion: number, nodeId: string, next: GraphNode["state"], idempotencyKey: string, lease?: NonNullable<GraphNode["lease"]>): Stored<MissionProjection> {
-    const intent = { command: "mission.node_transition", missionId, expectedVersion, nodeId, next, lease: lease ?? null };
+  transitionMissionNode(projectId: string, missionId: string, expectedVersion: number, nodeId: string, next: GraphNode["state"], idempotencyKey: string, lease?: NonNullable<GraphNode["lease"]>, userRetry = false): Stored<MissionProjection> {
+    const intent = { command: "mission.node_transition", missionId, expectedVersion, nodeId, next, lease: lease ?? null, ...(userRetry ? { userRetry } : {}) };
     const replay = projectionIntentReplay<MissionProjection>(this.store(projectId), projectId, idempotencyKey, "mission", missionId, intent);
     if (replay) return replay;
     const current = this.mission(projectId, missionId);
-    if (!["running", "pausing", "reviewing"].includes(current.state)) throw new Error("Mission nodes can change only while the Mission is active");
+    if (!["running", "pausing", "reviewing"].includes(current.state) && !repairRetry(current.state, current.value.nodes, nodeId, next)) throw new Error("Mission nodes can change only while the Mission is active");
     this.assertLeaseTransition(next, lease, expectedVersion);
-    const graph = new VersionedDag(missionId, current.value.nodes, "hydrated", current.value.graphVersion);
+    const { nodes, granted } = grantUserAttempt(current.value.nodes, nodeId, next, userRetry);
+    const graph = new VersionedDag(missionId, nodes, "hydrated", current.value.graphVersion);
     const node = lease ? graph.lease(nodeId, lease) : graph.transition(nodeId, next);
     const value = { ...current.value, nodes: graph.current().nodes, updatedAt: new Date().toISOString() };
-    return this.mutate(projectId, "mission", missionId, expectedVersion, "mission.node_state_changed", idempotencyKey, value, undefined, { nodeId, nodeState: node.state, attempt: node.attempt, leaseId: node.lease?.leaseId ?? null }, false, intent);
+    return this.mutate(projectId, "mission", missionId, expectedVersion, "mission.node_state_changed", idempotencyKey, value, undefined, { nodeId, nodeState: node.state, attempt: node.attempt, leaseId: node.lease?.leaseId ?? null, ...(granted ? { userGrantedAttempt: true, maximumAttempts: node.maximumAttempts } : {}) }, false, intent);
   }
 
   directions(projectId: string): Array<Stored<DirectionProjection>> { return this.store(projectId).projections(projectId, "direction") as Array<Stored<DirectionProjection>>; }
@@ -169,16 +210,17 @@ export class ResearchControl {
     const now = new Date().toISOString(); const activating = current.value.state === "proposed" && next === "active"; const activatedAt = activating ? now : current.value.activatedAt;
     return this.mutate(projectId, "direction", directionId, expectedVersion, `direction.${next}`, idempotencyKey, { ...current.value, state: next, approvedBy: activating ? "user" : current.value.approvedBy, activatedAt, updatedAt: now }, undefined, undefined, activating, intent);
   }
-  transitionDirectionNode(projectId: string, directionId: string, expectedVersion: number, nodeId: string, next: GraphNode["state"], idempotencyKey: string, lease?: NonNullable<GraphNode["lease"]>): Stored<DirectionProjection> {
-    const intent = { command: "direction.node_transition", directionId, expectedVersion, nodeId, next, lease: lease ?? null };
+  transitionDirectionNode(projectId: string, directionId: string, expectedVersion: number, nodeId: string, next: GraphNode["state"], idempotencyKey: string, lease?: NonNullable<GraphNode["lease"]>, userRetry = false): Stored<DirectionProjection> {
+    const intent = { command: "direction.node_transition", directionId, expectedVersion, nodeId, next, lease: lease ?? null, ...(userRetry ? { userRetry } : {}) };
     const replay = projectionIntentReplay<DirectionProjection>(this.store(projectId), projectId, idempotencyKey, "direction", directionId, intent);
     if (replay) return replay;
     const current = this.direction(projectId, directionId);
-    if (!["active", "reviewing"].includes(current.state)) throw new Error("Direction nodes can change only while the Direction is active");
+    if (!["active", "reviewing"].includes(current.state) && !repairRetry(current.state, current.value.nodes, nodeId, next)) throw new Error("Direction nodes can change only while the Direction is active");
     this.assertLeaseTransition(next, lease, expectedVersion);
-    const graph = new VersionedDag(directionId, current.value.nodes, "hydrated", current.value.graphVersion);
+    const { nodes, granted } = grantUserAttempt(current.value.nodes, nodeId, next, userRetry);
+    const graph = new VersionedDag(directionId, nodes, "hydrated", current.value.graphVersion);
     const node = lease ? graph.lease(nodeId, lease) : graph.transition(nodeId, next);
-    return this.mutate(projectId, "direction", directionId, expectedVersion, "direction.node_state_changed", idempotencyKey, { ...current.value, nodes: graph.current().nodes, updatedAt: new Date().toISOString() }, undefined, { nodeId, nodeState: node.state, attempt: node.attempt, leaseId: node.lease?.leaseId ?? null }, false, intent);
+    return this.mutate(projectId, "direction", directionId, expectedVersion, "direction.node_state_changed", idempotencyKey, { ...current.value, nodes: graph.current().nodes, updatedAt: new Date().toISOString() }, undefined, { nodeId, nodeState: node.state, attempt: node.attempt, ...(granted ? { userGrantedAttempt: true, maximumAttempts: node.maximumAttempts } : {}), leaseId: node.lease?.leaseId ?? null }, false, intent);
   }
   mutateDirectionGraph(projectId: string, directionId: string, expectedVersion: number, baseGraphVersion: number, operations: GraphOperation[], rationale: string, evidenceIds: string[], idempotencyKey: string): Stored<DirectionProjection> {
     const intent = { command: "direction.graph_mutation", directionId, expectedVersion, baseGraphVersion, operations, rationale, evidenceIds: [...evidenceIds].sort() };
@@ -306,6 +348,13 @@ export class ResearchControl {
 
   validateDomainRecord(projectId: string, session: DomainSession, record: JsonValue): void {
     if (!isObject(record)) return;
+    // Daemon-owned identity in a proposal must match the execution exactly; reject with the expected value so the
+    // single correction turn can fix a mis-copied hash instead of persisting an unusable proposal.
+    if (record.$schema === schemaUri("experiment-proposal")) {
+      const execution = this.autoresearchExecution(projectId, String(record.autoresearchId));
+      if (record.evaluationContractHash !== execution.value.evaluationContractHash) throw new Error(`evaluationContractHash must be exactly ${execution.value.evaluationContractHash}`);
+      if (session.experimentId && record.experimentId !== session.experimentId) throw new Error(`experimentId must be exactly ${session.experimentId}`);
+    }
     if (record.$schema === schemaUri("progress-update")) {
       const packet = this.taskAuthority(projectId, session, String(record.taskId));
       if (record.agentId !== session.agentId) throw new Error("Progress record actor does not own the task");
@@ -431,6 +480,8 @@ export class ResearchControl {
     if (record && expectedSchema && record.$schema !== schemaUri(expectedSchema)) throw new Error(`Task ${taskId} terminal schema does not match ${schemaUri(expectedSchema)}`);
     return record;
   }
+  /** Durable Project events after a cursor; director briefs build their digest from this. */
+  eventsAfter(projectId: string, afterSequence: number): EventEnvelope[] { return this.store(projectId).replay(projectId, afterSequence); }
   records(projectId: string, schemaName?: string): UnknownRecord[] { return this.submitted(projectId).map((entry) => entry.record).filter((record) => !schemaName || record.$schema === schemaUri(schemaName)); }
   reviews(projectId: string): JsonValue[] {
     const records = this.records(projectId);
@@ -583,7 +634,8 @@ export class ResearchControl {
   completeExternalOperation(projectId: string, intentId: string, result: JsonValue): OperationIntent { return this.store(projectId).completeOperation(projectId, intentId, result); }
   pendingExternalOperations(projectId: string, operationType?: string): OperationIntent[] { return this.store(projectId).operationIntents(projectId, "pending").filter((intent) => !operationType || intent.operationType === operationType); }
   scopedEvents(projectId: string, missionId: string, type?: string): EventEnvelope[] { return this.store(projectId).replay(projectId).filter((event) => event.scope.missionId === missionId && (!type || event.type === type)); }
-  missionBudgetUse(projectId: string, missionId: string): MissionBudgetUse { const mission = this.mission(projectId, missionId); const events = this.scopedEvents(projectId, missionId); const startedAt = events.find((event) => event.type === "mission.running")?.timestamp ?? mission.value.createdAt; return { ...eventResourceUse(events), wallClockSeconds: Math.max(0, Math.floor((Date.now() - Date.parse(startedAt)) / 1000)), diskBytes: directoryBytes(join(this.project(projectId).repositoryRoot, ".nosh")) }; }
+  missionBudgetUse(projectId: string, missionId: string): MissionBudgetUse { const mission = this.mission(projectId, missionId); // Budgeted wall time counts only intervals spent running, as for Autoresearch.
+    const events = this.scopedEvents(projectId, missionId); return { ...eventResourceUse(events), wallClockSeconds: runningSeconds(events.filter((event) => (event.payload as { entityId?: string } | null)?.entityId === mission.entityId || !event.type.startsWith("mission.")), "mission"), diskBytes: directoryBytes(join(this.project(projectId).repositoryRoot, ".nosh")) }; }
   missionCompletionBasis(projectId: string, missionId: string): MissionCompletionBasis {
     const mission = this.mission(projectId, missionId);
     const records = this.submitted(projectId).filter((entry) => entry.event.scope.missionId === missionId);
@@ -628,11 +680,13 @@ export class ResearchControl {
       const task = candidates[0]!;
       const completionCriteria = isArray(task.completion.criteria) ? task.completion.criteria.filter(isObject).filter((criterion) => criterion.criterionId === contractCriterion.criterionId) : [];
       const reviewCriteria = isArray(task.verdict.criteria) ? task.verdict.criteria.filter(isObject).filter((criterion) => criterion.criterionId === contractCriterion.criterionId) : [];
-      if (completionCriteria.length !== 1 || reviewCriteria.length !== 1 || completionCriteria[0]!.workerClaim !== "satisfied" || !isArray(completionCriteria[0]!.validatorRunIds) || !completionCriteria[0]!.validatorRunIds.length || !completionCriteria[0]!.validatorRunIds.every((id) => typeof id === "string") || reviewCriteria[0]!.status !== "PASS") {
+      const deferred = completionCriteria[0]?.workerClaim === "deferred_to_review";
+      if (completionCriteria.length !== 1 || reviewCriteria.length !== 1 || (!deferred && (completionCriteria[0]!.workerClaim !== "satisfied" || !isArray(completionCriteria[0]!.validatorRunIds) || !completionCriteria[0]!.validatorRunIds.length || !completionCriteria[0]!.validatorRunIds.every((id) => typeof id === "string"))) || reviewCriteria[0]!.status !== "PASS") {
         issues.push(`Mission contract criterion ${contractCriterion.criterionId} lacks one satisfied worker claim, validator set, and exact independent PASS Review`);
         continue;
       }
-      const validatorRunIds = completionCriteria[0]!.validatorRunIds as string[];
+      // A deferred criterion's only validator is the independent Review that passed it.
+      const validatorRunIds = deferred ? [task.verdict.reviewId as string] : completionCriteria[0]!.validatorRunIds as string[];
       const references = completionReferences(task.completion);
       criteria.push({ criterionId: contractCriterion.criterionId, statement: contractCriterion.statement, taskId: task.packet.taskId as string, reviewId: task.verdict.reviewId as string, validatorRunIds, artifactIds: references.artifactIds, evidenceIds: references.evidenceIds });
       const completion = completions.find((entry) => entry.taskId === task.packet.taskId);
@@ -664,7 +718,8 @@ export class ResearchControl {
     }
     const ambiguousReviewIds = [...currentReviews.entries()].filter(([, reviews]) => reviews.length !== 1).map(([key, reviews]) => `ambiguous_review:${key}@${String((reviews[0]!.request.target as Record<string, JsonValue>).targetVersion)}`);
     for (const issue of ambiguousReviewIds) issues.push(`Mission completion has ${issue}`);
-    const reviewDefects = [...currentReviews.values()].filter((reviews) => reviews.length === 1).flatMap((reviews) => isArray(reviews[0]!.verdict.defects) ? reviews[0]!.verdict.defects.filter(isObject).filter((defect) => defect.blocking === true || defect.severity === "blocking" || defect.severity === "major").map((defect) => String(defect.defectId)) : []);
+    // A Mission completion Review is always re-run and must PASS to close; its stale defects must not block the next one from starting.
+    const reviewDefects = [...currentReviews.entries()].filter(([key]) => !key.startsWith("mission_completion:")).map(([, reviews]) => reviews).filter((reviews) => reviews.length === 1).flatMap((reviews) => isArray(reviews[0]!.verdict.defects) ? reviews[0]!.verdict.defects.filter(isObject).filter((defect) => defect.blocking === true || defect.severity === "blocking" || defect.severity === "major").map((defect) => String(defect.defectId)) : []);
     const openDefectIds = [...new Set([...blockers, ...ambiguousReviewIds, ...reviewDefects])];
     const validatorRunIds = [...new Set(criteria.flatMap((criterion) => criterion.validatorRunIds))];
     if (criteria.length !== mission.value.successCriteria.length) issues.push("every Mission contract criterion requires an exact task, validator, and independent Review mapping");
@@ -673,7 +728,7 @@ export class ResearchControl {
     if (openDefectIds.length) issues.push(`open blocking or major defects: ${openDefectIds.join(", ")}`);
     return { completions, criteria, artifactIds, evidenceIds, validatorRunIds, claims, unresolvedClaimIds, openDefectIds, issues: [...new Set(issues)] };
   }
-  autoresearchBudgetUse(projectId: string, autoresearchId: string): AutoresearchBudgetUse { const execution = this.autoresearchExecution(projectId, autoresearchId); const events = this.store(projectId).replay(projectId).filter((event) => event.scope.autoresearchId === autoresearchId); const records = this.submitted(projectId).filter((entry) => entry.event.scope.autoresearchId === autoresearchId).map((entry) => entry.record as { $schema?: string; experimentId?: string; sizeBytes?: number }); const startedAt = events.find((event) => event.type === "autoresearch.running")?.timestamp ?? execution.value.createdAt; const experimentIds = [...new Set(records.filter((record) => record.$schema === schemaUri("experiment-proposal") && record.experimentId).map((record) => record.experimentId!))]; const root = this.project(projectId).repositoryRoot; const diskBytes = records.filter((record) => record.$schema === schemaUri("artifact")).reduce((sum, record) => sum + Math.max(0, Number(record.sizeBytes ?? 0)), 0) + directoryBytes(join(root, ".nosh", "autoresearch", autoresearchId)) + experimentIds.reduce((sum, id) => sum + directoryBytes(join(root, ".nosh", "worktrees", `wt_${id.slice(4)}`)), 0) + directoryBytes(join(root, ".nosh", "worktrees", `integration_${autoresearchId.slice(3)}`)); return { ...eventResourceUse(events), wallClockSeconds: Math.max(0, Math.floor((Date.now() - Date.parse(startedAt)) / 1000)), diskBytes, experiments: experimentIds.length, rounds: execution.value.currentRound }; }
+  autoresearchBudgetUse(projectId: string, autoresearchId: string): AutoresearchBudgetUse { const execution = this.autoresearchExecution(projectId, autoresearchId); const events = this.store(projectId).replay(projectId).filter((event) => event.scope.autoresearchId === autoresearchId); const records = this.submitted(projectId).filter((entry) => entry.event.scope.autoresearchId === autoresearchId).map((entry) => entry.record as { $schema?: string; experimentId?: string; sizeBytes?: number }); const experimentIds = [...new Set(records.filter((record) => record.$schema === schemaUri("experiment-proposal") && record.experimentId).map((record) => record.experimentId!))]; const root = this.project(projectId).repositoryRoot; const diskBytes = records.filter((record) => record.$schema === schemaUri("artifact")).reduce((sum, record) => sum + Math.max(0, Number(record.sizeBytes ?? 0)), 0) + directoryBytes(join(root, ".nosh", "autoresearch", autoresearchId)) + experimentIds.reduce((sum, id) => sum + directoryBytes(join(root, ".nosh", "worktrees", `wt_${id.slice(4)}`)), 0) + directoryBytes(join(root, ".nosh", "worktrees", `integration_${autoresearchId.slice(3)}`)); return { ...eventResourceUse(events), wallClockSeconds: runningSeconds(events), diskBytes, experiments: experimentIds.length, rounds: execution.value.currentRound }; }
   missionCompletionIssues(projectId: string, missionId: string): string[] { const mission = this.mission(projectId, missionId); const issues: string[] = []; for (const node of mission.value.nodes) if (node.required && !["accepted", "waived", "superseded"].includes(node.state)) issues.push(`required node ${node.id} is ${node.state}`); const use = this.missionBudgetUse(projectId, missionId); if (use.modelTokens > mission.value.budgets.maximumModelTokens) issues.push("Mission model-token budget is exceeded"); if (use.wallClockSeconds > mission.value.budgets.maximumWallClockSeconds) issues.push("Mission wall-clock budget is exceeded"); if (use.gpuSeconds > mission.value.budgets.maximumGpuSeconds) issues.push("Mission GPU budget is exceeded"); if (use.diskBytes > mission.value.budgets.maximumDiskBytes) issues.push("Mission disk budget is exceeded"); const evidenceIds = new Set(this.records(projectId, "evidence").map((record) => (record as { evidenceId?: string }).evidenceId).filter((id): id is string => Boolean(id))); for (const record of this.records(projectId, "claim")) { const claim = record as { claimId?: string; supportingEvidenceIds?: string[]; contradictingEvidenceIds?: string[]; qualifyingEvidenceIds?: string[]; limitations?: string[] }; const references = [...(claim.supportingEvidenceIds ?? []), ...(claim.contradictingEvidenceIds ?? []), ...(claim.qualifyingEvidenceIds ?? [])]; if (!references.length && !(claim.limitations ?? []).length) issues.push(`claim ${claim.claimId ?? "unknown"} is unsupported and unqualified`); for (const id of references) if (!evidenceIds.has(id)) issues.push(`claim ${claim.claimId ?? "unknown"} references missing evidence ${id}`); } const artifacts = new ArtifactStore(join(this.project(projectId).repositoryRoot, ".nosh", "artifacts")); for (const record of this.records(projectId, "artifact")) { const id = (record as { artifactId?: string }).artifactId; if (id) try { artifacts.resolve(id, (record as { version?: number }).version); } catch { issues.push(`artifact ${id} does not resolve to its stored hash`); } } return [...new Set(issues)]; }
   readPaper(projectId: string): { markdown: string; bibliography: string; markdownHash: string; bibliographyHash: string; version: string } {
     const root = this.project(projectId).repositoryRoot;
@@ -1352,8 +1407,29 @@ function latestScopedClaims(records: Array<{ event: EventEnvelope; record: JsonV
   return [...claims.values()].map((claim) => claim.record);
 }
 function draft(projectId: string, type: string, payload: JsonValue): EventDraft { return { $schema: schemaUri("event"), schemaVersion: 1, retention: "persistent", type, source: "noshd", scope: { projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: null }, correlationId: null, causationId: null, payload }; }
+/** Budgeted Autoresearch wall time counts only intervals spent running; paused or blocked waiting is not research time. */
+function runningSeconds(events: EventEnvelope[], scope: "autoresearch" | "mission" = "autoresearch"): number {
+  let total = 0; let since: number | null = null;
+  for (const event of events) {
+    if (event.type === `${scope}.running`) since ??= Date.parse(event.timestamp);
+    else if (since !== null && ["paused", "blocked", "stopped", "completed", "failed"].map((state) => `${scope}.${state}`).includes(event.type)) { total += Date.parse(event.timestamp) - since; since = null; }
+  }
+  if (since !== null) total += Date.now() - since;
+  return Math.max(0, Math.floor(total / 1000));
+}
+/** A blocked or paused scope can be repaired by returning its blocked/failed node to ready; reactivating then resumes scheduling. */
+const missionStates = new Set<string>(["created", "draft", "planning", "awaiting_approval", "running", "pausing", "paused", "reviewing", "blocked", "stopping", "completed", "stopped", "failed"]);
+/** A user retry of an attempt-exhausted node grants exactly one more attempt, recorded on the transition event; automatic retries never exceed the budget. */
+function grantUserAttempt(nodes: GraphNode[], nodeId: string, next: GraphNode["state"], userRetry: boolean): { nodes: GraphNode[]; granted: boolean } {
+  const node = nodes.find((item) => item.id === nodeId);
+  if (!userRetry || next !== "ready" || !node || !["blocked", "failed"].includes(node.state) || node.attempt < node.maximumAttempts) return { nodes, granted: false };
+  return { nodes: nodes.map((item) => item.id === nodeId ? { ...item, maximumAttempts: item.attempt + 1 } : item), granted: true };
+}
+function repairRetry(state: string, nodes: GraphNode[], nodeId: string, next: GraphNode["state"]): boolean {
+  return ["blocked", "paused"].includes(state) && next === "ready" && ["blocked", "failed"].includes(nodes.find((node) => node.id === nodeId)?.state ?? "");
+}
 function directoryBytes(path: string): number { if (!existsSync(path)) return 0; let bytes = 0; for (const entry of readdirSync(path, { withFileTypes: true })) { const child = join(path, entry.name); if (entry.isSymbolicLink()) continue; if (entry.isDirectory()) bytes += directoryBytes(child); else if (entry.isFile()) bytes += statSync(child).size; } return bytes; }
-function eventResourceUse(events: EventEnvelope[]): Pick<MissionBudgetUse, "modelTokens" | "gpuSeconds"> { const modelTokens = events.filter((event) => ["agent.completed", "agent.retrying", "agent.failed"].includes(event.type)).reduce((sum, event) => sum + Math.max(0, Number((event.payload as { modelTokens?: number }).modelTokens ?? 0)), 0); const jobs = new Map<string, { usesGpu?: boolean; startedAt?: string | null; finishedAt?: string | null }>(); for (const event of events) if (event.type === "job.state_changed" && event.scope.jobId) jobs.set(event.scope.jobId, event.payload as { usesGpu?: boolean; startedAt?: string | null; finishedAt?: string | null }); const gpuSeconds = [...jobs.values()].filter((job) => job.usesGpu && job.startedAt).reduce((sum, job) => sum + Math.max(0, Math.floor((Date.parse(job.finishedAt ?? new Date().toISOString()) - Date.parse(job.startedAt!)) / 1000)), 0); return { modelTokens, gpuSeconds }; }
+function eventResourceUse(events: EventEnvelope[]): Pick<MissionBudgetUse, "modelTokens" | "gpuSeconds"> { const modelTokens = events.filter((event) => ["agent.completed", "agent.retrying", "agent.failed"].includes(event.type)).reduce((sum, event) => sum + eventBudgetTokens(event.payload), 0); const jobs = new Map<string, { usesGpu?: boolean; startedAt?: string | null; finishedAt?: string | null }>(); for (const event of events) if (event.type === "job.state_changed" && event.scope.jobId) jobs.set(event.scope.jobId, event.payload as { usesGpu?: boolean; startedAt?: string | null; finishedAt?: string | null }); const gpuSeconds = [...jobs.values()].filter((job) => job.usesGpu && job.startedAt).reduce((sum, job) => sum + Math.max(0, Math.floor((Date.parse(job.finishedAt ?? new Date().toISOString()) - Date.parse(job.startedAt!)) / 1000)), 0); return { modelTokens, gpuSeconds }; }
 function gitCommit(repositoryRoot: string, commit: string): string { const result = spawnSync("git", ["-C", repositoryRoot, "rev-parse", `${commit}^{commit}`], { encoding: "utf8", windowsHide: true }); if (result.status !== 0) throw new Error("Baseline commit does not resolve in the Project repository"); return result.stdout.trim(); }
 function eventScope(projectId: string, session: DomainSession): EventDraft["scope"] {
   return { projectId, missionId: session.missionId, directionId: session.directionId, autoresearchId: session.autoresearchId, experimentId: session.experimentId, runId: session.runId, jobId: session.jobId, agentId: session.agentId };

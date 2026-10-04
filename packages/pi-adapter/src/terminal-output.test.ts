@@ -15,6 +15,10 @@ describe("terminal JSON transport", () => {
     for (const invalid of ["```json\n" + text + "\n```", text + text, text.replace('"schemaVersion":1', '"schemaVersion":1,"schemaVersion":1'), text.replace("task-failure", "runtime-instruction"), " ".repeat(131072) + text]) expect(() => parseTerminalOutput(invalid, context)).toThrow();
     expect(parseTerminalOutput(text, context).records).toEqual([record]);
   });
+  it("accepts a complete envelope followed only by stray closing brackets, nothing else", () => {
+    for (const trailing of ["]}", "}]}\n", " ] } "]) expect(parseTerminalOutput(text + trailing, context).records).toEqual([record]);
+    for (const trailing of [" done", "]} ok", text, "{}", "[1]"]) expect(() => parseTerminalOutput(text + trailing, context)).toThrow();
+  });
   it("never submits apparent JSON from cancelled/error/truncated turns", async () => {
     for (const stopReason of ["error", "aborted", "length", "toolUse"]) {
       let submitted = 0; let prompted = 0;
@@ -48,5 +52,17 @@ describe("terminal JSON transport", () => {
       expect(adapter.inspect()[0]?.status).toBe("idle");
       console.log("TERMINAL_FAUX_PROOF", JSON.stringify(trace));
     } finally { adapter.stop(context.agentId); rmSync(cwd, { recursive: true, force: true }); }
+  });
+});
+
+describe("terminal JSON correction feedback", () => {
+  it("shows the excerpt where JSON broke instead of a bare offset", async () => {
+    const { withJsonExcerpt } = await import("./terminal-output.js");
+    const broken = '{"a":["x","y"]},"b":1}';
+    let error: Error | undefined; try { JSON.parse(broken); } catch (caught) { error = caught as Error; }
+    const message = withJsonExcerpt(error!, broken);
+    expect(message).toContain("⟪HERE⟫");
+    expect(message).toContain('"y"]}');
+    expect(withJsonExcerpt(new Error("Episode type does not match"), broken)).toBe("Episode type does not match");
   });
 });

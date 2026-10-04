@@ -40,13 +40,13 @@ describe("Pi event mapping", () => {
 
   it("records retryable provider failures as activity before the successful result", () => { const retry = mapPiEvent(scope, { type: "agent_end", willRetry: true, messages: [{ role: "assistant", stopReason: "error", errorMessage: "Temporary provider rejection", content: [{ type: "thinking", thinking: "hidden" }], usage: { totalTokens: 12 } }] as never }); const success = mapPiEvent(scope, { type: "agent_end", willRetry: false, messages: [{ role: "assistant", stopReason: "stop", content: [{ type: "text", text: "recovered result" }], usage: { totalTokens: 30 } }] as never }, 12); expect(retry).toMatchObject({ type: "agent.retrying", payload: { reason: "provider_error", willRetry: true, modelTokens: 12 } }); expect(retry).not.toMatchObject({ type: "agent.failed" }); expect(success).toMatchObject({ type: "agent.completed", payload: { message: "recovered result", modelTokens: 18 } }); expect(JSON.stringify(retry)).not.toContain("Temporary provider rejection"); expect(JSON.stringify(retry)).not.toContain("hidden"); });
 
-  it("maps provider credit failures to safe actionable failures with usage", () => { const mapped = mapPiEvent(scope, { type: "agent_end", willRetry: false, messages: [{ role: "assistant", stopReason: "error", errorMessage: "CreditsError: Insufficient balance", content: [{ type: "thinking", thinking: "hidden" }], usage: { totalTokens: 42, input: 20, output: 10, cacheRead: 8, cacheWrite: 4 } }] as never }); expect(mapped).toMatchObject({ type: "agent.failed", payload: { reason: "provider_credits", message: "Provider credits are unavailable. Check the provider account balance or choose another model/provider, then retry.", modelTokens: 42, inputTokens: 20, outputTokens: 10, cacheReadTokens: 8, cacheWriteTokens: 4, willRetry: false } }); expect(JSON.stringify(mapped)).not.toContain("CreditsError"); expect(JSON.stringify(mapped)).not.toContain("hidden"); });
+  it("maps provider credit failures to safe actionable failures with usage", () => { const mapped = mapPiEvent(scope, { type: "agent_end", willRetry: false, messages: [{ role: "assistant", stopReason: "error", errorMessage: "CreditsError: Insufficient balance", content: [{ type: "thinking", thinking: "hidden" }], usage: { totalTokens: 42, input: 20, output: 10, cacheRead: 8, cacheWrite: 4 } }] as never }); expect(mapped).toMatchObject({ type: "agent.failed", payload: { reason: "provider_credits", message: "Provider credits are unavailable. Check the provider account balance or choose another model/provider, then retry.", modelTokens: 35, providerTotalTokens: 42, inputTokens: 20, outputTokens: 10, cacheReadTokens: 8, cacheWriteTokens: 4, willRetry: false } }); expect(JSON.stringify(mapped)).not.toContain("CreditsError"); expect(JSON.stringify(mapped)).not.toContain("hidden"); });
 
   it("maps aborted Pi turns to distinguishable cancellation failures", () => { const mapped = mapPiEvent(scope, { type: "agent_end", willRetry: false, messages: [{ role: "assistant", stopReason: "aborted", errorMessage: "Request aborted by user", content: [], usage: { totalTokens: 7 } }] as never }); expect(mapped).toMatchObject({ type: "agent.failed", payload: { reason: "cancelled", message: "This Pi turn was cancelled. Send the message again when ready.", modelTokens: 7, willRetry: false } }); expect(JSON.stringify(mapped)).not.toContain("Request aborted by user"); });
 
   it("attributes only the current bounded turn after session reuse or compaction", () => { const event = { type: "agent_end", willRetry: false, messages: [{ role: "assistant", content: [{ type: "text", text: "result" }], usage: { totalTokens: 42 } }] }; expect(mapPiEvent(scope, event as never, 30)).toMatchObject({ payload: { modelTokens: 12 } }); expect(mapPiEvent(scope, { ...event, messages: [{ role: "assistant", content: [], usage: { totalTokens: 10 } }] } as never, 42)).toMatchObject({ payload: { modelTokens: 10 } }); });
 
-  it("records cache reads and writes for cost diagnostics", () => { const event = { type: "agent_end", willRetry: false, messages: [{ role: "assistant", content: [], usage: { totalTokens: 100, input: 20, output: 10, cacheRead: 60, cacheWrite: 10 } }] }; expect(mapPiEvent(scope, event as never)).toMatchObject({ payload: { inputTokens: 20, outputTokens: 10, cacheReadTokens: 60, cacheWriteTokens: 10 } }); });
+  it("records cache reads and writes for cost diagnostics", () => { const event = { type: "agent_end", willRetry: false, messages: [{ role: "assistant", content: [], usage: { totalTokens: 100, input: 20, output: 10, cacheRead: 60, cacheWrite: 10 } }] }; expect(mapPiEvent(scope, event as never)).toMatchObject({ payload: { modelTokens: 46, providerTotalTokens: 100, inputTokens: 20, outputTokens: 10, cacheReadTokens: 60, cacheWriteTokens: 10 } }); });
 
   it("uses stable cache affinity without volatile task or agent IDs", () => {
     const options = { ...scope, role: "general_worker" as const, tools: ["read", "bash"] };
@@ -68,7 +68,7 @@ describe("Pi event mapping", () => {
       const started = await adapter.start(options);
       expect(started.activeToolIds).toEqual(expect.arrayContaining(["nosh_workspace_read", "nosh_git_commit"]));
       expect(started.activeToolIds).not.toEqual(expect.arrayContaining(["bash", "read", "edit", "write", "nosh_subprocess"]));
-      expect(sessionToolIds({ taskId: options.taskId, taskPermissions, taskWorkspace })).toEqual(["nosh_git_commit", "nosh_response_submit", "nosh_workspace_read"]);
+      expect(sessionToolIds({ taskId: options.taskId, taskPermissions, taskWorkspace })).toEqual(["nosh_artifact_read", "nosh_artifact_register", "nosh_git_commit", "nosh_response_submit", "nosh_workspace_read"]);
       await expect(adapter.start({ ...options, agentId: createId("agt"), taskPermissions: { ...taskPermissions, subprocess: "allowlisted" } })).rejects.toThrow("subprocess authority");
       await expect(adapter.start({ ...options, agentId: createId("agt"), taskPermissions: { ...taskPermissions, gitCommit: false } })).rejects.toThrow("gitCommit authority");
       expect(() => resolveWorkspacePath(options, "src/allowed.ts", true)).not.toThrow();
@@ -81,6 +81,26 @@ describe("Pi event mapping", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+  it("uses the NOSH default model and thinking level when a session selects none", async () => {
+    const adapter = new PiAdapter(() => undefined, () => ({ accepted: true }), testRuntime());
+    adapter.defaultModel = { provider: "provider-a", id: "reasoning-model", thinkingLevel: "low" };
+    const agentId = createId("agt");
+    try {
+      const started = await adapter.start({ ...scope, agentId, role: "general_worker", cwd: ".", packagePath: resolve(import.meta.dirname, "..", "..", "..", "pi-package") });
+      expect(started).toMatchObject({ modelProvider: "provider-a", modelId: "reasoning-model", thinkingLevel: "low" });
+    } finally { adapter.stop(agentId); }
+  });
+  it("offers nosh_run only for allowlisted subprocess authority and delegates execution to the daemon", async () => {
+    const taskWorkspace = { worktreeId: "wt_run", branch: "main", startingCommit: "a".repeat(40), writeScopes: ["src/**"], protectedScopes: [".nosh/**"] };
+    const taskPermissions = { network: "disabled" as const, subprocess: "allowlisted" as const, gitCommit: false, gitPush: false, delegation: "request_only" as const, networkAllowlist: [], allowedToolIds: ["tool_pi.read", "tool_nosh.run"] };
+    expect(sessionToolIds({ taskId: scope.taskId, taskPermissions, taskWorkspace })).toEqual(["nosh_artifact_read", "nosh_artifact_register", "nosh_run", "nosh_workspace_read"]);
+    expect(sessionToolIds({ taskId: scope.taskId, taskPermissions: { ...taskPermissions, subprocess: "disabled" }, taskWorkspace })).toEqual(["nosh_artifact_read", "nosh_artifact_register", "nosh_workspace_read"]);
+    const calls: unknown[][] = [];
+    const run = createSessionTools({ ...scope, role: "general_worker", cwd: ".", packagePath: ".", taskPermissions, taskWorkspace }, (...values) => { calls.push(values); return { accepted: true, exitCode: 0 }; }).find((tool) => tool.name === "nosh_run")!;
+    await run.execute("call_run", { commandId: "command_test" }, undefined, undefined, {} as never);
+    expect(calls).toEqual([["nosh_run", scope.projectId, `task:${scope.taskId}`, { commandId: "command_test" }, scope.agentId]]);
+    await expect(new PiAdapter(() => undefined, () => ({ accepted: true }), testRuntime()).start({ ...scope, role: "general_worker", cwd: ".", packagePath: ".", taskPermissions: { ...taskPermissions, subprocess: "enabled" }, taskWorkspace })).rejects.toThrow("subprocess authority=enabled");
+  });
   it("rejects generic subprocess authority and linked workspace ancestry", async () => {
     const directory = mkdtempSync(join(tmpdir(), "nosh-pi-boundary-")); const root = join(directory, "root"); const linked = join(directory, "linked"); mkdirSync(root);
     const taskPermissions = { network: "disabled" as const, subprocess: "allowlisted" as const, gitCommit: false, gitPush: false, delegation: "request_only" as const, networkAllowlist: [], allowedToolIds: ["tool_nosh.subprocess"] };
@@ -90,6 +110,17 @@ describe("Pi event mapping", () => {
       expect(sessionToolIds({ taskId: options.taskId, taskPermissions, taskWorkspace: options.taskWorkspace })).toEqual([]);
       symlinkSync(root, linked, process.platform === "win32" ? "junction" : "dir");
       expect(() => resolveWorkspacePath({ ...options, cwd: linked }, "src/file.ts", true)).toThrow("root");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+  it("edits CRLF files with LF text from the model and keeps CRLF endings", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-pi-crlf-")); const file = join(directory, "config.json");
+    const taskPermissions = { network: "disabled" as const, subprocess: "disabled" as const, gitCommit: false, gitPush: false, delegation: "request_only" as const, networkAllowlist: [], allowedToolIds: ["tool_pi.read", "tool_pi.edit"] };
+    const options = { ...scope, role: "general_worker" as const, cwd: directory, packagePath: ".", taskPermissions, taskWorkspace: { worktreeId: "wt_crlf", branch: "main", startingCommit: "a".repeat(40), writeScopes: ["**"], protectedScopes: [".nosh/**"] } };
+    try {
+      writeFileSync(file, "{\r\n  \"threshold\": 0.5\r\n}\r\n", "utf8");
+      const edit = createSessionTools(options, () => ({ accepted: true })).find((tool) => tool.name === "nosh_workspace_edit")!;
+      await edit.execute("edit_crlf", { path: "config.json", oldText: "  \"threshold\": 0.5\n}", newText: "  \"threshold\": 0.6\n}" }, undefined, undefined, {} as never);
+      expect(readFileSync(file, "utf8")).toBe("{\r\n  \"threshold\": 0.6\r\n}\r\n");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
   it("rejects hardlinked files before workspace reads or edits", async () => {
@@ -116,9 +147,9 @@ describe("Pi event mapping", () => {
     const directory = mkdtempSync(join(tmpdir(), "nosh-pi-commit-"));
     const git = (args: string[]): string => { const result = spawnSync("git", ["-C", directory, ...args], { encoding: "utf8", windowsHide: true }); if (result.status !== 0) throw new Error(String(result.stderr)); return String(result.stdout).trim(); };
     try {
-      git(["init"]); git(["config", "user.name", "Test"]); git(["config", "user.email", "test@example.invalid"]);
+      git(["init"]);
       mkdirSync(join(directory, "src")); writeFileSync(join(directory, "src", "a.txt"), "a\n"); writeFileSync(join(directory, "src", "b.txt"), "b\n");
-      git(["add", "src/a.txt", "src/b.txt"]); git(["commit", "-m", "initial"]);
+      git(["add", "src/a.txt", "src/b.txt"]); git(["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-m", "initial"]);
       const head = git(["rev-parse", "HEAD"]); const branch = git(["branch", "--show-current"]);
       const options = { ...scope, role: "general_worker" as const, cwd: directory, packagePath: ".", taskPermissions: { network: "disabled" as const, subprocess: "disabled" as const, gitCommit: true, gitPush: false, delegation: "request_only" as const, networkAllowlist: [], allowedToolIds: ["tool_nosh.git.commit"] }, taskWorkspace: { worktreeId: "wt_commit", branch, startingCommit: head, writeScopes: ["src/**"], protectedScopes: [".nosh/**"] } };
       writeFileSync(join(directory, "src", "a.txt"), "changed\n"); writeFileSync(join(directory, "src", "b.txt"), "also changed\n");
@@ -132,6 +163,8 @@ describe("Pi event mapping", () => {
       const result = commitWorkspaceFiles(options, { heads: new Set<string>() }, "change a", ["src/a.txt"]);
       expect(result.paths).toEqual(["src/a.txt"]);
       expect(git(["rev-parse", "HEAD"])).toBe(result.commit);
+      // The repository has no identity configured; the agent authors its own commits.
+      expect(git(["log", "-1", "--format=%an <%ae>"])).toBe(`NOSH general_worker <${scope.agentId}@agents.nosh.invalid>`);
       expect(git(["diff", "--cached", "--name-only"])).toBe("");
       expect(git(["diff", "--name-only"])).toBe("");
     } finally { rmSync(directory, { recursive: true, force: true }); }
@@ -240,5 +273,29 @@ describe("Pi queued follow-up and abort lifecycle", () => {
       expect(events).toHaveLength(count);
       expect(adapter.inspect()).toEqual([]);
     } finally { adapter.stop(options.agentId); rmSync(directory, { recursive: true, force: true }); }
+  });
+});
+
+describe("typed submission tool descriptions", () => {
+  it("name each accepted schema and point at its non-empty JSON Schema", () => {
+    const tools = createSessionTools({ projectId: createId("prj"), agentId: createId("agt"), cwd: tmpdir() } as Parameters<typeof createSessionTools>[0], () => ({}));
+    const submissions = tools.filter((tool) => tool.description.startsWith("Submit one typed NOSH record."));
+    expect(submissions.length).toBeGreaterThan(10);
+    for (const tool of submissions) {
+      const paths = tool.description.match(/\S+\.v1\.schema\.json/g) ?? [];
+      expect(paths.length, tool.name).toBeGreaterThan(0);
+      for (const path of paths) {
+        const document = JSON.parse(readFileSync(path.replace(/[.,]$/, ""), "utf8")) as { definitions: Record<string, object> };
+        expect(JSON.stringify(Object.values(document.definitions)[0]).length, path).toBeGreaterThan(10);
+      }
+    }
+  });
+});
+
+describe("default terminal tool without a Task Packet", () => {
+  it("follows the session role so reviewers are told to return a review-verdict", () => {
+    const taskId = createId("tsk");
+    expect(sessionToolIds({ taskId, role: "reviewer" })).toEqual(["nosh_artifact_read", "nosh_review_submit"]);
+    for (const role of ["general_worker", "research_director", "mission_director"] as const) expect(sessionToolIds({ taskId, role })).toEqual(["nosh_response_submit"]);
   });
 });

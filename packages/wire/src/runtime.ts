@@ -3,7 +3,8 @@ import { id, schemaUri, schemaVersion, sha256Digest, timestamp } from "./common.
 import { jsonValueSchema } from "./json.js";
 import { taskPermissionsSchema, taskWorkspaceSchema } from "./submissions.js";
 
-const ref = z.string().regex(/^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$/).max(128);
+// Validation receipts reach models; say what the format is, not just "Invalid".
+const ref = z.string().regex(/^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$/, "Expected a reference: lowercase prefix, exactly one underscore, then lowercase letters, digits, '.', ':' or '-' (e.g. contribution_method-fixture)").max(128);
 const text = z.string().min(1).max(20_000);
 const refs = z.array(ref).max(500);
 const strings = z.array(z.string().min(1).max(4_000)).max(200);

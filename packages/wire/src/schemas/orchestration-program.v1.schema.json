@@ -1,7 +1,1204 @@
 {
   "$ref": "#/definitions/orchestration-program",
   "definitions": {
-    "orchestration-program": {}
+    "orchestration-program": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/orchestration-program/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "programId": {
+          "type": "string",
+          "pattern": "^prg_[0-9a-f]{32}$"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "startStepId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "maximumSteps": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 1000
+        },
+        "maximumWallClockSeconds": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "maximumModelTokens": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "maximumToolCalls": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "state": {
+          "type": "object",
+          "properties": {
+            "namespace": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "enum": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "ref",
+                  "json"
+                ]
+              },
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_]{0,127}$"
+              }
+            },
+            "initial": {
+              "type": "object",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {}
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  }
+                ]
+              },
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_]{0,127}$"
+              }
+            }
+          },
+          "required": [
+            "namespace",
+            "schema",
+            "initial"
+          ],
+          "additionalProperties": false
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "stepId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "instruction": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "const": "THREAD_OPEN"
+                      },
+                      "threadId": {
+                        "type": "string",
+                        "pattern": "^thr_[0-9a-f]{32}$"
+                      },
+                      "taskId": {
+                        "type": "string",
+                        "pattern": "^tsk_[0-9a-f]{32}$"
+                      },
+                      "initialAgentId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^agt_[0-9a-f]{32}$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "ownerScope": {
+                        "type": "object",
+                        "properties": {
+                          "missionId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^mis_[0-9a-f]{32}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "directionId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^dir_[0-9a-f]{32}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "autoresearchId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^ar_[0-9a-f]{32}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "experimentId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^exp_[0-9a-f]{32}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "graphNodeId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                                "maxLength": 128
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "missionId",
+                          "directionId",
+                          "autoresearchId",
+                          "experimentId",
+                          "graphNodeId"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "role": {
+                        "type": "string",
+                        "enum": [
+                          "nosh",
+                          "mission_director",
+                          "research_director",
+                          "librarian_researcher",
+                          "general_worker",
+                          "reviewer"
+                        ]
+                      },
+                      "purpose": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 20000
+                      },
+                      "executionMode": {
+                        "type": "string",
+                        "enum": [
+                          "background",
+                          "foreground_fork"
+                        ]
+                      },
+                      "parentThreadId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^thr_[0-9a-f]{32}$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "inputRefs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                          "maxLength": 128
+                        },
+                        "maxItems": 500
+                      },
+                      "skillIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^skl_[0-9a-f]{32}$"
+                        },
+                        "maxItems": 100
+                      },
+                      "capabilities": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                          "maxLength": 128
+                        },
+                        "maxItems": 500
+                      },
+                      "taskPermissions": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "network": {
+                                "type": "string",
+                                "enum": [
+                                  "disabled",
+                                  "allowlisted",
+                                  "enabled"
+                                ]
+                              },
+                              "subprocess": {
+                                "type": "string",
+                                "enum": [
+                                  "disabled",
+                                  "allowlisted",
+                                  "enabled"
+                                ]
+                              },
+                              "gitCommit": {
+                                "type": "boolean"
+                              },
+                              "gitPush": {
+                                "type": "boolean"
+                              },
+                              "delegation": {
+                                "type": "string",
+                                "const": "request_only"
+                              },
+                              "networkAllowlist": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+                                },
+                                "maxItems": 32
+                              },
+                              "allowedToolIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                                  "maxLength": 128
+                                }
+                              }
+                            },
+                            "required": [
+                              "network",
+                              "subprocess",
+                              "gitCommit",
+                              "gitPush",
+                              "delegation",
+                              "networkAllowlist",
+                              "allowedToolIds"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "taskWorkspace": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "worktreeId": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                                "maxLength": 128
+                              },
+                              "branch": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+                              },
+                              "startingCommit": {
+                                "type": "string",
+                                "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                              },
+                              "writeScopes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 1000
+                                },
+                                "maxItems": 100
+                              },
+                              "protectedScopes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 1000
+                                },
+                                "maxItems": 100
+                              }
+                            },
+                            "required": [
+                              "worktreeId",
+                              "branch",
+                              "startingCommit",
+                              "writeScopes",
+                              "protectedScopes"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "budget": {
+                        "type": "object",
+                        "properties": {
+                          "maximumToolCalls": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "maximumModelTokens": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "maximumWallClockSeconds": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          }
+                        },
+                        "required": [
+                          "maximumToolCalls",
+                          "maximumModelTokens",
+                          "maximumWallClockSeconds"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "operation",
+                      "threadId",
+                      "taskId",
+                      "initialAgentId",
+                      "ownerScope",
+                      "role",
+                      "purpose",
+                      "executionMode",
+                      "parentThreadId",
+                      "inputRefs",
+                      "skillIds",
+                      "capabilities",
+                      "budget"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "const": "THREAD_STEP"
+                      },
+                      "threadId": {
+                        "type": "string",
+                        "pattern": "^thr_[0-9a-f]{32}$"
+                      },
+                      "objective": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 20000
+                      },
+                      "expectedEpisodeType": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                        "maxLength": 128
+                      },
+                      "inputRefs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                          "maxLength": 128
+                        },
+                        "maxItems": 500
+                      },
+                      "skillIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^skl_[0-9a-f]{32}$"
+                        },
+                        "maxItems": 100
+                      }
+                    },
+                    "required": [
+                      "operation",
+                      "threadId",
+                      "objective",
+                      "expectedEpisodeType",
+                      "inputRefs",
+                      "skillIds"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "const": "THREAD_FORK"
+                      },
+                      "controllingThreadId": {
+                        "type": "string",
+                        "pattern": "^thr_[0-9a-f]{32}$"
+                      },
+                      "threadId": {
+                        "type": "string",
+                        "pattern": "^thr_[0-9a-f]{32}$"
+                      },
+                      "taskId": {
+                        "type": "string",
+                        "pattern": "^tsk_[0-9a-f]{32}$"
+                      },
+                      "initialAgentId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^agt_[0-9a-f]{32}$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "ownerScope": {
+                        "type": "object",
+                        "properties": {
+                          "missionId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^mis_[0-9a-f]{32}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "directionId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^dir_[0-9a-f]{32}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "autoresearchId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^ar_[0-9a-f]{32}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "experimentId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^exp_[0-9a-f]{32}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "graphNodeId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                                "maxLength": 128
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "missionId",
+                          "directionId",
+                          "autoresearchId",
+                          "experimentId",
+                          "graphNodeId"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "role": {
+                        "type": "string",
+                        "enum": [
+                          "nosh",
+                          "mission_director",
+                          "research_director",
+                          "librarian_researcher",
+                          "general_worker",
+                          "reviewer"
+                        ]
+                      },
+                      "purpose": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 20000
+                      },
+                      "executionMode": {
+                        "type": "string",
+                        "enum": [
+                          "background",
+                          "foreground_fork"
+                        ]
+                      },
+                      "parentThreadId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^thr_[0-9a-f]{32}$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "inputRefs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                          "maxLength": 128
+                        },
+                        "maxItems": 500
+                      },
+                      "skillIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^skl_[0-9a-f]{32}$"
+                        },
+                        "maxItems": 100
+                      },
+                      "capabilities": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                          "maxLength": 128
+                        },
+                        "maxItems": 500
+                      },
+                      "taskPermissions": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "network": {
+                                "type": "string",
+                                "enum": [
+                                  "disabled",
+                                  "allowlisted",
+                                  "enabled"
+                                ]
+                              },
+                              "subprocess": {
+                                "type": "string",
+                                "enum": [
+                                  "disabled",
+                                  "allowlisted",
+                                  "enabled"
+                                ]
+                              },
+                              "gitCommit": {
+                                "type": "boolean"
+                              },
+                              "gitPush": {
+                                "type": "boolean"
+                              },
+                              "delegation": {
+                                "type": "string",
+                                "const": "request_only"
+                              },
+                              "networkAllowlist": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+                                },
+                                "maxItems": 32
+                              },
+                              "allowedToolIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                                  "maxLength": 128
+                                }
+                              }
+                            },
+                            "required": [
+                              "network",
+                              "subprocess",
+                              "gitCommit",
+                              "gitPush",
+                              "delegation",
+                              "networkAllowlist",
+                              "allowedToolIds"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "taskWorkspace": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "worktreeId": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                                "maxLength": 128
+                              },
+                              "branch": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+                              },
+                              "startingCommit": {
+                                "type": "string",
+                                "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                              },
+                              "writeScopes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 1000
+                                },
+                                "maxItems": 100
+                              },
+                              "protectedScopes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 1000
+                                },
+                                "maxItems": 100
+                              }
+                            },
+                            "required": [
+                              "worktreeId",
+                              "branch",
+                              "startingCommit",
+                              "writeScopes",
+                              "protectedScopes"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "budget": {
+                        "type": "object",
+                        "properties": {
+                          "maximumToolCalls": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "maximumModelTokens": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          "maximumWallClockSeconds": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          }
+                        },
+                        "required": [
+                          "maximumToolCalls",
+                          "maximumModelTokens",
+                          "maximumWallClockSeconds"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "operation",
+                      "controllingThreadId",
+                      "threadId",
+                      "taskId",
+                      "initialAgentId",
+                      "ownerScope",
+                      "role",
+                      "purpose",
+                      "executionMode",
+                      "parentThreadId",
+                      "inputRefs",
+                      "skillIds",
+                      "capabilities",
+                      "budget"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "const": "THREAD_AWAIT"
+                      },
+                      "threadIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^thr_[0-9a-f]{32}$"
+                        },
+                        "minItems": 1,
+                        "maxItems": 100
+                      },
+                      "policy": {
+                        "type": "string",
+                        "enum": [
+                          "all",
+                          "first_success",
+                          "minimum_count",
+                          "deadline"
+                        ]
+                      },
+                      "minimumCount": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "exclusiveMinimum": 0
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "deadline": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "operation",
+                      "threadIds",
+                      "policy",
+                      "minimumCount",
+                      "deadline"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "const": "THREAD_COMPOSE"
+                      },
+                      "targetThreadId": {
+                        "type": "string",
+                        "pattern": "^thr_[0-9a-f]{32}$"
+                      },
+                      "episodeIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^epi_[0-9a-f]{32}$"
+                        },
+                        "minItems": 1,
+                        "maxItems": 500
+                      }
+                    },
+                    "required": [
+                      "operation",
+                      "targetThreadId",
+                      "episodeIds"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "const": "THREAD_PAUSE"
+                      },
+                      "threadId": {
+                        "type": "string",
+                        "pattern": "^thr_[0-9a-f]{32}$"
+                      },
+                      "reason": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 20000
+                      }
+                    },
+                    "required": [
+                      "operation",
+                      "threadId",
+                      "reason"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "const": "THREAD_CANCEL"
+                      },
+                      "threadId": {
+                        "type": "string",
+                        "pattern": "^thr_[0-9a-f]{32}$"
+                      },
+                      "reason": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 20000
+                      }
+                    },
+                    "required": [
+                      "operation",
+                      "threadId",
+                      "reason"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "const": "SKILL_APPLY"
+                      },
+                      "threadId": {
+                        "type": "string",
+                        "pattern": "^thr_[0-9a-f]{32}$"
+                      },
+                      "skillId": {
+                        "type": "string",
+                        "pattern": "^skl_[0-9a-f]{32}$"
+                      },
+                      "inputRefs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                          "maxLength": 128
+                        },
+                        "maxItems": 500
+                      }
+                    },
+                    "required": [
+                      "operation",
+                      "threadId",
+                      "skillId",
+                      "inputRefs"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "const": "DIRECT_ACTION"
+                      },
+                      "threadId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^thr_[0-9a-f]{32}$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "action": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                        "maxLength": 128
+                      },
+                      "payload": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "array",
+                              "items": {}
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": {}
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "operation",
+                      "threadId",
+                      "action",
+                      "payload"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "operation": {
+                        "type": "string",
+                        "const": "STOP"
+                      },
+                      "threadId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^thr_[0-9a-f]{32}$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "programId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^prg_[0-9a-f]{32}$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "reason": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 20000
+                      }
+                    },
+                    "required": [
+                      "operation",
+                      "threadId",
+                      "programId",
+                      "reason"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "guard": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "ref": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      },
+                      "operator": {
+                        "type": "string",
+                        "enum": [
+                          "exists",
+                          "equals",
+                          "not_equals"
+                        ]
+                      },
+                      "value": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "array",
+                                "items": {}
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": {}
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "ref",
+                      "operator",
+                      "value"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "background": {
+                "type": "boolean"
+              },
+              "outputStateKey": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,127}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "nextStepId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                    "maxLength": 128
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "failureStepId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                    "maxLength": 128
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "stepId",
+              "instruction",
+              "guard",
+              "background",
+              "outputStateKey",
+              "nextStepId",
+              "failureStepId"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 500
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "programId",
+        "name",
+        "version",
+        "startStepId",
+        "maximumSteps",
+        "maximumWallClockSeconds",
+        "maximumModelTokens",
+        "maximumToolCalls",
+        "state",
+        "steps"
+      ],
+      "additionalProperties": false
+    }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nosh.dev/schemas/orchestration-program/v1"

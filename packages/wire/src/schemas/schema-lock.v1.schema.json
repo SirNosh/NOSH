@@ -1,7 +1,56 @@
 {
   "$ref": "#/definitions/schema-lock",
   "definitions": {
-    "schema-lock": {}
+    "schema-lock": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/schema-lock/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "noshVersion": {
+          "type": "string"
+        },
+        "wirePackageVersion": {
+          "type": "string"
+        },
+        "templateBundleVersion": {
+          "type": "string"
+        },
+        "schemaDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "migrationsApplied": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "noshVersion",
+        "wirePackageVersion",
+        "templateBundleVersion",
+        "schemaDigest",
+        "migrationsApplied",
+        "updatedAt"
+      ],
+      "additionalProperties": false
+    }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nosh.dev/schemas/schema-lock/v1"

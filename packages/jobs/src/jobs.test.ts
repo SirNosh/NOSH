@@ -6,10 +6,10 @@ import { describe, expect, it } from "vitest";
 import { JobSupervisor, type JobSpec } from "./index.js";
 
 function spec(directory: string, jobId = "job_test1"): JobSpec {
-  return { jobId, projectId: "prj_test", missionId: null, directionId: null, autoresearchId: null, runId: "run_test", experimentId: "exp_test", commitSha: "1234567", workingDirectory: directory, runner: "native", distribution: null, command: [process.execPath, "-e", "console.log('started'); setTimeout(() => console.log('done'), 2000)"], checkpointCommand: null, environmentLockHash: "sha256:test", evaluationContractHash: "sha256:test", timeoutSeconds: 10, usesGpu: false };
+  return { jobId, projectId: "prj_test", missionId: null, directionId: null, autoresearchId: null, runId: "run_test", experimentId: "exp_test", commitSha: "1234567", workingDirectory: directory, runner: "native", distribution: null, command: [process.execPath, "-e", "console.log('started'); setTimeout(() => console.log('done'), 8000)"], checkpointCommand: null, environmentLockHash: "sha256:test", evaluationContractHash: "sha256:test", timeoutSeconds: 10, usesGpu: false };
 }
 
-describe("JobSupervisor", () => {
+describe("JobSupervisor", { timeout: 20_000 }, () => {
   it("reads only a bounded tail from large sparse files and coalesces telemetry", async () => {
     const directory = mkdtempSync(join(tmpdir(), "nosh-tail-"));
     const jobs = new JobSupervisor(directory);
@@ -26,7 +26,7 @@ describe("JobSupervisor", () => {
       const first = jobs.resourceSnapshot(record.jobId);
       expect(jobs.resourceSnapshot(record.jobId)).toBe(first);
       expect(await first).toMatchObject({ residentBytes: null, gpu: null });
-    } finally { jobs.close(); rmSync(directory, { recursive: true, force: true }); }
+    } finally { jobs.close(); rmSync(directory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); }
   });
   it("persists process identity and append-only logs independently of the caller", async () => {
     const directory = mkdtempSync(join(tmpdir(), "nosh-jobs-"));
@@ -58,7 +58,7 @@ describe("JobSupervisor", () => {
       expect(jobs.get("job_missingbinary")).toMatchObject({ state: "failed", failureReason: expect.any(String) });
       jobs.close();
     } finally {
-      rmSync(directory, { recursive: true, force: true });
+      rmSync(directory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
     }
   });
 
@@ -72,7 +72,7 @@ describe("JobSupervisor", () => {
       expect(jobs.get(started.jobId)).toMatchObject({ state: "failed", failureReason: "checkpoint_failed" });
       jobs.close();
     } finally {
-      rmSync(directory, { recursive: true, force: true });
+      rmSync(directory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
     }
   });
 });

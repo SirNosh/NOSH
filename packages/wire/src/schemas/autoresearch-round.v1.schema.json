@@ -1,7 +1,162 @@
 {
   "$ref": "#/definitions/autoresearch-round",
   "definitions": {
-    "autoresearch-round": {}
+    "autoresearch-round": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/autoresearch-round/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "autoresearchId": {
+          "type": "string",
+          "pattern": "^ar_[0-9a-f]{32}$"
+        },
+        "round": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "inputFrontierExperimentIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "proposedExperimentIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "evaluatedExperimentIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "promotedExperimentIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "rejectedExperimentIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "reviewId": {
+          "type": "string",
+          "pattern": "^rev_[0-9a-f]{32}$"
+        },
+        "progressDelta": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "focusCheck": {
+          "type": "object",
+          "properties": {
+            "distinctIdeaFamiliesInWindow": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "repeatedFingerprintCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "noProgressCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "continue",
+                "reanchor",
+                "review",
+                "stop"
+              ]
+            }
+          },
+          "required": [
+            "distinctIdeaFamiliesInWindow",
+            "repeatedFingerprintCount",
+            "noProgressCount",
+            "action"
+          ],
+          "additionalProperties": false
+        },
+        "nextRoundPurpose": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "autoresearchId",
+        "round",
+        "inputFrontierExperimentIds",
+        "proposedExperimentIds",
+        "evaluatedExperimentIds",
+        "promotedExperimentIds",
+        "rejectedExperimentIds",
+        "reviewId",
+        "progressDelta",
+        "focusCheck",
+        "nextRoundPurpose",
+        "completedAt"
+      ],
+      "additionalProperties": false
+    }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nosh.dev/schemas/autoresearch-round/v1"

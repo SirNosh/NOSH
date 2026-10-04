@@ -1,7 +1,196 @@
 {
   "$ref": "#/definitions/artifact",
   "definitions": {
-    "artifact": {}
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/artifact/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "artifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9a-f]{32}$"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^prj_[0-9a-f]{32}$"
+        },
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "mediaType": {
+          "type": "string"
+        },
+        "contentHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "version": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "producer": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "git": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {}
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evaluationContractHash": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retentionClass": {
+          "type": "string",
+          "enum": [
+            "accepted_evidence",
+            "negative_evidence",
+            "checkpoint",
+            "cache",
+            "temporary"
+          ]
+        },
+        "remotePreviewPolicy": {
+          "type": "string",
+          "enum": [
+            "encrypted_allowed",
+            "local_only",
+            "redacted_only"
+          ]
+        },
+        "redactionStatus": {
+          "type": "string",
+          "enum": [
+            "checked",
+            "redacted",
+            "blocked"
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "artifactId",
+        "projectId",
+        "kind",
+        "mediaType",
+        "contentHash",
+        "sizeBytes",
+        "version",
+        "producer",
+        "scope",
+        "git",
+        "evaluationContractHash",
+        "retentionClass",
+        "remotePreviewPolicy",
+        "redactionStatus",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nosh.dev/schemas/artifact/v1"

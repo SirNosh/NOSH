@@ -1,7 +1,245 @@
 {
   "$ref": "#/definitions/mission-completion-packet",
   "definitions": {
-    "mission-completion-packet": {}
+    "mission-completion-packet": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/mission-completion-packet/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "missionId": {
+          "type": "string",
+          "pattern": "^mis_[0-9a-f]{32}$"
+        },
+        "objectiveVersion": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "graphVersion": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "completionAttempt": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "requiredNodeDisposition": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {}
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          },
+          "minItems": 1
+        },
+        "criteria": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {}
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          },
+          "minItems": 1
+        },
+        "deliverableArtifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^art_[0-9a-f]{32}$"
+          },
+          "minItems": 1
+        },
+        "claimAudit": {
+          "type": "object",
+          "properties": {
+            "supportedClaimIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^clm_[0-9a-f]{32}$"
+              }
+            },
+            "qualifiedClaimIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^clm_[0-9a-f]{32}$"
+              }
+            },
+            "contradictedClaimIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^clm_[0-9a-f]{32}$"
+              }
+            },
+            "unresolvedClaimIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^clm_[0-9a-f]{32}$"
+              }
+            }
+          },
+          "required": [
+            "supportedClaimIds",
+            "qualifiedClaimIds",
+            "contradictedClaimIds",
+            "unresolvedClaimIds"
+          ],
+          "additionalProperties": false
+        },
+        "openDefectIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "policyExceptions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "budgetReconciliation": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "reproducibilityManifestArtifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9a-f]{32}$"
+        },
+        "directorSummaryArtifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9a-f]{32}$"
+        },
+        "deterministicPreReview": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "pass"
+            },
+            "validatorRunIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "maxItems": 500
+            }
+          },
+          "required": [
+            "status",
+            "validatorRunIds"
+          ],
+          "additionalProperties": false
+        },
+        "builtAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "missionId",
+        "objectiveVersion",
+        "graphVersion",
+        "completionAttempt",
+        "requiredNodeDisposition",
+        "criteria",
+        "deliverableArtifactIds",
+        "claimAudit",
+        "openDefectIds",
+        "policyExceptions",
+        "budgetReconciliation",
+        "reproducibilityManifestArtifactId",
+        "directorSummaryArtifactId",
+        "deterministicPreReview",
+        "builtAt"
+      ],
+      "additionalProperties": false
+    }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nosh.dev/schemas/mission-completion-packet/v1"

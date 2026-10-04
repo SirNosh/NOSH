@@ -1,7 +1,153 @@
 {
   "$ref": "#/definitions/decision",
   "definitions": {
-    "decision": {}
+    "decision": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/decision/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "decisionId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "scopeType": {
+          "type": "string",
+          "enum": [
+            "project",
+            "mission",
+            "direction",
+            "autoresearch",
+            "experiment"
+          ]
+        },
+        "scopeId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "decisionType": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "alternatives": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "maxItems": 200
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^evd_[0-9a-f]{32}$"
+          }
+        },
+        "reviewId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^rev_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authority": {
+          "type": "string",
+          "enum": [
+            "user",
+            "nosh",
+            "mission_director",
+            "research_director",
+            "reviewer",
+            "daemon"
+          ]
+        },
+        "actorAgentId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^agt_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "graphVersion": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reversible": {
+          "type": "boolean"
+        },
+        "supersedesDecisionId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "decisionId",
+        "scopeType",
+        "scopeId",
+        "decisionType",
+        "statement",
+        "alternatives",
+        "rationale",
+        "evidenceIds",
+        "reviewId",
+        "authority",
+        "actorAgentId",
+        "graphVersion",
+        "reversible",
+        "supersedesDecisionId",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nosh.dev/schemas/decision/v1"

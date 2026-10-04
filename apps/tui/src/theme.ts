@@ -3,7 +3,7 @@
  * Copyright (c) 2025 opencode. Exact sources and full license: ../UPSTREAM.md.
  * NOSH uses the imperative @opentui/core renderer; no OpenCode runtime is loaded.
  */
-import { SyntaxStyle } from '@opentui/core';
+import { SyntaxStyle, StyledText, fg, type TextChunk } from '@opentui/core';
 
 export const theme = {
   background: '#0a0a0a', panel: '#141414', element: '#1e1e1e',
@@ -45,11 +45,44 @@ export function createMarkdownStyle(): SyntaxStyle {
   });
 }
 
-/** NOSH artwork, not an OpenCode wordmark. Each glyph is five terminal cells. */
-export const NOSH_LOGO = [
-  '███  ██  █████  ██████ ██   ██',
-  '████ ██ ██   ██ ██     ██   ██',
-  '██ ████ ██   ██ █████  ███████',
-  '██  ███ ██   ██     ██ ██   ██',
-  '██   ██  █████  ██████ ██   ██',
-].join('\n');
+/** NOSH artwork (block wordmark with outline strokes), not an OpenCode wordmark. */
+const NOSH_LOGO_LINES = [
+  '███╗   ██╗ ██████╗ ███████╗██╗  ██╗',
+  '████╗  ██║██╔═══██╗██╔════╝██║  ██║',
+  '██╔██╗ ██║██║   ██║███████╗███████║',
+  '██║╚██╗██║██║   ██║╚════██║██╔══██║',
+  '██║ ╚████║╚██████╔╝███████║██║  ██║',
+  '╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝',
+];
+
+function hex(value: string): [number, number, number] { return [1, 3, 5].map((index) => parseInt(value.slice(index, index + 2), 16)) as [number, number, number]; }
+function mix(from: string, to: string, amount: number): string {
+  const a = hex(from), b = hex(to);
+  return '#' + a.map((channel, index) => Math.round(channel + (b[index]! - channel) * amount).toString(16).padStart(2, '0')).join('');
+}
+/** Left-to-right peach-to-violet gradient; outline strokes take a dimmer shade of the same hue. */
+function gradientText(lines: string[]): StyledText {
+  const width = Math.max(...lines.map((line) => line.length));
+  const chunks: TextChunk[] = [];
+  lines.forEach((line, row) => {
+    let run = ''; let runColor = theme.background as string;
+    const flush = () => { if (run) chunks.push(fg(runColor)(run)); run = ''; };
+    for (let column = 0; column < line.length; column++) {
+      const char = line[column]!;
+      const base = mix(theme.accent, theme.purple, column / Math.max(1, width - 1));
+      const color = char === ' ' ? theme.background : char === '█' || /[A-Z]/.test(char) ? base : mix(base, theme.background, 0.55);
+      if (color !== runColor) { flush(); runColor = color; }
+      run += char;
+    }
+    flush();
+    if (row < lines.length - 1) chunks.push(fg(theme.text)('\n'));
+  });
+  return new StyledText(chunks);
+}
+export function logoText(): StyledText { return gradientText(NOSH_LOGO_LINES); }
+/** One-line wordmark for short terminals. */
+export function compactLogoText(): StyledText { return gradientText(['N O S H']); }
+/** "key label" pairs: accent keys, muted labels. */
+export function keyHints(pairs: Array<[string, string]>): StyledText {
+  return new StyledText(pairs.flatMap(([key, label], index) => [fg(theme.accent)(key), fg(theme.muted)(` ${label}${index < pairs.length - 1 ? '   ' : ''}`)]));
+}

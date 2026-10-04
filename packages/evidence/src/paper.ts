@@ -67,8 +67,11 @@ export function auditPaper(repositoryRoot: string, claims: PaperClaim[], figureA
 
 function markdownToLatex(markdown: string, warnings: string[], bibliographyPath: string, markdownPath: string, outputDirectory: string): string {
   const body: string[] = [];
-  let inCode = false;
+  let inCode = false; let table: string[] = [];
+  const flushTable = () => { if (table.length) { body.push(latexTable(table, warnings)); table = []; } };
   for (const source of markdown.replaceAll("\r\n", "\n").split("\n")) {
+    if (!inCode && /^\|.*\|$/.test(source.trim())) { table.push(source.trim()); continue; }
+    flushTable();
     if (source.startsWith("```")) { body.push(inCode ? "\\end{verbatim}" : "\\begin{verbatim}"); inCode = !inCode; continue; }
     if (inCode) { body.push(source); continue; }
     const heading = /^(#{1,3})\s+(.+)$/.exec(source);
@@ -76,14 +79,26 @@ function markdownToLatex(markdown: string, warnings: string[], bibliographyPath:
     const image = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(source);
     if (image) { body.push(`\\begin{figure}[ht]\\centering\\includegraphics[width=\\linewidth]{${escapeLatex(copyPaperFigure(markdownPath, outputDirectory, image[2]!))}}\\caption{${escapeLatex(image[1]!)}}\\end{figure}`); continue; }
     if (source.startsWith("- ")) { body.push(`\\begin{itemize}\\item ${inline(source.slice(2))}\\end{itemize}`); continue; }
-    if (/^\|.*\|$/.test(source)) { warnings.push(`Markdown table requires manual LaTeX review: ${source.slice(0, 80)}`); body.push(`% TABLE_REVIEW_REQUIRED ${escapeLatex(source)}`); continue; }
     body.push(source ? `${inline(source)}\n` : "");
   }
+  flushTable();
   if (inCode) warnings.push("Unclosed fenced code block.");
   const bibliography = existsSync(bibliographyPath) && readFileSync(bibliographyPath, "utf8").trim() ? "\\bibliographystyle{plain}\\bibliography{paper}" : "";
-  return `\\documentclass[11pt]{article}\n\\usepackage[margin=1in]{geometry}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\begin{document}\n${body.join("\n").replace("\\title{", "\\title{").replace(/(\\title\{[^}]+\})/, "$1\\maketitle")}\n${bibliography}\n\\end{document}\n`;
+  return `\\documentclass[11pt]{article}\n\\usepackage[margin=1in]{geometry}\n\\usepackage[T1]{fontenc}\n\\usepackage{graphicx}\n\\usepackage{tabularx}\n\\usepackage{hyperref}\n\\begin{document}\n${body.join("\n").replace("\\title{", "\\title{").replace(/(\\title\{[^}]+\})/, "$1\\maketitle")}\n${bibliography}\n\\end{document}\n`;
 }
-function inline(value: string): string { return escapeLatex(value).replace(/\*\*([^*]+)\*\*/g, "\\textbf{$1}").replace(/`([^`]+)`/g, "\\texttt{$1}").replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, text, url) => /^https?:\/\//i.test(url.replaceAll("\\%", "%")) ? `\\href{${url}}{${text}}` : text).replace(/\[@([^\]]+)\]/g, "\\cite{$1}"); }
+/** GitHub-style pipe table -> tabular scaled to the text width; alignment from the separator row (---: right, :---: center). */
+function latexTable(rows: string[], warnings: string[]): string {
+  const cells = (row: string) => row.slice(1, -1).split("|").map((cell) => cell.trim());
+  const separator = rows[1] && cells(rows[1]).every((cell) => /^:?-{3,}:?$/.test(cell)) ? cells(rows[1]) : null;
+  if (!separator) { warnings.push(`Markdown table without a separator row was kept as text: ${rows[0]!.slice(0, 80)}`); return rows.map((row) => `${inline(row)}\n`).join("\n"); }
+  // Left-aligned (text) columns wrap; long identifiers may break after underscores and slashes instead of shrinking the whole table.
+  const columns = separator.map((cell) => cell.startsWith(":") && cell.endsWith(":") ? "c" : cell.endsWith(":") ? "r" : ">{\\raggedright\\arraybackslash}X").join("");
+  const line = (row: string) => `${cells(row).map((cell) => inline(cell).replaceAll("\\_", "\\_\\allowbreak{}").replaceAll(" / ", " /\\allowbreak{} ")).join(" & ")} \\\\`;
+  const [header, , ...data] = rows;
+  // In place (not a float): generated tables belong where the Markdown put them.
+  return `\\begin{center}\\footnotesize\\begin{tabularx}{\\linewidth}{${columns}}\\hline\n${line(header!)}\n\\hline\n${data.map(line).join("\n")}\n\\hline\\end{tabularx}\\end{center}`;
+}
+function inline(value: string): string { return escapeLatex(value).replace(/\*\*([^*]+)\*\*/g, "\\textbf{$1}").replace(/`([^`]+)`/g, (_match, code: string) => `\\texttt{${code.replace(/([0-9a-f]{8})(?=[0-9a-f]{8})/g, "$1\\allowbreak{}")}}`).replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, text, url) => /^https?:\/\//i.test(url.replaceAll("\\%", "%")) ? `\\href{${url}}{${text}}` : text).replace(/\[@([^\]]+)\]/g, "\\cite{$1}"); }
 function escapeLatex(value: string): string { const replacements: Record<string, string> = { "\\": "\\textbackslash{}", "&": "\\&", "%": "\\%", "$": "\\$", "#": "\\#", "_": "\\_", "{": "\\{", "}": "\\}" }; return value.replace(/[\\&%$#_{}]/g, (character) => replacements[character]!); }
 function copyPaperFigure(markdownPath: string, outputDirectory: string, reference: string): string {
   if (isAbsolute(reference) || /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(reference)) throw new Error(`Paper image path is not a local figure: ${reference}`);

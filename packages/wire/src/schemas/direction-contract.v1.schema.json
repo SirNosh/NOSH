@@ -1,7 +1,313 @@
 {
   "$ref": "#/definitions/direction-contract",
   "definitions": {
-    "direction-contract": {}
+    "direction-contract": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/direction-contract/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "templateVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "directionId": {
+          "type": "string",
+          "pattern": "^dir_[0-9a-f]{32}$"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^prj_[0-9a-f]{32}$"
+        },
+        "missionId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^mis_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "predecessorDirectionId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^dir_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "questionId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "primaryQuestion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "decisionUse": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "falsifiability": {
+          "type": "object",
+          "properties": {
+            "supportingOutcome": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            },
+            "refutingOutcome": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            },
+            "inconclusiveOutcome": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            }
+          },
+          "required": [
+            "supportingOutcome",
+            "refutingOutcome",
+            "inconclusiveOutcome"
+          ],
+          "additionalProperties": false
+        },
+        "projectClaimIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^clm_[0-9a-f]{32}$"
+          }
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "evaluationContractId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "evaluationContract": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "evaluationContractHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "baselineExperimentId": {
+          "type": "string",
+          "pattern": "^exp_[0-9a-f]{32}$"
+        },
+        "integrationBranch": {
+          "type": "string"
+        },
+        "initialGraphVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "stoppingRules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {}
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          },
+          "minItems": 1
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "closureRubric": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {}
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          },
+          "minItems": 1
+        },
+        "createdBy": {
+          "type": "string",
+          "enum": [
+            "user",
+            "nosh",
+            "mission_director"
+          ]
+        },
+        "approvedBy": {
+          "type": "string",
+          "const": "user"
+        },
+        "activatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "contractHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "templateVersion",
+        "directionId",
+        "projectId",
+        "missionId",
+        "predecessorDirectionId",
+        "questionId",
+        "primaryQuestion",
+        "decisionUse",
+        "falsifiability",
+        "projectClaimIds",
+        "scope",
+        "evaluationContractId",
+        "evaluationContract",
+        "evaluationContractHash",
+        "baselineExperimentId",
+        "integrationBranch",
+        "initialGraphVersion",
+        "stoppingRules",
+        "budget",
+        "closureRubric",
+        "createdBy",
+        "approvedBy",
+        "activatedAt",
+        "contractHash"
+      ],
+      "additionalProperties": false
+    }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nosh.dev/schemas/direction-contract/v1"

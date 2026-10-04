@@ -1,7 +1,155 @@
 {
   "$ref": "#/definitions/graph-change-proposal",
   "definitions": {
-    "graph-change-proposal": {}
+    "graph-change-proposal": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/graph-change-proposal/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "proposalId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "scopeType": {
+          "type": "string",
+          "enum": [
+            "mission",
+            "direction"
+          ]
+        },
+        "scopeId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^mis_[0-9a-f]{32}$"
+            },
+            {
+              "type": "string",
+              "pattern": "^dir_[0-9a-f]{32}$"
+            }
+          ]
+        },
+        "baseGraphVersion": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "proposerRole": {
+          "type": "string",
+          "enum": [
+            "mission_director",
+            "research_director",
+            "user"
+          ]
+        },
+        "reasonCode": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^evd_[0-9a-f]{32}$"
+          }
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "expectedEffect": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "contractImpact": {
+          "type": "string",
+          "enum": [
+            "none",
+            "non_material",
+            "material"
+          ]
+        },
+        "budgetImpact": {
+          "type": "object",
+          "properties": {
+            "gpuSecondsDelta": {
+              "type": "integer"
+            },
+            "modelTokensDelta": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "gpuSecondsDelta",
+            "modelTokensDelta"
+          ],
+          "additionalProperties": false
+        },
+        "approvalRequired": {
+          "type": "boolean"
+        },
+        "submittedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "proposalId",
+        "scopeType",
+        "scopeId",
+        "baseGraphVersion",
+        "proposerRole",
+        "reasonCode",
+        "rationale",
+        "evidenceIds",
+        "operations",
+        "expectedEffect",
+        "contractImpact",
+        "budgetImpact",
+        "approvalRequired",
+        "submittedAt"
+      ],
+      "additionalProperties": false
+    }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nosh.dev/schemas/graph-change-proposal/v1"

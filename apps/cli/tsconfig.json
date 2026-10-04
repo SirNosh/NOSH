@@ -19,6 +19,9 @@
       "path": "../../packages/persistence"
     },
     {
+      "path": "../../packages/pi-adapter"
+    },
+    {
       "path": "../../packages/wire"
     },
     {

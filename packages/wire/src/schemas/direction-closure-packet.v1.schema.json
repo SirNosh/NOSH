@@ -1,7 +1,208 @@
 {
   "$ref": "#/definitions/direction-closure-packet",
   "definitions": {
-    "direction-closure-packet": {}
+    "direction-closure-packet": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/direction-closure-packet/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "directionId": {
+          "type": "string",
+          "pattern": "^dir_[0-9a-f]{32}$"
+        },
+        "graphVersion": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "closureAttempt": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "evaluationContractHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "questionDisposition": {
+          "type": "string",
+          "enum": [
+            "supported",
+            "refuted",
+            "inconclusive"
+          ]
+        },
+        "answer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "acceptedExperimentIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "rejectedExperimentIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "inconclusiveExperimentIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "autoresearchCompletionPacketIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^evd_[0-9a-f]{32}$"
+          },
+          "minItems": 1
+        },
+        "claimEffects": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {}
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          }
+        },
+        "failedHypothesisFingerprintIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "maxItems": 200
+        },
+        "openDefectIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "synthesisArtifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9a-f]{32}$"
+        },
+        "reproducibilityManifestArtifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9a-f]{32}$"
+        },
+        "deterministicPreReview": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "pass"
+            },
+            "validatorRunIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "maxItems": 500
+            }
+          },
+          "required": [
+            "status",
+            "validatorRunIds"
+          ],
+          "additionalProperties": false
+        },
+        "builtAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "directionId",
+        "graphVersion",
+        "closureAttempt",
+        "evaluationContractHash",
+        "questionDisposition",
+        "answer",
+        "acceptedExperimentIds",
+        "rejectedExperimentIds",
+        "inconclusiveExperimentIds",
+        "autoresearchCompletionPacketIds",
+        "evidenceIds",
+        "claimEffects",
+        "failedHypothesisFingerprintIds",
+        "limitations",
+        "openDefectIds",
+        "synthesisArtifactId",
+        "reproducibilityManifestArtifactId",
+        "deterministicPreReview",
+        "builtAt"
+      ],
+      "additionalProperties": false
+    }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nosh.dev/schemas/direction-closure-packet/v1"

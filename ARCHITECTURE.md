@@ -6,7 +6,7 @@ NOSH is a terminal-first, local research control plane. The CLI and OpenTUI clie
 
 - Node runs the per-user daemon and administration CLI.
 - `nosh open` / `nosh tui` starts the daemon if needed and launches the TUI with Bun >=1.3. Bun is required only for OpenTUI. Configuration passes through the child environment, not secret command arguments.
-- `noshd` binds to loopback. Origin-less native clients use the existing local trust boundary. Cross-origin browser requests are rejected; bootstrap-authorized short-lived sessions remain available.
+- `noshd` binds to loopback. Automatic local trust requires a loopback socket and a loopback `Host` header; native clients send no `Origin`, and a present `Origin` must match the loopback host. Cross-origin and DNS-rebinding browser requests are therefore rejected. Other callers use 15-minute bearer sessions issued by `POST /api/session` with the bootstrap capability. Routes are listed in [docs/api.md](docs/api.md).
 - Closing the TUI does not close agents or supervised Jobs. Shell work belongs in the user's terminal, separate from supervised execution.
 
 ## Authority and storage
@@ -31,7 +31,7 @@ Jobs run independently of UI lifetime. Native and WSL execution retain process i
 
 Restart reconciles durable projections, pending operations, process fingerprints, leases, and runtime state without guessing unknown outcomes. Restore retains active agent/Job/thread/Mission/Direction/Autoresearch safety checks. No managed-shell activity check remains because managed shells no longer exist.
 
-Backups contain the selected Project's database, contracts and paper sources, Git references, integrity metadata, `.nosh/artifacts`, and selected-Project daemon Job records/logs. They exclude unrelated Projects and credential stores. Content can still contain sensitive research data; exclusions are not comprehensive secret redaction. Restore is scheduled for the next daemon start.
+Backups contain the selected Project's database, `.nosh` contracts/events/sessions/artifacts and metadata, paper sources and figures, a Git bundle of all refs (full committed history), integrity metadata, and selected-Project daemon Job records/logs. Backup requires a clean Git working tree and no non-terminal managed work. They exclude unrelated Projects and credential stores. Content can still contain sensitive research data; exclusions are not comprehensive secret redaction. Restore is scheduled for the next daemon start.
 
 ## Release boundary
 

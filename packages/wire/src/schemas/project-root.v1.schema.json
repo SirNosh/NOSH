@@ -1,7 +1,58 @@
 {
   "$ref": "#/definitions/project-root",
   "definitions": {
-    "project-root": {}
+    "project-root": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/project-root/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^prj_[0-9a-f]{32}$"
+        },
+        "activeProjectContractVersion": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "activeProjectContractPath": {
+          "type": "string"
+        },
+        "operationalDatabaseId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "defaultBranch": {
+          "type": "string"
+        },
+        "latestPersistentSequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "projectId",
+        "activeProjectContractVersion",
+        "activeProjectContractPath",
+        "operationalDatabaseId",
+        "defaultBranch",
+        "latestPersistentSequence",
+        "updatedAt"
+      ],
+      "additionalProperties": false
+    }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nosh.dev/schemas/project-root/v1"

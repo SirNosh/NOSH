@@ -1,10 +1,10 @@
-> Historical PWA acceptance guide. Its browser labels and interactions are not available in the terminal-first release. Use the current CLI reference and release gates; retain this document only as a research-workflow test plan to adapt.
+> **Historical document (archived).** This guide was written as of 2026-08-24 for the removed browser/PWA product, including its relay and remote-device appendix. Its browser labels, clicks, Workbench tabs, reconnect steps, and remote pairing are not available in the terminal-first release. Use the [CLI reference](../user-guide/cli.md), [terminal workspace](../user-guide/tui.md), and [release gates](../testing/release-gates.md). Retain this document only as a research-workflow test plan to adapt.
 
 # Early Exit Lab user guide
 
 This is a self-contained acceptance guide for the disposable **Early Exit Lab** sample Project. It uses a tiny deterministic CPU-only repository to exercise Project setup, discovery, Normal mode, typed runtime records, Directions, Autoresearch, Jobs, Mission control, evidence, paper export, recovery, and cleanup without pretending that a model response is durable evidence.
 
-The guide describes the current PWA labels and behavior. It does **not** create the sample repository for you, and it does not change NOSH source code, package files, or other documentation.
+The guide described the PWA labels and behavior as of 2026-08-24. It does **not** create the sample repository for you, and it does not change NOSH source code, package files, or other documentation.
 
 > [!CAUTION]
 > The sample repository is disposable; `C:\NOSH\NOSH` is not. Never initialize, reset, clean, or experiment inside `C:\NOSH\NOSH`. Keep all sample work under `C:\research\early-exit-lab`. Do not push, publish, contact GitHub, use a GPU, or access a network unless you have explicitly decided to test that external boundary.

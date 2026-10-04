@@ -2,15 +2,26 @@
  * OpenCode home/session/prompt layout adapted for NOSH's research daemon.
  * Copyright (c) 2025 opencode. MIT license, pinned sources: ../UPSTREAM.md.
  */
-import { createCliRenderer, BoxRenderable, TextRenderable, ScrollBoxRenderable,
+import { createCliRenderer, BoxRenderable, TextRenderable, ScrollBoxRenderable, StyledText, fg,
   CliRenderEvents, TextAttributes, type CliRenderer, type KeyEvent } from '@opentui/core';
 import { DaemonClient, type TuiConfig } from './client.js';
 import { Controller, HELP, safeText } from './controller.js';
 import { createDialogs } from './dialog.js';
 import { slashQuery } from './palette.js';
 import { ComposerRenderable } from './composer.js';
-import { createMarkdownStyle, NOSH_LOGO, splitBorder, theme } from './theme.js';
-import { createTranscript, createInspector, createResearchSidebar, text } from './visual.js';
+import { compactLogoText, createMarkdownStyle, keyHints, logoText, splitBorder, theme } from './theme.js';
+import { createTranscript, createInspector, createResearchSidebar, text, type AttentionItem } from './visual.js';
+
+// Empty inspector views explain the state instead of showing the raw response.
+const EMPTY_VIEW: Record<string, string> = {
+  status: 'No missions, directions, autoresearch or agents yet.\nKeep talking in the conversation to shape the project; research work is proposed for your approval.',
+  jobs: 'No supervised jobs for this project.\nJobs started by research work appear here with their resources and output.',
+  approvals: 'Nothing is waiting for approval.',
+  projects: 'No registered projects. Press ctrl+o or use /new to open one.',
+  models: 'No authenticated models. Configure provider authentication in Pi, then /refresh.',
+  result: 'The action was applied. The daemon returned no records.',
+  detail: 'The daemon returned no details for this record.',
+};
 
 function clip(value: string, width: number): string {
   const clean = safeText(value).replace(/\s+/g, ' ');
@@ -27,6 +38,8 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
   let previousView = '';
   let previousProject = '';
   let showSidebar = true;
+  let escapeArmedAt = 0;
+  let spinTimer: ReturnType<typeof setInterval> | undefined;
   const history: string[] = [];
   let historyIndex = 0;
   let historyDraft = '';
@@ -45,11 +58,11 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
   const topSpace = new BoxRenderable(renderer, { id: 'home-space-top', flexGrow: 1, minHeight: 0 });
   const hero = new BoxRenderable(renderer, { id: 'home-hero', alignSelf: 'center', alignItems: 'center',
     width: '100%', maxWidth: 75, flexShrink: 0, marginBottom: 2, flexDirection: 'column' });
-  const logo = new TextRenderable(renderer, { id: 'brand', content: NOSH_LOGO, fg: theme.text,
-    height: 5, width: 29, flexShrink: 0, wrapMode: 'none', selectable: false });
-  const wordmark = new TextRenderable(renderer, { id: 'wordmark', content: 'N O S H', fg: theme.accent,
+  const logo = new TextRenderable(renderer, { id: 'brand', content: logoText(), fg: theme.text,
+    height: 6, width: 35, flexShrink: 0, wrapMode: 'none', selectable: false });
+  const wordmark = new TextRenderable(renderer, { id: 'wordmark', content: compactLogoText(), fg: theme.accent,
     height: 1, width: 7, visible: false, flexShrink: 0 });
-  const tagline = new TextRenderable(renderer, { id: 'tagline', content: 'Your research. A shared direction.',
+  const tagline = new TextRenderable(renderer, { id: 'tagline', content: 'autonomous research you can verify',
     height: 1, width: 34, marginTop: 1, fg: theme.muted, selectable: false });
   hero.add(logo); hero.add(wordmark); hero.add(tagline);
   const scroll = new ScrollBoxRenderable(renderer, { id: 'conversation', flexGrow: 1, minHeight: 0,
@@ -58,7 +71,11 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     contentOptions: { width: '100%', flexDirection: 'column' } });
   const transcript = createTranscript(renderer, syntax);
   const inspector = createInspector(renderer);
-  scroll.add(transcript.root); scroll.add(inspector.root);
+  // The conversation always opens with the NOSH mark, above the first message.
+  const banner = new BoxRenderable(renderer, { id: 'session-banner', flexDirection: 'column', flexShrink: 0, height: 8, minHeight: 8, paddingLeft: 1, marginBottom: 1 });
+  banner.add(new TextRenderable(renderer, { id: 'session-logo', content: logoText(), height: 6, minHeight: 6, width: 35, flexShrink: 0, wrapMode: 'none', selectable: false }));
+  banner.add(new TextRenderable(renderer, { id: 'session-tagline', content: 'autonomous research you can verify', fg: theme.muted, height: 1, marginTop: 1, selectable: false }));
+  scroll.add(banner); scroll.add(transcript.root); scroll.add(inspector.root);
   const promptHost = new BoxRenderable(renderer, { id: 'prompt-host', width: '100%', alignSelf: 'center',
     flexShrink: 0, flexDirection: 'column', paddingTop: 1 });
   const composer = new BoxRenderable(renderer, { id: 'composer-box', width: '100%', flexShrink: 0,
@@ -92,36 +109,48 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
   // OpenCode's quiet, filled sidebar; NOSH state replaces LSP/MCP/file widgets.
   const sidebar = new BoxRenderable(renderer, { id: 'sidebar', width: 32, height: '100%', flexShrink: 0,
     backgroundColor: theme.panel, flexDirection: 'column', paddingX: 2, paddingY: 1 });
-  const sideTitle = text(renderer, 'sidebar-title', 'Research workspace'); sideTitle.attributes = TextAttributes.BOLD;
+  const sideTitle = new TextRenderable(renderer, { id: 'sidebar-title', content: compactLogoText(), height: 1, flexShrink: 0 }); sideTitle.attributes = TextAttributes.BOLD;
+  const sideSubtitle = text(renderer, 'sidebar-subtitle', 'research workspace', theme.muted);
   const sideProject = text(renderer, 'sidebar-project', '', theme.muted);
   const sideScroll = new ScrollBoxRenderable(renderer, { id: 'sidebar-scroll', width: '100%', flexGrow: 1,
     minHeight: 0, scrollX: false, verticalScrollbarOptions: { visible: false } });
   const research = createResearchSidebar(renderer); sideScroll.add(research.root);
-  const sideFooter = text(renderer, 'sidebar-footer', '/status  graph    /jobs  work', theme.muted);
-  sidebar.add(sideTitle); sidebar.add(sideProject); sidebar.add(sideScroll); sidebar.add(sideFooter);
+  const sideFooter = text(renderer, 'sidebar-footer', 'ctrl+b hide  /status  /jobs', theme.muted);
+  sidebar.add(sideTitle); sidebar.add(sideSubtitle); sidebar.add(sideProject); sidebar.add(sideScroll); sidebar.add(sideFooter);
   body.add(main); body.add(sidebar);
   const footer = new BoxRenderable(renderer, { id: 'footer', height: 1, flexShrink: 0, width: '100%',
     flexDirection: 'row', paddingX: 2, justifyContent: 'space-between' });
   const cwd = new TextRenderable(renderer, { id: 'cwd', content: '', fg: theme.muted,
     height: 1, flexGrow: 1, minWidth: 0, onMouseDown: () => { void dialogs.openProjects(); } });
-  const version = new TextRenderable(renderer, { id: 'version', content: 'N O S H  0.1.0', fg: theme.muted,
+  const connection = new TextRenderable(renderer, { id: 'connection', content: '', fg: theme.muted,
+    height: 1, flexShrink: 0, marginRight: 2 });
+  const version = new TextRenderable(renderer, { id: 'version', content: 'nosh 0.1.0', fg: theme.muted,
     height: 1, flexShrink: 0 });
-  footer.add(cwd); footer.add(version); shell.add(body); shell.add(footer); renderer.root.add(shell);
+  footer.add(cwd); footer.add(connection); footer.add(version); shell.add(body); shell.add(footer); renderer.root.add(shell);
 
   function setComposer(value: string) {
     controlledChange = true; input.value = value; controlledChange = false;
-    slashDismissed = false;
+    // The content-change event can arrive after controlledChange resets; a recalled
+    // or programmatic "/command" must not reopen slash search and capture Up/Down/Esc.
+    slashDismissed = value.startsWith('/');
   }
   async function submit(value: string, propagateError = false): Promise<void> {
     if (disposed || !value.trim()) return;
     if (controller.busy) { if (propagateError) throw new Error('Wait for the current command'); return; }
-    if (value.trim() === '/quit') { quit(); return; }
+    const command = value.trim();
+    if (command === '/quit') { quit(); return; }
+    // Form-backed commands open their dialog instead of failing as unknown.
+    const dialog = { '/new': () => dialogs.openProjectForm(true), '/open': () => dialogs.openProjectForm(false),
+      '/thinking': () => dialogs.openThinking() }[command];
+    if (dialog && !propagateError) { setComposer(''); dialog(); return; }
+    if (!command.startsWith('/') && !controller.projectId && !propagateError) { void dialogs.openProjects(); return; }
     const draft = input.value;
     try {
       const pending = controller.execute(value);
       render(); await pending;
       if (disposed) return;
-      if (input.value === draft) setComposer('');
+      // Dialog submissions (e.g. opening a project) must not erase the user's draft.
+      if (!propagateError && input.value === draft) setComposer('');
       if (history.at(-1) !== value) history.push(value);
       if (history.length > 100) history.shift();
       historyIndex = history.length;
@@ -144,6 +173,7 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     if (controlledChange || dialogs.isOpen || disposed) return;
     const value = input.value;
     if (!value) slashDismissed = false;
+    controller.error = '';
     const query = slashQuery(value);
     if (!slashDismissed && query !== undefined) dialogs.openSlash(query);
     render();
@@ -160,7 +190,8 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     const changedView = previousView !== controller.view || previousProject !== controller.projectId;
     sidebar.visible = !home && width >= 80 && showSidebar;
     sidebar.width = width >= 140 ? 38 : width >= 100 ? 32 : 28;
-    header.visible = !home; scroll.visible = !home;
+    sideFooter.content = sidebar.width >= 32 ? 'ctrl+b hide  /status  /jobs' : 'ctrl+b hide  /status';
+    header.visible = !home; scroll.visible = !home; banner.visible = controller.view === 'chat' && renderer.height >= 20;
     hero.visible = home; topSpace.visible = home; bottomSpace.visible = home; homeTip.visible = home && !compact;
     logo.visible = renderer.height >= 20; wordmark.visible = renderer.height < 20;
     tagline.visible = renderer.height >= 20; hero.marginBottom = compact ? 1 : 2;
@@ -176,32 +207,72 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     role.content = roleName.charAt(0).toUpperCase() + roleName.slice(1);
     const modelName = controller.selection ? controller.selection.model.id : activity.model;
     const level = controller.selection?.thinkingLevel || activity.thinkingLevel;
-    model.content = clip(`· ${modelName || 'Default model'}`, Math.max(12, Math.min(home ? 42 : 38, mainWidth - roleName.length - 17)));
+    model.content = clip(`· ${modelName || 'Default model'}`, Math.max(12, (home ? 71 : mainWidth) - roleName.length - (level ? level.length + 8 : 6)));
     thinking.content = level ? `· ${level}` : '';
     composer.borderColor = controller.error ? theme.error : controller.busy || activity.working ? theme.secondary : theme.accent;
-    hints.content = mainWidth < 62 ? 'enter send  ⇧enter newline  ctrl+p commands'
-      : 'enter send   shift+enter newline   ctrl+p commands   tab thinking';
+    hints.content = controller.view !== 'chat' ? keyHints([['esc', 'conversation'], ['pgup/pgdn', 'scroll'], ['ctrl+p', 'commands']])
+      : !project ? keyHints([['ctrl+o', 'choose project'], ['ctrl+p', 'commands']])
+      : mainWidth < 72 ? keyHints([['enter', 'send'], ['⇧enter', 'newline'], ['ctrl+p', 'commands']])
+      : keyHints([['enter', 'send'], ['⇧enter', 'newline'], ['ctrl+p', 'commands'], ['f2', 'model'], ['ctrl+t', 'thinking']]);
     const working = controller.busy || activity.working;
     const spinner = ['▪▫▫', '▫▪▫', '▫▫▪'][Math.floor(Date.now() / 180) % 3];
     status.fg = controller.error ? theme.error : working ? theme.secondary : theme.muted;
-    status.content = safeText(controller.error ? `! ${controller.error}` : working ? `${spinner} ${activity.label || 'Working…'}  ·  daemon continues if you detach`
-      : controller.connection !== 'connected' ? `○ ${controller.connection}`
+    const armed = input.value && Date.now() - escapeArmedAt < 1500;
+    status.content = safeText(controller.error ? `! ${controller.error}` : armed ? 'esc again to clear the draft' : working ? `${spinner} ${activity.label || 'Working…'}  ·  daemon continues if you detach`
+      : controller.connection.startsWith('reconnecting') ? `○ ${controller.connection} · retrying automatically`
       : controller.pendingAction() ? '? Action staged · /confirm to review · /discard to dismiss'
       : entries.at(-1)?.kind === 'receipt' ? `✓ ${clip(entries.at(-1)!.title, mainWidth - 4)}` : '');
     status.visible = !!status.plainText;
-    homeTip.content = project ? 'Start with a question, a paper, or an experiment.' : 'ctrl+o choose project    /open start research';
-    cwd.content = clip(project?.repositoryRoot || process.cwd(), Math.max(8, width - 24));
+    homeTip.content = project
+      ? new StyledText([fg(theme.accent)(' ◆ '), fg(theme.text)(basename(project.repositoryRoot)), fg(theme.muted)('   ask a research question, or try '), fg(theme.accent)('/status'), fg(theme.muted)(' · '), fg(theme.accent)('/help')])
+      : keyHints([['ctrl+o', 'choose a project'], ['/new', 'create one']]);
+    const placeholder = project ? 'Ask NOSH… what should we investigate?' : 'Choose a project first — press ctrl+o';
+    if (input.placeholder !== placeholder) input.placeholder = placeholder;
+    const online = controller.connection === 'connected';
+    connection.content = online ? '● connected' : controller.connection === 'connecting' ? '○ connecting' : '○ reconnecting';
+    connection.fg = online ? theme.success : theme.warning;
+    cwd.content = clip(project?.repositoryRoot || 'No project · ctrl+o to choose', Math.max(8, width - 38));
     sideProject.content = clip(project ? basename(project.repositoryRoot) : 'No project selected', sidebar.width - 4);
     transcript.root.visible = controller.view === 'chat'; inspector.root.visible = controller.view !== 'chat';
     transcript.update(entries);
-    if (controller.view !== 'chat') inspector.update(controller.inspectorRows(), controller.view === 'help' ? HELP : controller.detail);
-    research.update(controller.sidebarRows());
+    if (controller.view !== 'chat') inspector.update(controller.inspectorRows(), controller.view === 'help' ? HELP
+      : controller.view === 'paths' ? controller.detail : EMPTY_VIEW[controller.view] ?? 'Nothing to show.');
+    const sideRows = controller.sidebarRows();
+    const attention: AttentionItem[] = [];
+    const staged = controller.pendingAction();
+    if (staged) attention.push({ title: staged.title, hint: '/confirm · /discard' });
+    const proposals = sideRows.filter(row => row.section === 'approvals' && row.state === 'pending').length;
+    if (proposals) attention.push({ title: `${proposals} graph proposal${proposals > 1 ? 's' : ''} pending`, hint: '/approvals to inspect' });
+    research.update(sideRows, attention);
+    // The spinner animates only while work is in flight.
+    if (working && !spinTimer) spinTimer = setInterval(render, 180);
+    else if (!working && spinTimer) { clearInterval(spinTimer); spinTimer = undefined; }
     if (changedView) {
       scroll.stickyScroll = controller.view === 'chat';
       scroll.stickyStart = controller.view === 'chat' ? 'bottom' : 'top';
       scroll.scrollTo(controller.view === 'chat' ? scroll.scrollHeight : 0);
+      // Inspector views show a scrollbar only when content overflows; chat stays clean.
+      if (controller.view === 'chat') scroll.verticalScrollBar.visible = false;
+      else scroll.verticalScrollBar.resetVisibilityControl();
       previousView = controller.view; previousProject = controller.projectId;
     }
+  }
+  /** OpenCode-style ctrl+t: advance to the selected model's next advertised level. */
+  async function cycleThinking(): Promise<void> {
+    // Without an explicit selection, cycle the model the active agent is running.
+    const activity = controller.activity(), slash = activity.model.indexOf('/');
+    const selected = controller.selection ?? (slash > 0
+      ? { model: { provider: activity.model.slice(0, slash), id: activity.model.slice(slash + 1) }, thinkingLevel: activity.thinkingLevel }
+      : undefined);
+    if (!selected || controller.busy) { if (!selected) dialogs.openThinking(); return; }
+    try {
+      const models = controller.models.length ? controller.models : await controller.loadModels();
+      const model = models.find(m => m.provider === selected.model.provider && m.id === selected.model.id);
+      if (!model?.thinkingLevels.length) { dialogs.openModels(); return; }
+      const next = model.thinkingLevels[(model.thinkingLevels.indexOf(selected.thinkingLevel) + 1) % model.thinkingLevels.length]!;
+      await controller.execute(`/model ${model.provider} ${model.id} ${next}`);
+    } catch { /* controller.error is rendered in the status line. */ }
+    finally { if (!disposed) render(); }
   }
   const handleKey = (key: KeyEvent) => {
     if (key.ctrl && key.name === 'c') { key.preventDefault(); quit(); return; }
@@ -209,13 +280,18 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     const take = () => { key.preventDefault(); key.stopPropagation(); };
     if (key.ctrl && key.name === 'p') { take(); dialogs.openPalette(); return; }
     if (key.ctrl && key.name === 'o') { take(); void dialogs.openProjects(); return; }
-    if (key.ctrl && key.name === 'm') { take(); void dialogs.openModels(); return; }
-    if (key.name === 'tab') { take(); void dialogs.openThinking(); return; }
+    // Ctrl+M is Enter (CR) in most terminals, so the model picker uses F2.
+    if (key.name === 'f2') { take(); void dialogs.openModels(); return; }
+    if (key.ctrl && key.name === 't') { take(); void cycleThinking(); return; }
     if (key.ctrl && key.name === 'b') { take(); showSidebar = !showSidebar; render(); return; }
     if (key.name === 'escape') {
       take();
-      if (input.value) setComposer('');
-      else if (controller.view !== 'chat') void submit('/chat');
+      // A single Esc never discards a draft; a second Esc within 1.5s clears it.
+      // Navigation, not a typed command: keep it out of input history.
+      if (controller.view !== 'chat') { if (!controller.busy) void controller.execute('/chat').catch(() => undefined).finally(render); }
+      else if (input.value && Date.now() - escapeArmedAt < 1500) { setComposer(''); escapeArmedAt = 0; }
+      else if (input.value) { escapeArmedAt = Date.now(); controller.error = ''; }
+      else controller.error = '';
       render(); return;
     }
     if (key.name === 'pageup') { take(); scroll.scrollBy(-Math.max(3, scroll.height - 3)); return; }
@@ -234,13 +310,13 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
   renderer.on(CliRenderEvents.RESIZE, render);
   function dispose() {
     if (disposed) return;
-    disposed = true;
+    disposed = true; clearInterval(spinTimer);
     renderer.keyInput.off('keypress', handleKey); renderer.off(CliRenderEvents.RESIZE, render);
     dialogs.destroy(); shell.destroyRecursively(); syntax.destroy();
   }
   shell.on('destroyed', () => {
     if (!disposed) {
-      disposed = true; renderer.keyInput.off('keypress', handleKey); renderer.off(CliRenderEvents.RESIZE, render);
+      disposed = true; clearInterval(spinTimer); renderer.keyInput.off('keypress', handleKey); renderer.off(CliRenderEvents.RESIZE, render);
       dialogs.destroy(); syntax.destroy();
     }
   });

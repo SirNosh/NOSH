@@ -1,4 +1,4 @@
-> Historical pre-terminal-first specification audit. Browser, relay, remote-device, and embedded-shell descriptions below are not current features. See README.md and ARCHITECTURE.md for the current product.
+> **Historical document (archived).** This audit describes the pre-terminal-first product as of 2026-08-24, including the browser/PWA, relay, remote-device pairing, and embedded shell. Those features have been removed. Test counts, gates, and findings below are not current. See [README](../../README.md), [ARCHITECTURE](../../ARCHITECTURE.md), and [release gates](../testing/release-gates.md) for the current product. Local-trust behavior described here was later changed: automatic trust now also requires a loopback `Host` header (see [THREAT_MODEL](../../THREAT_MODEL.md)).
 
 # Adversarial audit against the NOSH engineering specification
 
@@ -8,15 +8,15 @@ Audited implementation: working tree on `codex/phase0-phase1-foundation`
 
 ## Verdict
 
-**Not production release ready.** Implementation now exists across every Phase 0–8 area and every orchestration Phase A–F, the monorepo builds under its pinned toolchain, and a recovered native scientific mini-project exercises the central Direction/Autoresearch path. This audit found no remaining reproducible high-severity implementation omission after the repairs below. The physical, cross-device, provider-authenticated, accessibility, security-review, clean-install, and 48-hour acceptance evidence required by the specification still does not exist. The separate [web-design audit](WEB_DESIGN_AUDIT.md) records the final Flexoki/PTY implementation and its unexecuted visual gates.
+**Not production release ready.** Implementation now exists across every Phase 0–8 area and every orchestration Phase A–F, the monorepo builds under its pinned toolchain, and a recovered native scientific mini-project exercises the central Direction/Autoresearch path. This audit found no remaining reproducible high-severity implementation omission after the repairs below. The physical, cross-device, provider-authenticated, accessibility, security-review, clean-install, and 48-hour acceptance evidence required by the specification still does not exist. A separate web-design audit (not retained) recorded the Flexoki/PTY implementation and its unexecuted visual gates.
 
 This is not a claim that the code is unusable. It is a refusal to treat local component tests or synthetic Pi sessions as proof of the complete Windows/WSL2/GPU/mobile product.
 
 ## 2026-08-24 maintenance verification/addendum
 
-The current implementation was rechecked after the historical audit. `CI=true corepack pnpm release:check` passed on 2026-08-24 with exactly **115 automated tests**, the full TypeScript build, production PWA, dependency notices, and CycloneDX SBOM. This updates the earlier test-count observations; **115 is the current validated count**.
+The implementation was rechecked after the original audit. `CI=true corepack pnpm release:check` passed on 2026-08-24 with exactly **115 automated tests**, the full TypeScript build, production PWA, dependency notices, and CycloneDX SBOM. This updated the earlier test-count observations as of 2026-08-24.
 
-The maintenance corrections also establish the following current behavior:
+As of 2026-08-24, the maintenance corrections established the following behavior:
 
 - `noshd` remains loopback-only on `127.0.0.1`/`::1`. Matching-origin loopback HTTP/WebSocket requests and origin-less native clients are trusted automatically; cross-origin browser requests are rejected. Short-lived bearer sessions remain the fallback for requests that are not automatically trusted. The ACL-protected setup bootstrap token still encrypts the remote vault, but the locally served PWA and normal CLI do not prompt for or exchange it.
 - Local event subscriptions reconnect from the highest persistent Project cursor with bounded exponential backoff, replay and deduplicate events, invalidate event-family/Project-scoped React Query read models, refresh authoritative selected-Project views on reconnect, and no longer rely on global five-second polling.
@@ -70,7 +70,7 @@ None reproduced in the final automated/static pass. This is narrower than a prod
 - The Windows scheduled task/ACL commands have not been run on a clean non-admin account. Tray and keep-awake behavior are absent.
 - CLI and PWA packages have no DOM-level automated behavioral tests. Their confidence comes from integration API/PTY coverage, production builds, an isolated CLI smoke run, and the browser inspection recorded in `timeline.md`.
 - The PWA has two large lazy chunks of about 954 kB and 1.13 MB uncompressed; no low-end-mobile p95 result exists.
-- The current audit covers a dirty working tree. Packaging now marks this state explicitly; a release must be produced from a clean reviewed commit.
+- The audit covered a dirty working tree. Packaging now marks this state explicitly; a release must be produced from a clean reviewed commit.
 
 ## Security disposition
 

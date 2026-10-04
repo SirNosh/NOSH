@@ -14,7 +14,8 @@ export function text(renderer: CliRenderer, id: string, content: string, color: 
 
 function stateColor(state = ''): string {
   if (/fail|error|reject|cancel|stop/i.test(state)) return theme.error;
-  if (/wait|approv|pending|pause|review/i.test(state)) return theme.warning;
+  if (/approved|accept/i.test(state)) return theme.success;
+  if (/wait|approv|pending|pause|review|draft/i.test(state)) return theme.warning;
   if (/complete|success|ready|accept|connected/i.test(state)) return theme.success;
   if (/running|working|active|stream/i.test(state)) return theme.secondary;
   return theme.muted;
@@ -44,8 +45,9 @@ export function createTranscript(renderer: CliRenderer, syntax: SyntaxStyle) {
         const accent = ['user', 'failure', 'approval'].includes(entry.kind);
         const box = new BoxRenderable(renderer, { id: 'message-' + entry.id, width: '100%',
           flexDirection: 'column', flexShrink: 0, marginBottom: 1, paddingX: 2,
-          paddingY: entry.kind === 'user' ? 1 : 0, border: accent ? ['left'] : false,
-          customBorderChars: splitBorder, borderColor: tint,
+          paddingY: entry.kind === 'user' ? 1 : 0,
+          // Custom border characters enable a full border even with border:false; pass them only with the left accent.
+          ...(accent ? { border: ['left'] as ('left')[], customBorderChars: splitBorder, borderColor: tint } : {}),
           backgroundColor: accent ? theme.panel : theme.background });
         const title = text(renderer, 'label-' + entry.id, '', tint);
         title.attributes = TextAttributes.BOLD;
@@ -65,13 +67,30 @@ export function createTranscript(renderer: CliRenderer, syntax: SyntaxStyle) {
       block.signature = signature;
     }
     if (order !== nextOrder) {
-      // Existing renderables are moved, never destroyed, when ephemeral text settles.
-      shown.forEach((entry, index) => root.add(blocks.get(entry.id)!.box, index));
+      // add(child, index) inserts before the child currently at index; it is not
+      // an idempotent assignment. Never ask OpenTUI to insert a node before itself.
+      // Read the current order after each move, preserving existing renderables
+      // (and their selection/layout state) when ephemeral text settles.
+      shown.forEach((entry, index) => {
+        const box = blocks.get(entry.id)!.box;
+        if (root.getChildren()[index] !== box) root.add(box, index);
+      });
       order = nextOrder;
     }
   }
   return { root, update };
 }
+
+const SECTION_TITLES: Record<string, string> = { missions: 'Missions', directions: 'Directions', autoresearch: 'Autoresearch',
+  agents: 'Agents', jobs: 'Jobs', approvals: 'Approvals', contract: 'Project contract', projects: 'Projects', models: 'Models',
+  action: 'Staged action', result: 'Result', output: 'Job output' };
+function sectionTitle(section: string): string { return SECTION_TITLES[section] ?? section.charAt(0).toUpperCase() + section.slice(1); }
+// Rows without an entity id get "<section>-<index>"; that is not a usable command argument.
+function commandId(row: ViewRow): string {
+  const placeholder = row.section === 'action' || row.id === row.section || row.id.startsWith(row.section + '-') && /^\d+$/.test(row.id.slice(row.section.length + 1));
+  return row.id !== row.title && !placeholder ? row.id : '';
+}
+const MAX_CARD_FIELDS = 8;
 
 /** State is a readable list of cards and fields, never a JSON document dump. */
 export function createInspector(renderer: CliRenderer) {
@@ -85,18 +104,37 @@ export function createInspector(renderer: CliRenderer) {
     let section = '';
     for (const [index, row] of rows.slice(0, 120).entries()) {
       if (row.section !== section) {
-        const heading = text(renderer, 'section-' + index, row.section.toUpperCase(), theme.accent);
+        const count = rows.filter(r => r.section === row.section).length;
+        const heading = text(renderer, 'section-' + index, `${sectionTitle(row.section)}${count > 1 ? `  (${count})` : ''}`, theme.accent);
         heading.marginTop = index ? 1 : 0; heading.marginBottom = 1; heading.attributes = TextAttributes.BOLD;
         root.add(heading); section = row.section;
       }
       const card = new BoxRenderable(renderer, { id: 'record-' + index, width: '100%', flexShrink: 0,
         flexDirection: 'column', backgroundColor: theme.panel, padding: 1, marginBottom: 1,
         border: ['left'], customBorderChars: splitBorder, borderColor: stateColor(row.state) });
-      card.add(text(renderer, 'record-title-' + index, row.title));
+      if (row.section !== 'output') {
+        const title = text(renderer, 'record-title-' + index, row.title); title.attributes = TextAttributes.BOLD;
+        card.add(title);
+      }
       if (row.state || row.version) card.add(text(renderer, 'record-state-' + index,
         [row.state, row.version ? `v${row.version}` : ''].filter(Boolean).join(' · '), stateColor(row.state)));
+      // Staged commands need the exact id; show it where it can be copied.
+      const id = commandId(row);
+      if (id) card.add(text(renderer, 'record-id-' + index, `id ${id}`, theme.muted));
       if (row.subtitle) card.add(text(renderer, 'record-subtitle-' + index, row.subtitle, theme.muted));
-      for (const [n, field] of row.fields.entries()) card.add(text(renderer, `field-${index}-${n}`, `${field.label}  ${field.value}`, theme.muted));
+      // Title and subtitle are already shown; do not repeat them as fields.
+      const fields = row.fields.filter(field => row.section === 'output' || field.value !== row.title && field.value !== row.subtitle && field.value !== id);
+      const shown = fields.slice(0, row.section === 'output' ? 1 : MAX_CARD_FIELDS);
+      const labelWidth = Math.min(26, Math.max(10, ...shown.map(field => field.label.length + 1)));
+      for (const [n, field] of shown.entries()) {
+        if (row.section === 'output') { card.add(text(renderer, `field-${index}-${n}`, field.value)); continue; }
+        const line = new BoxRenderable(renderer, { id: `field-${index}-${n}`, width: '100%', flexDirection: 'row', flexShrink: 0, gap: 2 });
+        const label = text(renderer, `field-label-${index}-${n}`, field.label, theme.muted);
+        label.width = labelWidth; label.flexShrink = 0; label.wrapMode = 'none';
+        const value = text(renderer, `field-value-${index}-${n}`, field.value); value.width = 'auto'; value.flexGrow = 1; value.flexShrink = 1; value.minWidth = 0;
+        line.add(label); line.add(value); card.add(line);
+      }
+      if (fields.length > shown.length) card.add(text(renderer, `field-more-${index}`, `+${fields.length - shown.length} more fields${row.section === 'jobs' && id ? ` · /job ${id}` : ''}`, theme.muted));
       root.add(card);
     }
     if (!rows.length) root.add(text(renderer, 'empty-inspector', fallback, theme.muted));
@@ -104,34 +142,50 @@ export function createInspector(renderer: CliRenderer) {
   return { root, update };
 }
 
+export interface AttentionItem { title: string; hint: string }
+
+/** One line per record, OpenCode style; details live in the inspector views. */
 export function createResearchSidebar(renderer: CliRenderer) {
   const root = new BoxRenderable(renderer, { id: 'research-sidebar', width: '100%', flexShrink: 0, flexDirection: 'column' });
   let previous = '';
-  function update(rows: ViewRow[]) {
-    const signature = JSON.stringify(rows);
+  function heading(id: string, content: string, color: string = theme.text) {
+    const node = text(renderer, id, content, color); node.attributes = TextAttributes.BOLD; node.marginTop = 1; root.add(node);
+  }
+  function line(id: string, title: string, state: string | undefined) {
+    const row = new BoxRenderable(renderer, { id, width: '100%', flexDirection: 'row', flexShrink: 0, gap: 1 });
+    const label = text(renderer, id + '-title', `${state ? '●' : '·'} ${title}`, state ? stateColor(state) : theme.muted);
+    label.wrapMode = 'none'; label.flexGrow = 1; label.flexShrink = 1; label.minWidth = 0; label.width = 'auto';
+    row.add(label);
+    if (state) { const tag = text(renderer, id + '-state', state, theme.muted); tag.width = 'auto'; tag.flexShrink = 0; tag.wrapMode = 'none'; row.add(tag); }
+    root.add(row);
+  }
+  function update(rows: ViewRow[], attention: AttentionItem[] = []) {
+    const signature = JSON.stringify([rows, attention]);
     if (signature === previous) return;
     previous = signature;
     for (const child of root.getChildren()) { root.remove(child); child.destroyRecursively(); }
-    let section = '';
-    for (const [i, row] of rows.slice(0, 30).entries()) {
-      if (row.section !== section) {
-        const heading = text(renderer, 'side-section-' + i, row.section, theme.text);
-        heading.attributes = TextAttributes.BOLD; heading.marginTop = 1;
-        root.add(heading); section = row.section;
+    if (attention.length) {
+      heading('side-attention', 'Needs you', theme.warning);
+      for (const [i, item] of attention.slice(0, 6).entries()) {
+        root.add(text(renderer, 'side-attention-' + i, `! ${item.title}`, theme.warning));
+        root.add(text(renderer, 'side-attention-hint-' + i, `  ${item.hint}`, theme.muted));
       }
-      root.add(text(renderer, 'side-title-' + i, `${row.state ? '• ' : ''}${row.title}`, row.state ? stateColor(row.state) : theme.muted));
-      if (row.state) root.add(text(renderer, 'side-state-' + i, `  ${row.state}${row.version ? ' · v' + row.version : ''}`, theme.muted));
-      if (row.subtitle) root.add(text(renderer, 'side-subtitle-' + i, row.subtitle, theme.muted));
-      for (const [n, field] of row.fields.slice(0, 3).entries()) root.add(text(renderer, `side-field-${i}-${n}`, `${field.label}  ${field.value}`, theme.muted));
     }
-    if (!rows.length) {
+    const sections = [...new Set(rows.map(row => row.section))];
+    for (const section of sections) {
+      const items = rows.filter(row => row.section === section);
+      const running = section === 'jobs' ? items.filter(row => /running|active/i.test(row.state ?? '')).length : 0;
+      heading('side-section-' + section, `${sectionTitle(section)}  ${items.length}${running ? ` · ${running} running` : ''}`);
+      for (const [i, row] of items.slice(0, 8).entries()) line(`side-${section}-${i}`, row.title, row.state);
+      if (items.length > 8) root.add(text(renderer, `side-${section}-more`, `  +${items.length - 8} more`, theme.muted));
+    }
+    if (!rows.length && !attention.length) {
       for (const [i, [title, hint]] of [
-        ['Research', 'Start a conversation to shape your project.'],
-        ['Missions & directions', 'No research graph loaded.'],
-        ['Supervised jobs', 'Use /jobs to inspect work.'],
-        ['Approvals', 'You keep control of research changes.'],
+        ['Missions & directions', 'None yet · /status'],
+        ['Jobs', 'None yet · /jobs'],
+        ['Approvals', 'None · /approvals'],
       ].entries()) {
-        const heading = text(renderer, 'side-empty-' + i, title!); heading.marginTop = 1; root.add(heading);
+        heading('side-empty-' + i, title!);
         root.add(text(renderer, 'side-hint-' + i, hint!, theme.muted));
       }
     }

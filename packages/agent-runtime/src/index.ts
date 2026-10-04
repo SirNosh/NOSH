@@ -1,24 +1,9 @@
-import { schemaUris, validateRecord, type EventEnvelope } from "@nosh/wire";
+import { schemaUris, submissionToolSchemas, validateRecord, type EventEnvelope } from "@nosh/wire";
 
 export const agentRoles = ["librarian_researcher", "general_worker", "reviewer"] as const;
 export type AgentRole = (typeof agentRoles)[number];
 
-const toolSchemas: Record<string, readonly string[]> = {
-  nosh_task_acknowledge: ["task-acknowledgement"],
-  nosh_progress_emit: ["progress-update"],
-  nosh_response_submit: ["general-worker-completion", "librarian-completion", "task-failure", "mission-director-cycle", "research-director-cycle"],
-  nosh_review_submit: ["review-verdict"],
-  nosh_blocker_submit: ["blocker"],
-  nosh_graph_change_propose: ["graph-change-proposal"],
-  nosh_delegation_request: ["delegation-request"],
-  nosh_handoff_create: ["handoff"],
-  nosh_handoff_teachback: ["handoff-teachback"],
-  nosh_experiment_propose: ["experiment-proposal"],
-  nosh_evidence_submit: ["evidence"],
-  nosh_episode_submit: ["episode-draft"],
-  nosh_runtime_instruct: ["runtime-instruction"],
-  nosh_project_contract_submit: ["project-contract"],
-};
+const toolSchemas = submissionToolSchemas;
 
 export class StructuredSubmissionGate {
   private readonly invalidAttempts = new Map<string, number>();

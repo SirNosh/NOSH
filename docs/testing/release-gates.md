@@ -16,7 +16,7 @@ corepack pnpm schemas
 
 Require zero failures and intentional review of generated schema changes. Runtime Zod validation remains authoritative; known recursive JSON exporter warnings do not excuse new contract errors.
 
-Tests must retain agent/task authorization, runtime program bounds, handoff and thread state, Mission/Direction/Autoresearch transitions, independent Review, Job scope, event replay, idempotency, restore safety, and recovery invariants. Verify removed static assets, remote/device controls, directory-picker, and terminal-session APIs are unavailable. Verify loopback Origin and session-auth boundaries still apply to remaining APIs.
+Tests must retain agent/task authorization, runtime program bounds, handoff and thread state, Mission/Direction/Autoresearch transitions, independent Review, Job scope, event replay, idempotency, restore safety, and recovery invariants. Verify that no route serves removed static assets, remote/device controls, directory-picker, or terminal-session APIs. Verify loopback Host/Origin and session-auth boundaries, including DNS-rebinding rejection, still apply to the remaining [API](../api.md).
 
 ## Terminal client gate
 
@@ -27,6 +27,8 @@ Use Bun >=1.3, the supported Node daemon, a real terminal, and a disposable Proj
 - help, Project selection, supported reads, and supported commands work with keyboard input;
 - status and errors remain readable without color alone;
 - resizing, scrolling, copy/paste, Unicode, and terminal restoration work on supported Windows and Unix terminals;
+- existing conversations, appended messages, streaming settlement, and replay/eviction produce no native renderer warnings or duplicate message blocks;
+- an invalid active Project contract reports its file and validation fields, rejects chat before recording a user message or changing an agent, and does not fall back to an older approved contract;
 - reconnect uses bounded cursor replay and does not claim disconnected work succeeded;
 - exit leaves daemon and supervised Jobs running;
 - no unsupported former browser feature is presented as implemented parity.
@@ -41,6 +43,12 @@ corepack pnpm package:windows
 ```
 
 `release:check` runs frozen install, quality, full build/tests, clean packaging, native OpenTUI renderer smoke, isolated Windows installer/uninstaller smoke, notices, and SBOM. It requires native Windows Node and Bun. On Linux/macOS, `node scripts/release-smoke.mjs --package-only` checks clean packaging and native rendering but explicitly does not validate installation. The smoke uses a temporary package and wrapper path with PATH and scheduled-task changes disabled. Packaging clears declared compiler output directories before rebuilding; do not run it alongside other builds or tests. Inspect generated artifacts for unexpected dependencies/licenses and secrets. Reject dirty or unreviewed release metadata. The package must contain CLI, daemon, TUI compiled entries and source workspaces, not web/relay assets, browser tests, private state, caches, or dependency directories. Bun is an external prerequisite.
+
+## CI and release workflows
+
+`.github/workflows/ci.yml` runs on pull requests and pushes to `main` on `windows-latest` with pnpm 10.28.0, Node from `.nvmrc`, and Bun 1.4.2: frozen install, `quality`, `test`, `release:smoke`, `notices`, and `sbom`. It uploads `release/nosh.cdx.json` and `THIRD_PARTY_NOTICES.md` as the `compliance` artifact.
+
+`.github/workflows/release.yml` runs on `v*` tags with the same steps, then `package:windows`. It publishes `NOSH-Research-<version>-windows.zip`, its `.sha256`, the CycloneDX SBOM, and notices to a GitHub release, with a build-provenance attestation for the zip. Verify the SHA-256 and attestation before running `scripts/install.ps1`. CI does not replace the terminal, real-workload, or security gates.
 
 ## Real-workload and safety gates
 

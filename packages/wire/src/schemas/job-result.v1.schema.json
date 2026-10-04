@@ -1,7 +1,196 @@
 {
   "$ref": "#/definitions/job-result",
   "definitions": {
-    "job-result": {}
+    "job-result": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/job-result/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "jobId": {
+          "type": "string",
+          "pattern": "^job_[0-9a-f]{32}$"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^run_[0-9a-f]{32}$"
+        },
+        "experimentId": {
+          "type": "string",
+          "pattern": "^exp_[0-9a-f]{32}$"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "succeeded",
+            "failed",
+            "cancelled",
+            "lost"
+          ]
+        },
+        "commandDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "evaluatedCommit": {
+          "type": "string",
+          "minLength": 7
+        },
+        "environmentManifestArtifactId": {
+          "type": "string",
+          "pattern": "^art_[0-9a-f]{32}$"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "durationSeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "exit": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "resourceUse": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "metricArtifactId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^art_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "logArtifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^art_[0-9a-f]{32}$"
+          }
+        },
+        "checkpointArtifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^art_[0-9a-f]{32}$"
+          }
+        },
+        "recovery": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "resultDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "jobId",
+        "runId",
+        "experimentId",
+        "state",
+        "commandDigest",
+        "evaluatedCommit",
+        "environmentManifestArtifactId",
+        "startedAt",
+        "finishedAt",
+        "durationSeconds",
+        "exit",
+        "resourceUse",
+        "metricArtifactId",
+        "logArtifactIds",
+        "checkpointArtifactIds",
+        "recovery",
+        "resultDigest"
+      ],
+      "additionalProperties": false
+    }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nosh.dev/schemas/job-result/v1"

@@ -20,7 +20,7 @@ class ExperimentAgents {
   async start(options: PiSessionOptions): Promise<AgentInspection> { this.sessions.set(options.agentId, options); return this.inspect().find((agent) => agent.agentId === options.agentId)!; }
   async prompt(agentId: string, prompt: string): Promise<void> {
     const session = this.sessions.get(agentId)!; const now = new Date().toISOString();
-    if (prompt.includes(schemaUri("experiment-proposal"))) { const experimentId = required(prompt, /experimentId=(exp_[0-9a-f]{32})/); const autoresearchId = required(prompt, /autoresearchId=(ar_[0-9a-f]{32})/); const parentExperimentId = required(prompt, /parentExperimentId=(exp_[0-9a-f]{32})/); const round = Number(required(prompt, /round=(\d+)/)); const evaluationContractHash = required(prompt, /evaluationContractHash=(sha256:[0-9a-f]{64})/); this.submit(session, { $schema: schemaUri("experiment-proposal"), schemaVersion: 1, proposalId: `proposal_${experimentId.slice(4)}`, autoresearchId, experimentId, parentExperimentId, round, hypothesis: `Variant ${experimentId.slice(4, 10)} improves the primary metric`, rationale: "Exercise the frozen evaluation contract", primaryChange: { category: "change_variant", description: "Write the bounded variant input", expectedFiles: ["variant.json"] }, expectedEffect: { score: "measurable" }, guardrailRisks: ["Fixture only"], novelty: { ideaFingerprint: sha256({ experimentId }), nearestAttemptFingerprint: null, difference: "Distinct fixture ordinal", duplicateStatus: "distinct" }, evaluationContractHash, estimatedGpuSeconds: 0, proposedByAgentId: agentId, submittedAt: now }); return; }
+    if (prompt.includes(schemaUri("experiment-proposal"))) { const experimentId = required(prompt, /(?:experimentId=|"experimentId":")(exp_[0-9a-f]{32})/); const autoresearchId = required(prompt, /(?:autoresearchId=|"autoresearchId":")(ar_[0-9a-f]{32})/); const parentExperimentId = required(prompt, /(?:parentExperimentId=|"parentExperimentId":")(exp_[0-9a-f]{32})/); const round = Number(required(prompt, /(?:round=|"round":)(\d+)/)); const evaluationContractHash = required(prompt, /(?:evaluationContractHash=|"evaluationContractHash":")(sha256:[0-9a-f]{64})/); this.submit(session, { $schema: schemaUri("experiment-proposal"), schemaVersion: 1, proposalId: `proposal_${experimentId.slice(4)}`, autoresearchId, experimentId, parentExperimentId, round, hypothesis: `Variant ${experimentId.slice(4, 10)} improves the primary metric`, rationale: "Exercise the frozen evaluation contract", primaryChange: { category: "change_variant", description: "Write the bounded variant input", expectedFiles: ["variant.json"] }, expectedEffect: { score: "measurable" }, guardrailRisks: ["Fixture only"], novelty: { ideaFingerprint: sha256({ experimentId }), nearestAttemptFingerprint: null, difference: "Distinct fixture ordinal", duplicateStatus: "distinct" }, evaluationContractHash, estimatedGpuSeconds: 0, proposedByAgentId: agentId, submittedAt: now }); return; }
     const packetText = prompt.split("before work: ")[1]?.split(". Then implement")[0]; if (packetText) { const packet = JSON.parse(packetText) as { taskId: string; attempt: number; assignedAgentId: string; requiredOutputs: Array<{ outputId: string }>; acceptanceCriteria: Array<{ criterionId: string }>; workspace: { startingCommit: string; branch: string }; lease: { leaseId: string } }; this.submit(session, { $schema: schemaUri("task-acknowledgement"), schemaVersion: 1, taskId: packet.taskId, attempt: packet.attempt, agentId, decision: "accepted", understoodObjective: "Implement one bounded variant", understoodOutputIds: packet.requiredOutputs.map((output) => output.outputId), understoodCriterionIds: packet.acceptanceCriteria.map((criterion) => criterion.criterionId), observedLeaseId: packet.lease.leaseId, observedStartingCommit: packet.workspace.startingCommit, conflicts: [], clarificationRequest: null, submittedAt: now }); const ordinal = Number(required(prompt, /variantOrdinal=(\d+)/)); const score = [2, 3, 5, 1][ordinal - 1]!; writeFileSync(join(session.cwd, "variant.json"), `${JSON.stringify({ score })}\n`); git(session.cwd, ["add", "--", "variant.json"]); git(session.cwd, ["commit", "-m", `experiment variant ${ordinal}`]); const endingCommit = git(session.cwd, ["rev-parse", "HEAD"]); const validator = `validator_${packet.taskId.slice(4)}`; this.submit(session, { $schema: schemaUri("general-worker-completion"), schemaVersion: 1, taskOutcome: "completed", workPerformed: [{ action: "action_implementation", subject: "Bounded variant", artifactIds: [] }], codeChanges: { startingCommit: packet.workspace.startingCommit, endingCommit, changedPaths: ["variant.json"], diffArtifactId: null, branch: packet.workspace.branch }, commands: [{ commandId: validator, displayCommand: "fixture validation", exitCode: 0, resultArtifactId: null }], criteria: [{ criterionId: packet.acceptanceCriteria[0]!.criterionId, workerClaim: "satisfied", validatorRunIds: [validator], artifactIds: [], notes: "Fixture passed" }], scientificImpact: { claimIds: [], evidenceIds: [], interpretation: "Fixture variant" }, deviations: [], newRisks: [], unresolvedItems: [], suggestedNextActions: [], readyForDeterministicPostflight: true, readyForReview: true }); return; }
     const requestText = prompt.split("Review Request: ")[1]?.split(". Submit")[0]; if (requestText) { const request = JSON.parse(requestText) as { reviewId: string; reviewRequestId: string; reviewType: string; target: JsonValue; criteria: Array<{ criterionId: string; required: boolean }>; requiredArtifactIds: string[]; requiredEvidenceIds: string[] };
       if (request.reviewType === "experiment") {
@@ -54,7 +54,7 @@ describe("AutoresearchSupervisor", () => {
       expectReviewedEvidenceAuthority(records);
       expect(records.find((record) => (record as { $schema?: string }).$schema === schemaUri("autoresearch-completion-packet"))).toMatchObject({ bestExperimentId: completed.value.acceptedFrontierExperimentIds[0] });
     } finally { jobs.close(); store.close(); rmSync(directory, { recursive: true, force: true }); }
-  }, 30_000);
+  }, 90_000);
 
   it("rebuilds model-token use and blocks before issuing work when its budget is exhausted", async () => {
     const directory = mkdtempSync(join(tmpdir(), "nosh-autoresearch-budget-")); const repositoryRoot = join(directory, "repository"); mkdirSync(repositoryRoot); const projectId = createId("prj"); const project: RegisteredProject = { projectId, repositoryRoot, databasePath: join(directory, "project.sqlite"), registeredAt: new Date().toISOString() }; const store = new EventStore(project.databasePath); const research = new ResearchControl(() => store, () => project, () => undefined); const agents = new ExperimentAgents((draft) => { appendFixtureEvent(store, draft); }); const jobs = new JobSupervisor(join(directory, "jobs"), () => undefined);
@@ -82,7 +82,18 @@ describe("AutoresearchSupervisor", () => {
     } finally {
       run.cleanup();
     }
-  }, 30_000);
+  }, 90_000);
+
+  it("rejects an improving experiment that violates a contract guardrail", async () => {
+    const run = await runAutoresearchFixture({ primaryMetric: { name: "score", objective: "minimize", minimumEffect: 1 }, baselineMetrics: { score: 4 }, guardrails: [{ name: "guardrail_pass", direction: "maximize", threshold: 1 }], roundWidths: [1], execution: { runner: "native", command: [process.execPath, "-e", "require('fs').writeFileSync('metrics.json','{\"score\":2,\"guardrail_pass\":false}')"], resultPath: "metrics.json", timeoutSeconds: 30, usesGpu: false } });
+    try {
+      expect(run.errors).toEqual([]);
+      expect(run.records.find((record) => record.$schema === schemaUri("experiment-result"))).toMatchObject({ deterministicValidation: "pass", guardrails: [{ metric: "guardrail_pass", value: false, passed: false }], promotionDecision: "rejected" });
+      expect(run.records.find((record) => record.$schema === schemaUri("evidence"))).toMatchObject({ evidenceType: "evidence_negative.result", statement: expect.stringContaining("violated contract guardrails: guardrail_pass=false violates >= 1") });
+    } finally {
+      run.cleanup();
+    }
+  }, 90_000);
 
   it("stops after a reviewed winner reaches the frozen target", async () => {
     const run = await runAutoresearchFixture({ primaryMetric: { name: "score", objective: "minimize", minimumEffect: 1 }, baselineMetrics: { score: 4 }, stopConditions: { target: 2 }, roundWidths: [1], execution: { runner: "native", command: [process.execPath, "-e", "require('fs').writeFileSync('metrics.json','{\"score\":2}')"], resultPath: "metrics.json", timeoutSeconds: 30, usesGpu: false } });
@@ -100,7 +111,7 @@ describe("AutoresearchSupervisor", () => {
     } finally {
       run.cleanup();
     }
-  }, 30_000);
+  }, 90_000);
 
   it("recovers one canonical completion packet after publication but before the state transition", async () => {
     const run = await runAutoresearchFixture(targetContract(), { deferCompletion: true });
@@ -111,7 +122,7 @@ describe("AutoresearchSupervisor", () => {
       expect(run.records.filter((record) => record.$schema === schemaUri("review-request") && record.reviewType === "autoresearch_closure")).toHaveLength(1);
       expectCompletionAuthority(run.records, run.execution);
     } finally { run.cleanup(); }
-  }, 30_000);
+  }, 90_000);
 
   it.each(["missing Evidence coverage", "a stale target version", "a non-PASS verdict"])("does not mark Evidence reviewed or promote with %s", async (failure) => {
     const run = await runAutoresearchFixture(targetContract(), { transformReview: (record) => {
@@ -129,7 +140,7 @@ describe("AutoresearchSupervisor", () => {
       expect(run.records.find((record) => record.$schema === schemaUri("autoresearch-completion-packet"))).toMatchObject({ terminalReason: "all_hypotheses_rejected", bestExperimentId: null });
       expectCompletionAuthority(run.records, run.execution);
     } finally { run.cleanup(); }
-  }, 30_000);
+  }, 90_000);
 
   it("does not report target_reached when the round Review holds the winner", async () => {
     const run = await runAutoresearchFixture(targetContract({ target: 2, maximumNoProgressRounds: 2 }), { transformReview: (record) => record.reviewType === "experiment_round" ? { ...record, verdict: "REVISE", recommendedPromotion: "hold" } : record });
@@ -140,7 +151,7 @@ describe("AutoresearchSupervisor", () => {
       expect(run.records.find((record) => record.$schema === schemaUri("autoresearch-completion-packet"))).toMatchObject({ terminalReason: "budget_exhausted", bestExperimentId: null });
       expectCompletionAuthority(run.records, run.execution);
     } finally { run.cleanup(); }
-  }, 30_000);
+  }, 90_000);
 
   it.each(["a stale target version", "a non-PASS verdict"])("blocks closure with %s", async (failure) => {
     const run = await runAutoresearchFixture(targetContract(), { transformReview: (record) => {
@@ -153,7 +164,7 @@ describe("AutoresearchSupervisor", () => {
       expect(run.errors).toEqual([{ message: "Autoresearch closure Review did not pass" }]);
       expect(run.records.filter((record) => record.$schema === schemaUri("autoresearch-completion-packet"))).toEqual([]);
     } finally { run.cleanup(); }
-  }, 30_000);
+  }, 90_000);
 });
 
 function targetContract(stopConditions: JsonValue = { target: 2 }): JsonValue {

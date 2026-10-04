@@ -1,6 +1,6 @@
 import { createId } from "@nosh/core";
 import { describe, expect, it } from "vitest";
-import { canonicalJson, eventEnvelopeSchema, missionNodeSchema, runtimeInstructionSchema, runtimeInstructionTemplateSchema, schemaUri, sha256, taskWorkspaceSchema, validateRecord } from "./index.js";
+import { eventBudgetTokens, parseModelSelection, canonicalJson, eventEnvelopeSchema, missionNodeSchema, runtimeInstructionSchema, runtimeInstructionTemplateSchema, schemaUri, sha256, taskWorkspaceSchema, validateRecord } from "./index.js";
 
 const scope = {
   projectId: createId("prj"),
@@ -92,5 +92,54 @@ describe("wire contracts", () => {
     expect(runtimeInstructionTemplateSchema.safeParse(template).success).toBe(true);
     expect(runtimeInstructionTemplateSchema.safeParse(instruction).success).toBe(false);
     expect(runtimeInstructionSchema.safeParse(instruction).success).toBe(true);
+  });
+});
+
+describe("generated JSON Schemas", () => {
+  it("are non-empty for every record (zod-to-json-schema must run against the same Zod major)", async () => {
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const directory = new URL("./schemas/", import.meta.url);
+    const files = readdirSync(directory).filter((file) => file.endsWith(".schema.json"));
+    expect(files.length).toBeGreaterThan(40);
+    for (const file of files) {
+      const document = JSON.parse(readFileSync(new URL(file, directory), "utf8")) as { definitions?: Record<string, { properties?: object; anyOf?: unknown[] }> };
+      const definition = Object.values(document.definitions ?? {})[0];
+      expect(definition?.properties ?? definition?.anyOf, file).toBeTruthy();
+    }
+  });
+});
+
+describe("supervisor episode types", () => {
+  it("are valid THREAD_STEP refs for every worker and director role", async () => {
+    const { episodeTypeForRole, runtimeInstructionSchema } = await import("./index.js");
+    for (const role of ["general_worker", "librarian_researcher", "reviewer", "mission_director", "research_director", "nosh"]) {
+      const result = runtimeInstructionSchema.safeParse({ $schema: schemaUri("runtime-instruction"), schemaVersion: 1, instructionId: createId("ins"), projectId: createId("prj"), idempotencyKey: "supervisor-step-0001", proposedByAgentId: null, issuedAt: "2026-10-01T00:00:00.000Z", operation: "THREAD_STEP", threadId: createId("thr"), objective: "Run one bounded step", expectedEpisodeType: episodeTypeForRole(role), inputRefs: [], skillIds: [] });
+      expect(result.success, `${role}: ${JSON.stringify(result.error?.issues)}`).toBe(true);
+    }
+  });
+});
+
+describe("model selection setting", () => {
+  it("parses provider/id[:thinkingLevel] and rejects anything else", () => {
+    expect(parseModelSelection("openai-codex/gpt-6-luna:low")).toEqual({ provider: "openai-codex", id: "gpt-6-luna", thinkingLevel: "low" });
+    expect(parseModelSelection("openai-codex/gpt-6-luna")).toEqual({ provider: "openai-codex", id: "gpt-6-luna" });
+    for (const bad of ["gpt-6-luna", "a/b:turbo", "a/b c"]) expect(() => parseModelSelection(bad)).toThrow();
+  });
+});
+
+describe("validation messages", () => {
+  it("name the expected shape of a missing field so one correction can fix it", () => {
+    const result = validateRecord(schemaUri("episode-draft"), { $schema: schemaUri("episode-draft"), schemaVersion: 1, episodeType: "episode_general-worker", summary: "s", facts: [{ statement: "x", evidenceRefs: [] }], decisions: [], artifactIds: [], evidenceIds: [], changedFiles: [], unresolvedQuestions: [], recommendedNextActions: [] });
+    expect(result.ok).toBe(false);
+    expect(JSON.stringify(result)).toContain("missing; expected 'low' | 'medium' | 'high'");
+  });
+});
+
+describe("budget tokens", () => {
+  it("weigh cache reads at 10% from raw counts, and fall back to the provider total", () => {
+    expect(eventBudgetTokens({ modelTokens: 100, inputTokens: 20, outputTokens: 10, cacheReadTokens: 60, cacheWriteTokens: 10 })).toBe(46);
+    expect(eventBudgetTokens({ modelTokens: 46, providerTotalTokens: 100, inputTokens: 20, outputTokens: 10, cacheReadTokens: 60, cacheWriteTokens: 10 })).toBe(46);
+    expect(eventBudgetTokens({ modelTokens: 42 })).toBe(42);
+    expect(eventBudgetTokens(null)).toBe(0);
   });
 });

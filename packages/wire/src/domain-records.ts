@@ -2,7 +2,8 @@ import { id, schemaUri, schemaVersion, sha256Digest, templateVersion, timestamp 
 import { jsonValueSchema } from "./json.js";
 import { z } from "zod";
 
-const ref = z.string().regex(/^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$/).max(128);
+// Validation receipts reach models; say what the format is, not just "Invalid".
+const ref = z.string().regex(/^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$/, "Expected a reference: lowercase prefix, exactly one underscore, then lowercase letters, digits, '.', ':' or '-' (e.g. contribution_method-fixture)").max(128);
 const text = z.string().min(1).max(4000);
 const strings = z.array(z.string().min(1).max(2000)).max(200);
 const refs = z.array(ref).max(500);
@@ -17,7 +18,9 @@ export const projectContractSchema = z.object({
   computeEnvelope: z.object({ maximumGpuHours: z.number().nonnegative(), maximumDiskBytes: z.number().int().nonnegative(), allowedHardwareClasses: strings }).strict(),
   reproducibilityStandard: z.object({ minimumSeeds: z.number().int().positive(), environmentLockRequired: z.boolean(), immutableEvaluatedCommitRequired: z.boolean(), rawLogsRetained: z.boolean() }).strict(),
   paper: z.object({ intendedVenue: z.string().nullable(), requiredSections: strings, claimPolicy: z.literal("evidence_link_required") }).strict(),
-  policies: z.object({ network: ref, privacy: ref, publication: ref, protectedPaths: strings }).strict(), canonicalDefaultBranch: z.string(), createdBy: z.enum(["user", "import"]), createdAt: timestamp, approvedAt: timestamp.nullable(),
+  policies: z.object({ network: ref, privacy: ref, publication: ref, protectedPaths: strings }).strict(),
+  // Opt-in: the only commands a worker may ask the daemon to run (argv, never a shell string) in its task worktree.
+  execution: z.object({ runner: z.literal("native"), commands: z.array(z.object({ commandId: ref, description: z.string().min(1).max(500), argv: z.array(z.string().min(1).max(1_000)).min(1).max(64), timeoutSeconds: z.number().int().min(1).max(3_600) }).strict()).min(1).max(32) }).strict().optional(), canonicalDefaultBranch: z.string(), createdBy: z.enum(["user", "import"]), createdAt: timestamp, approvedAt: timestamp.nullable(),
 }).strict();
 
 export const missionContractSchema = z.object({

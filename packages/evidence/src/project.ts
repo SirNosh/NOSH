@@ -1,13 +1,35 @@
 import { createId } from "@nosh/core";
 import { canonicalJson, projectContractSchema, projectRootSchema, schemaLockSchema, schemaUri, schemaUris, sha256, type JsonValue } from "@nosh/wire";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { initializePaperWorkspace } from "./paper.js";
 
 export type ProjectInitialization = { path: string; dataDirectory: string; createRepository?: boolean; workingTitle?: string; githubRepositoryUrl?: string };
 export type InitializedProject = { projectId: string; repositoryRoot: string; databasePath: string };
 export type ProjectContract = ReturnType<typeof projectContractSchema.parse>;
+export type RunnableCommand = { commandId: string; description: string; argv: string[]; timeoutSeconds: number };
+
+// Executables a supervised Job can launch directly (argv, no shell). npm/npx are shell shims on Windows and are excluded.
+const DIRECT_EXECUTABLES = new Set(["node", "python", "python3", "py", "pytest", "bun", "deno", "go", "cargo", "make", "Rscript", "julia"]);
+
+/** Candidate test/evaluation commands for discovery to propose; the user approves them in the contract. Read-only and best effort. */
+export function detectRunnableCommands(repositoryRoot: string): RunnableCommand[] {
+  const found: RunnableCommand[] = []; const read = (name: string): string | null => { try { return readFileSync(join(repositoryRoot, name), "utf8"); } catch { return null; } };
+  try {
+    const scripts = (JSON.parse(read("package.json") ?? "{}") as { scripts?: Record<string, unknown> }).scripts ?? {};
+    for (const [name, script] of Object.entries(scripts)) {
+      if (!/^(test|eval|evaluate|bench|benchmark|reproduce)(:[\w-]+)?$/.test(name) || typeof script !== "string" || /[&|;<>`$()*]/.test(script)) continue;
+      const argv = script.trim().split(/\s+/); if (!DIRECT_EXECUTABLES.has(argv[0]!)) continue;
+      found.push({ commandId: `command_${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, description: `package.json script "${name}"`, argv, timeoutSeconds: 600 });
+    }
+  } catch { /* unreadable package.json proposes nothing */ }
+  const tests = (() => { try { return readdirSync(join(repositoryRoot, "tests")).some((file) => /^test_.*\.py$/.test(file)); } catch { return false; } })();
+  if (existsSync(join(repositoryRoot, "pytest.ini")) || /\[tool\.pytest/.test(read("pyproject.toml") ?? "") || tests) found.push({ commandId: "command_pytest", description: "pytest suite", argv: ["python", "-m", "pytest", "-q"], timeoutSeconds: 1_800 });
+  const makefile = read("Makefile") ?? "";
+  for (const target of ["test", "eval", "evaluate", "reproduce"]) if (new RegExp(`^${target}:`, "m").test(makefile)) found.push({ commandId: `command_make-${target}`, description: `make ${target}`, argv: ["make", target], timeoutSeconds: 1_800 });
+  return found.filter((command, index) => found.findIndex((other) => other.commandId === command.commandId) === index).slice(0, 10);
+}
 
 export function initializeResearchProject(input: ProjectInitialization): InitializedProject {
   const requested = resolve(input.path); if (input.createRepository) { mkdirSync(requested, { recursive: true }); const initialized = git(requested, ["init"]); if (!initialized.ok) throw new Error("Git repository initialization failed"); }
@@ -21,19 +43,67 @@ export function initializeResearchProject(input: ProjectInitialization): Initial
 }
 
 export function readProjectContract(repositoryRoot: string): ProjectContract {
-  const root = projectRootSchema.parse(JSON.parse(readFileSync(join(repositoryRoot, ".nosh", "project.json"), "utf8")));
-  return projectContractSchema.parse(JSON.parse(readFileSync(join(repositoryRoot, root.activeProjectContractPath), "utf8")));
+  const metadataPath = join(repositoryRoot, ".nosh", "project.json");
+  const root = projectRootSchema.safeParse(readProjectJson(metadataPath, "metadata"));
+  if (!root.success) throw projectReadError(metadataPath, "metadata", projectIssueSummary(root.error.issues));
+  // Repository-controlled metadata must not redirect reads outside .nosh/contracts.
+  if (!/^\.nosh\/contracts\/project\.v\d+\.json$/.test(root.data.activeProjectContractPath)) throw projectReadError(metadataPath, "metadata", "activeProjectContractPath must name .nosh/contracts/project.v<N>.json");
+  const contractPath = join(repositoryRoot, root.data.activeProjectContractPath);
+  const contract = projectContractSchema.safeParse(readProjectJson(contractPath, "active contract"));
+  if (!contract.success) throw projectReadError(contractPath, "active contract", projectIssueSummary(contract.error.issues));
+  return contract.data;
+}
+
+function readProjectJson(path: string, label: string): unknown {
+  try { return JSON.parse(readFileSync(path, "utf8")); }
+  // Parser messages quote file content; report only the failure class.
+  catch (error) { throw projectReadError(path, label, (error as NodeJS.ErrnoException).code === "ENOENT" ? "file is missing" : error instanceof SyntaxError ? "file is not valid JSON" : "file could not be read"); }
+}
+
+function projectReadError(path: string, label: string, detail: string): Error {
+  return new Error(`Cannot load Project ${label} at "${path}": ${detail}. Repair this file to match its NOSH schema, then retry. No older contract was selected.`);
+}
+
+function projectIssueSummary(issues: Array<{ path: Array<string | number>; message: string }>): string {
+  const summary = issues.slice(0, 3).map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`).join("; ");
+  return issues.length > 3 ? `${summary}; +${issues.length - 3} more validation issues` : summary;
+}
+
+/**
+ * Commits exactly the active contract and its pointer (never other staged work, never a push) so task
+ * preflight sees a clean checkout right after approval or amendment. Best effort: a failure is reported, not thrown.
+ */
+export function commitProjectContract(repositoryRoot: string): { committed: boolean; detail: string } {
+  const contract = readProjectContract(repositoryRoot); const paths = [".nosh/project.json", `.nosh/contracts/project.v${contract.contractVersion}.json`];
+  const git = (args: string[]) => spawnSync("git", ["-C", repositoryRoot, "-c", `safe.directory=${repositoryRoot.replaceAll("\\", "/")}`, ...args], { encoding: "utf8", windowsHide: true, timeout: 20_000 });
+  if (git(["rev-parse", "--is-inside-work-tree"]).status !== 0) return { committed: false, detail: "not a Git repository" };
+  if (git(["add", "--", ...paths]).status !== 0) return { committed: false, detail: "the contract files are ignored or unreadable by Git" };
+  if (!git(["status", "--porcelain", "--", ...paths]).stdout.trim()) return { committed: false, detail: "already committed" };
+  const identity = git(["config", "user.email"]).status === 0 ? [] : ["-c", "user.name=NOSH", "-c", "user.email=nosh@localhost.invalid"];
+  const result = git([...identity, "commit", "-m", `NOSH: approve project contract v${contract.contractVersion}`, "--", ...paths]);
+  return result.status === 0 ? { committed: true, detail: git(["rev-parse", "HEAD"]).stdout.trim() } : { committed: false, detail: (result.stderr || result.stdout).trim().slice(0, 300) };
 }
 
 export function approveProjectContract(repositoryRoot: string, input: unknown): ProjectContract {
-  const current = readProjectContract(repositoryRoot); const contract = projectContractSchema.parse(input);
+  const current = readProjectContract(repositoryRoot);
   if (current.approvedAt) throw new Error("Project discovery is already complete");
-  if (!contract.approvedAt) throw new Error("Approved Project contract requires approvedAt");
+  return writeApprovedSuccessor(repositoryRoot, current, input);
+}
+
+/** User-only amendment of an approved contract (e.g. declaring runnable commands); agents approve only through discovery. */
+export function amendProjectContract(repositoryRoot: string, input: unknown): ProjectContract {
+  const current = readProjectContract(repositoryRoot);
+  if (!current.approvedAt) throw new Error("Complete Project discovery before amending the contract");
+  return writeApprovedSuccessor(repositoryRoot, current, input);
+}
+
+function writeApprovedSuccessor(repositoryRoot: string, current: ProjectContract, input: unknown): ProjectContract {
+  // The host records the approval moment; agents must not invent approval metadata.
+  const contract = projectContractSchema.parse({ ...(input && typeof input === "object" ? input : {}), approvedAt: new Date().toISOString() });
   if (contract.projectId !== current.projectId || contract.contractVersion !== current.contractVersion + 1 || contract.createdAt !== current.createdAt || contract.createdBy !== current.createdBy || contract.canonicalDefaultBranch !== current.canonicalDefaultBranch) throw new Error("Project contract identity or version does not match the draft");
   const rootPath = join(repositoryRoot, ".nosh", "project.json"); const root = projectRootSchema.parse(JSON.parse(readFileSync(rootPath, "utf8"))); const contractPath = `.nosh/contracts/project.v${contract.contractVersion}.json`;
   writeAtomic(join(repositoryRoot, contractPath), contract); writeAtomic(rootPath, projectRootSchema.parse({ ...root, activeProjectContractVersion: contract.contractVersion, activeProjectContractPath: contractPath, updatedAt: new Date().toISOString() })); return contract;
 }
-
 function git(root: string, args: string[]): { ok: boolean; stdout: string } { const result = spawnSync("git", ["-C", root, ...args], { encoding: "utf8", windowsHide: true, timeout: 10_000 }); return { ok: result.status === 0, stdout: result.stdout ?? "" }; }
 function writeAtomic(path: string, value: JsonValue): void { mkdirSync(dirname(path), { recursive: true }); const temporary = `${path}.tmp`; writeFileSync(temporary, `${canonicalJson(value)}\n`, "utf8"); renameSync(temporary, path); }
 function configureGithubRemote(root: string, value?: string): void { const url = value?.trim(); if (!url) return; if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/.test(url)) throw new Error("GitHub repository must be a full https://github.com/owner/repository URL"); const origin = git(root, ["remote", "get-url", "origin"]); if (origin.ok && origin.stdout.trim() !== url) throw new Error("Existing Git origin does not match the GitHub repository link"); if (!origin.ok && !git(root, ["remote", "add", "origin", url]).ok) throw new Error("GitHub repository could not be configured as origin"); }

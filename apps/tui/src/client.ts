@@ -1,4 +1,5 @@
 import { subscribeEvents, type StreamEvent, type StreamState, type WebSocketFactory } from './stream.js';
+import { safeText, record } from './view-model.js';
 export type { StreamEvent, StreamState, WebSocketFactory } from './stream.js';
 
 export interface TuiConfig {
@@ -73,23 +74,47 @@ export class DaemonClient {
     })().finally(() => { this.renewal = undefined; });
     await this.renewal;
   }
-  async request<T>(path: string, body?: unknown): Promise<T> {
+  async request<T>(path: string, body?: unknown, timeoutMs = 15000): Promise<T> {
     if (!path.startsWith('/') || path.startsWith('//')) throw new Error('Invalid API path');
     await this.authenticate();
     const encoded = body === undefined ? undefined : JSON.stringify(body);
     for (let attempt = 0; attempt < 2; attempt++) {
       const response = await this.fetcher(this.baseUrl + path, {
         method: body === undefined ? 'GET' : 'POST', redirect: 'error',
-        signal: AbortSignal.any([this.abort.signal, AbortSignal.timeout(15000)]),
+        signal: AbortSignal.any([this.abort.signal, AbortSignal.timeout(timeoutMs)]),
         headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' },
         ...(encoded === undefined ? {} : { body: encoded }),
       });
       // Retry only an explicit authentication rejection, with the exact same body/key.
       if (response.status === 401 && attempt === 0) { await this.renew(); continue; }
-      const data = await response.json() as T & { error?: string };
-      if (!response.ok) throw new Error(`${response.status}: ${data.error ?? 'Daemon request failed'}`);
-      return data;
+      // Keep the HTTP status when an error body is empty or not JSON.
+      const data: unknown = response.ok ? await response.json() : await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(`${response.status}: ${requestError(record(data).error)}`);
+      return data as T;
     }
     throw new Error('Authentication failed');
   }
+}
+
+/** Zod errors arrive as JSON inside error.message. Show fields, not JSON syntax. */
+function requestError(error: unknown): string {
+  let parsed: unknown = error;
+  if (typeof error === 'string' && error.length <= 256000) {
+    try { parsed = JSON.parse(error); } catch { /* Ordinary daemon error message. */ }
+  }
+  const issues = Array.isArray(parsed) ? parsed : record(parsed).issues;
+  const compact = (value: string, limit: number) => {
+    const clean = safeText(value).replace(/\s+/g, ' ').trim();
+    return clean.length > limit ? clean.slice(0, limit - 1) + '…' : clean;
+  };
+  if (Array.isArray(issues) && issues.length && issues.every(issue => typeof record(issue).message === 'string')) {
+    const messages = issues.slice(0, 3).map(issue => {
+      const value = record(issue);
+      const path = Array.isArray(value.path) ? value.path.filter(part => typeof part === 'string' || typeof part === 'number').join('.') : '';
+      return `${compact(path || 'request', 64)}: ${compact(value.message as string, 96)}`;
+    });
+    return compact(messages.join('; '), 300) + (issues.length > 3 ? ` (+${issues.length - 3} more)` : '');
+  }
+  const message = typeof error === 'string' ? error : record(error).message;
+  return typeof message === 'string' && compact(message, 320) || 'Daemon request failed';
 }

@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { DaemonClient } from './client.js';
-import { safeText, record, text, fields, formatFields, modelName, entityRow, responseRows, boundRows, rawDetail, eventEntries, boundEntries, type ViewRow, type TranscriptEntry, type ActivityState, type PendingAction } from './view-model.js';
+import { safeText, record, text, fields, formatFields, modelName, entityRow, responseRows, boundRows, rawDetail, eventEntries, boundEntries, collapseLines, type ViewRow, type TranscriptEntry, type ActivityState, type PendingAction } from './view-model.js';
+// Cold Pi session start can exceed the default request timeout; a timeout would
+// report failure for a chat the daemon still accepts.
+const CHAT_TIMEOUT = 120_000;
 export { safeText } from './view-model.js';
 export type { ViewField, ViewRow, TranscriptEntry, ActivityState, PendingAction } from './view-model.js';
 export interface Project { projectId: string; repositoryRoot: string }
@@ -9,32 +12,57 @@ export interface Model { provider: string; id: string; name: string; thinkingLev
 export interface NoshEvent { eventId: string; sequence: number | null; type: string; payload: Record<string, unknown>; scope: { projectId: string; agentId?: string | null; jobId?: string | null; missionId?: string | null; directionId?: string | null; autoresearchId?: string | null }; correlationId?: string | null; timestamp?: string }
 export interface Stored { entityId: string; version: number; state: string; value: Record<string, unknown> }
 export const HELP = `NOSH / research workspace
-Type a message to chat. Commands:
-/projects                       list registered projects
-/project <id>                   select project
-/open <JSON>                    open/create + begin intake
-  {"path":"/repo","workingTitle":"Study","createRepository":false}
-/models                         list authenticated models
-/model <provider> <id> [thinking] | /model default
-/chat                           return to conversation
-/status                         missions, directions, autoresearch
-/jobs                           supervised jobs
-/job <id>                       details + resources
-/tail <id> [stdout|stderr]       bounded job output
-/cancel <id>                     stage cancellation
-/checkpoint <id>                 stage checkpoint
-/approvals                      inspect graph proposals and contract
-/approve <proposalId> <version>  stage approval of inspected version
-/transition <missions|directions|autoresearch> <id> <version> <state>
-/control <missionId> <version> <pause|resume|stop> [safe|checkpoint|immediate]
-/create <missions|directions|autoresearch> <JSON file path>
-/confirm                        apply staged action once
-/discard                        discard staged action
-/paths                          repository + external editor/artifact paths
-/refresh                        reload current view
-/quit                           detach; daemon and jobs keep running
-PgUp/PgDn scroll. Ctrl+P help. Esc clears input.
-Mutations are never retried after network failures. Inspect state before retrying.`;
+Type a message to chat with the project's Nosh agent.
+
+Keys
+  enter                 send
+  shift+enter           newline (also alt+enter)
+  ctrl+p                commands
+  ctrl+o                switch project
+  f2                    select model
+  ctrl+t                next thinking level
+  ctrl+b                toggle research sidebar
+  esc                   back to conversation
+  esc esc               clear the draft
+  up / down             input history
+  pgup / pgdn           scroll
+  ctrl+home / ctrl+end  top / bottom
+  ctrl+c                detach (daemon and jobs keep running)
+
+Project and model
+  /projects                       list registered projects
+  /project <id>                   select project
+  /open | /new                    open or create a repository (form)
+  /open <JSON>                    {"path":"/repo","workingTitle":"Study","createRepository":false}
+  /models                         list authenticated models
+  /model <provider> <id> [thinking] | /model default
+  /thinking                       choose a thinking level for the selected model
+
+Research state
+  /chat                           return to conversation
+  /status [missions|directions|autoresearch|agents]
+  /jobs                           supervised jobs
+  /job <id>                       details + resources
+  /tail <id> [stdout|stderr]      bounded job output
+  /approvals                      graph proposals and project contract
+  /paths                          repository, paper and contract paths
+  /refresh                        reload current view
+
+Staged actions (nothing is applied until /confirm)
+  /cancel <job-id>                /checkpoint <job-id>
+  /approve <proposalId> <version>
+  /transition <missions|directions|autoresearch> <id> <version> <state>
+  /retry <missions|directions> <id> <version> <nodeId>   return a blocked/failed node to ready
+  /control <missionId> <version> <pause|resume|stop> [safe|checkpoint|immediate]
+  /steer <missionId> <version> <message>   bounded Mission Director steer
+  /create <missions|directions|autoresearch> <JSON file path>
+  /amend-contract <JSON file path>   next approved Project contract version (e.g. runnable commands)
+  /confirm                        apply staged action once
+  /discard                        discard staged action
+
+Ids and versions for staged actions are shown on each card in /status, /jobs and /approvals.
+Mutations are never retried after network failures. Inspect state before retrying.
+/quit detaches; the daemon and supervised jobs keep running.`;
 export function acceptPage(current: NoshEvent[], page: NoshEvent[], projectId: string, after: number): { events: NoshEvent[]; after: number } {
   const ids = new Set(current.map(e => e.eventId));
   const accepted = page.filter(e => e.scope?.projectId === projectId && Number.isSafeInteger(e.sequence) && e.sequence! > after)
@@ -54,7 +82,7 @@ export class Controller {
   busy = false;
   selection: { model: {provider: string; id: string}; thinkingLevel: string } | undefined;
   private generation = 0;
-  private polling = false;
+  private pollingGeneration: number | undefined;
   private bootstrapped = false;
   private pending: { path: string; body: Record<string, unknown> } | undefined;
   private rows: ViewRow[] = [];
@@ -68,6 +96,7 @@ export class Controller {
   private streamClose: (() => void) | undefined;
   private catalogGeneration = { projects: 0, models: 0 };
   private agentMetadata: Record<string, unknown>[] = [];
+  private agentsRequestedAt = 0;
   constructor(readonly client: DaemonClient, projectId = '') { this.projectId = projectId; }
   async initialize(): Promise<void> {
     await this.client.authenticate();
@@ -77,9 +106,10 @@ export class Controller {
     this.connection = 'connected'; this.liveEnabled = true;
   }
   async poll(): Promise<void> {
-    if (this.polling || !this.projectId) return;
-    this.polling = true;
+    // A switched project polls immediately; the stale request is discarded by generation.
+    if (this.pollingGeneration === this.generation || !this.projectId) return;
     const project = this.projectId, generation = this.generation;
+    this.pollingGeneration = generation;
     try {
       const page = await this.client.request<{events:NoshEvent[]}>(`/events?projectId=${encodeURIComponent(project)}&after=${this.cursor}&limit=200${!this.bootstrapped && this.cursor === 0 ? "&recent=true" : ""}`);
       if (generation !== this.generation) return;
@@ -88,8 +118,21 @@ export class Controller {
       this.events = next.events; this.cursor = next.after; this.bootstrapped = true; this.connection = 'connected';
       this.reconcileDrafts(page.events.filter(e => e.sequence !== null && e.sequence > priorCursor));
       this.ensureStream(); this.notify();
+      void this.refreshAgentMetadata(generation);
     } catch (error) { if (generation === this.generation) this.connection = `reconnecting: ${safeText(error instanceof Error ? error.message : error)}`; }
-    finally { this.polling = false; }
+    finally { if (this.pollingGeneration === generation) this.pollingGeneration = undefined; }
+  }
+  /** Agent events carry no role/model; load them once per unknown agent (throttled). */
+  private async refreshAgentMetadata(generation: number): Promise<void> {
+    const known = new Set(this.agentMetadata.map(a => text(a.agentId)));
+    const unknown = this.events.some(e => { const id = text(e.scope.agentId); return id && e.type.startsWith('agent.') && !known.has(id); });
+    if (!unknown || Date.now() - this.agentsRequestedAt < 5000) return;
+    this.agentsRequestedAt = Date.now();
+    try {
+      const data = await this.client.request<{agents?: unknown[]}>('/agents'+this.query());
+      if (generation !== this.generation) return;
+      this.agentMetadata = (Array.isArray(data.agents) ? data.agents : []).slice(0,80).map(record); this.notify();
+    } catch { /* Metadata is presentation only; the next poll retries. */ }
   }
   /** Catalog reads do not navigate or stage an action. Latest request wins. */
   async loadProjects(): Promise<Project[]> {
@@ -110,7 +153,7 @@ export class Controller {
     this.generation++; this.streamClose?.(); this.streamClose = undefined; this.streamProject = '';
     this.projectId = project.projectId; this.events = []; this.cursor = 0; this.bootstrapped = false;
     this.pending = undefined; if (!preserveModel) this.selection = undefined;
-    this.rows = []; this.sections.clear(); this.sectionCursors.clear(); this.agentMetadata = []; this.drafts.clear(); this.liveIds.clear();
+    this.rows = []; this.sections.clear(); this.sectionCursors.clear(); this.agentMetadata = []; this.agentsRequestedAt = 0; this.drafts.clear(); this.liveIds.clear();
     this.view = 'chat'; this.detail = ''; this.error = ''; this.notify();
   }
   pendingAction(): PendingAction | undefined {
@@ -160,15 +203,15 @@ export class Controller {
     const explicitModel = this.selection ? modelName(this.selection.model) : '', durableSelection = selections.get(agentId);
     const observedModel = (inspection ? modelName(inspection) : '') || modelName(durableSelection?.model);
     const model = (active.size ? observedModel : explicitModel || observedModel) || 'Default model';
-    const thinkingLevel = text(active.size ? inspection?.thinkingLevel ?? durableSelection?.thinkingLevel : this.selection?.thinkingLevel ?? inspection?.thinkingLevel ?? durableSelection?.thinkingLevel) || 'off';
-    const role = text(inspection?.role) || (selections.has(agentId) ? 'nosh' : 'agent');
+    const thinkingLevel = text(active.size ? inspection?.thinkingLevel ?? durableSelection?.thinkingLevel : this.selection?.thinkingLevel ?? inspection?.thinkingLevel ?? durableSelection?.thinkingLevel);
+    const role = text(inspection?.role) || (selections.has(agentId) ? 'nosh' : agentId ? 'agent' : '');
     return {working:active.size > 0,label:active.get(agentId) ?? (this.busy ? 'Sending command' : 'Ready'),model,thinkingLevel,role,...(agentId ? {agentId} : {})};
   }
   transcriptEntries(): TranscriptEntry[] {
     const entries = eventEntries(this.events.filter(e => e.scope.projectId === this.projectId));
     for (const draft of this.drafts.values()) {
       if (draft.kind === 'tool') {
-        const tool = entries.find(e => e.id === draft.id); if (tool) { Object.assign(tool,draft); continue; }
+        const tool = entries.find(e => e.id === draft.id); if (tool) { Object.assign(tool,{...draft,title:tool.title}); continue; }
       }
       entries.push(draft);
     }
@@ -200,18 +243,18 @@ export class Controller {
     }
     const agentId = text(event.scope.agentId), p = record(event.payload);
     if (!agentId || this.liveIds.has(event.eventId)) return;
-    const latest = [...this.events].reverse().find(e => text(e.scope.agentId ?? e.payload.agentId) === agentId && ['agent.started','agent.turn_started','agent.completed','agent.failed','agent.retrying','agent.terminal_receipt','chat.user_message'].includes(e.type));
+    const latest = [...this.events].reverse().find(e => text(e.scope.agentId ?? record(e.payload).agentId) === agentId && ['agent.started','agent.turn_started','agent.completed','agent.failed','agent.retrying','agent.terminal_receipt','chat.user_message'].includes(e.type));
     if (latest && ['agent.completed','agent.failed','agent.terminal_receipt'].includes(latest.type)) return;
     this.liveIds.add(event.eventId); if (this.liveIds.size > 512) this.liveIds.delete(this.liveIds.values().next().value!);
     if (event.type === 'agent.text_delta' && typeof p.delta === 'string') {
       const key = `draft:${this.projectId}:${agentId}`, prior = this.drafts.get(key);
       this.drafts.set(key,{id:key,kind:'assistant',title:'NOSH',text:safeText((prior?.text ?? '') + p.delta),sequence:null,agentId,status:'streaming'});
     } else if (event.type === 'agent.tool_update') {
-      if (this.events.some(e => e.type === 'agent.tool_completed' && text(e.scope.agentId) === agentId && e.payload.toolCallId === p.toolCallId)) return;
+      if (this.events.some(e => e.type === 'agent.tool_completed' && text(e.scope.agentId) === agentId && record(e.payload).toolCallId === p.toolCallId)) return;
       const key = `tool:${this.projectId}:${agentId}:${text(p.toolCallId) || event.eventId}`;
       const content = record(p.partialResult).content;
       const body = Array.isArray(content) ? content.slice(0,8).filter(v => record(v).type === 'text').map(v => text(record(v).text,2000)).join('\n') : formatFields(fields(p.partialResult,8));
-      this.drafts.set(key,{id:key,kind:'tool',title:text(p.toolName) || 'Tool',text:safeText(body),sequence:null,agentId,status:'running'});
+      this.drafts.set(key,{id:key,kind:'tool',title:text(p.toolName) || 'Tool',text:collapseLines(safeText(body)),sequence:null,agentId,status:'running'});
     } else return;
     // Both active agents and output bytes are bounded independently.
     while (this.drafts.size > 16) this.drafts.delete(this.drafts.keys().next().value!);
@@ -224,7 +267,7 @@ export class Controller {
       if (['agent.completed','agent.failed','agent.retrying','agent.terminal_receipt'].includes(e.type)) {
         for (const [key,draft] of this.drafts) if (draft.agentId === agentId) this.drafts.delete(key);
       }
-      if (e.type === 'agent.tool_completed') this.drafts.delete(`tool:${this.projectId}:${agentId}:${text(e.payload.toolCallId) || e.eventId}`);
+      if (e.type === 'agent.tool_completed') this.drafts.delete(`tool:${this.projectId}:${agentId}:${text(record(e.payload).toolCallId) || e.eventId}`);
     }
   }
   private present(view: string, rows: ViewRow[], raw: unknown): void {
@@ -257,13 +300,13 @@ export class Controller {
     const generation = this.generation, current = () => generation === this.generation;
     if (!input.startsWith('/')) {
       this.requireProject();
-      await this.client.request('/chat', { projectId: this.projectId, message: input, idempotencyKey: `tui-chat-${randomUUID()}`, ...this.selection });
+      await this.client.request('/chat', { projectId: this.projectId, message: input, idempotencyKey: `tui-chat-${randomUUID()}`, ...this.selection }, CHAT_TIMEOUT);
       if (current()) this.view = 'chat'; return;
     }
     const [command, ...args] = input.split(/\s+/);
     const rest = input.slice(command!.length).trim();
     switch (command) {
-      case '/help': this.view = 'help'; this.detail = HELP; return;
+      case '/help': this.view = 'help'; this.detail = HELP; this.rows = []; return;
       case '/chat': this.view = 'chat'; return;
       case '/projects': {
         await this.loadProjects(); if (!current()) return;
@@ -271,10 +314,11 @@ export class Controller {
       }
       case '/project': this.selectProject(rest); return;
       case '/open': {
-        const body = JSON.parse(rest) as Record<string, unknown>;
-        if (typeof body.path !== 'string' || typeof body.workingTitle !== 'string' || typeof body.createRepository !== 'boolean') throw new Error('Use /open {"path":"/repo","workingTitle":"Study","createRepository":false}');
+        let body: Record<string, unknown>;
+        try { body = JSON.parse(rest) as Record<string, unknown>; } catch { body = {}; }
+        if (!body || typeof body.path !== 'string' || typeof body.workingTitle !== 'string' || typeof body.createRepository !== 'boolean') throw new Error('Use /open {"path":"/repo","workingTitle":"Study","createRepository":false}');
         const selection = this.selection ? structuredClone(this.selection) : undefined;
-        const {project} = await this.client.request<{project:Project}>('/projects/open', {...body,...selection});
+        const {project} = await this.client.request<{project:Project}>('/projects/open', {...body,...selection}, CHAT_TIMEOUT);
         if (!current()) return;
         this.projects = [...this.projects.filter(p => p.projectId !== project.projectId), project];
         this.selectProject(project.projectId,true); this.selection = selection; return;
@@ -289,7 +333,8 @@ export class Controller {
         if (!current()) return;
         const model = this.models.find(m => m.provider === args[0] && m.id === args[1]);
         if (!model) throw new Error('Unknown model. Use /models.');
-        const thinkingLevel = args[2] ?? 'off';
+        // Omitted thinking uses "off" only when the provider advertises it.
+        const thinkingLevel = args[2] ?? (model.thinkingLevels.includes('off') ? 'off' : model.thinkingLevels[0] ?? '');
         if (!model.thinkingLevels.includes(thinkingLevel)) throw new Error(`Thinking must be one of: ${model.thinkingLevels.join(', ')}`);
         this.selection = {model: {provider: model.provider, id:model.id}, thinkingLevel}; return;
       }
@@ -330,6 +375,14 @@ export class Controller {
         this.requireProject(); if (args.length !== 4 || !['missions','directions','autoresearch'].includes(args[0]!)) throw new Error('Use /transition <family> <id> <inspected-version> <state>');
         this.stage(`/${args[0]}/${encodeURIComponent(args[1]!)}/transition`,{expectedVersion:version(args[2]),next:args[3]}); return;
       }
+      case '/retry': {
+        this.requireProject(); if (args.length !== 4 || !['missions','directions'].includes(args[0]!)) throw new Error('Use /retry <missions|directions> <id> <inspected-version> <nodeId>');
+        this.stage(`/${args[0]}/${encodeURIComponent(args[1]!)}/nodes/${encodeURIComponent(args[3]!)}/transition`,{expectedVersion:version(args[2]),next:'ready'}); return;
+      }
+      case '/steer': {
+        this.requireProject(); const message = rest.split(/\s+/).slice(2).join(' ').trim(); if (args.length < 3 || !message) throw new Error('Use /steer <missionId> <inspected-version> <message>');
+        this.stage(`/missions/${encodeURIComponent(args[0]!)}/steer`,{expectedVersion:version(args[1]),message}); return;
+      }
       case '/control': {
         this.requireProject(); if (args.length < 3 || args.length > 4 || !['pause','resume','stop'].includes(args[2]!) || !['safe','checkpoint','immediate'].includes(args[3] ?? 'safe')) throw new Error('Use /control <missionId> <version> <pause|resume|stop> [mode]');
         this.stage(`/missions/${encodeURIComponent(args[0]!)}/control`,{expectedVersion:version(args[1]),action:args[2],mode:args[3] ?? 'safe'}); return;
@@ -342,6 +395,12 @@ export class Controller {
         const body: unknown = JSON.parse(text); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Expected a JSON object');
         if (current()) this.stage('/'+family,body as Record<string,unknown>); return;
       }
+      case '/amend-contract': {
+        this.requireProject(); if (!rest) throw new Error('Use /amend-contract <JSON file path>');
+        const text = await readFile(rest, 'utf8'); if (text.length > 256000) throw new Error('Input file exceeds 256 KB');
+        const contract: unknown = JSON.parse(text); if (!contract || typeof contract !== 'object' || Array.isArray(contract)) throw new Error('Expected a JSON object');
+        if (current()) this.stage(`/projects/${encodeURIComponent(this.projectId!)}/contract/amend`,{contract}); return;
+      }
       case '/confirm': {
         if (!this.pending) throw new Error('No staged action');
         const pending = this.pending; this.pending = undefined;
@@ -350,7 +409,7 @@ export class Controller {
         this.present('result',responseRows('result',data),data); return;
       }
       case '/discard': this.pending = undefined; this.view = 'chat'; return;
-      case '/paths': this.requireProject(); this.view = 'paths'; this.detail = `${this.projects.find(p => p.projectId === this.projectId)?.repositoryRoot}\n\nOpen this repository in your external editor.\nPaper: docs/paper.md\nContract: .nosh/contracts/project.v1.json\nUse /status and /job for daemon-owned artifact references.\nNo shell is embedded. Contract approval remains an explicit intake conversation.`; return;
+      case '/paths': this.requireProject(); this.view = 'paths'; this.rows = []; this.detail = `${this.projects.find(p => p.projectId === this.projectId)?.repositoryRoot}\n\nOpen this repository in your external editor.\nPaper: docs/paper.md\nContract: .nosh/contracts/project.v<N>.json (active version in .nosh/project.json)\nUse /status and /job for daemon-owned artifact references.\nNo shell is embedded. Contract approval remains an explicit intake conversation.`; return;
       case '/refresh': if (['status','jobs','approvals','projects','models'].includes(this.view)) await this.run('/'+this.view); else await this.poll(); return;
       default: throw new Error('Unknown command. Use /help.');
     }

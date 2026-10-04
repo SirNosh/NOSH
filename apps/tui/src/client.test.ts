@@ -23,6 +23,53 @@ describe('authenticated daemon client', () => {
     const client = new DaemonClient({baseUrl:'http://localhost:4317',sessionToken:'s'},fetcher);
     await expect(client.request('/missions/m/transition',{})).rejects.toThrow('409: stale version'); expect(fetcher).toHaveBeenCalledTimes(1);
   });
+  it('summarizes serialized validation issues instead of hiding the field behind JSON syntax', async () => {
+    const issues = [
+      {code:'invalid_type',expected:'string',received:'undefined',path:['templateVersion'],message:'Required'},
+      {code:'invalid_string',path:['northStar','contributionType'],message:'Invalid'},
+      {code:'invalid_type',expected:'object',received:'undefined',path:['paper'],message:'Required'},
+      {code:'unrecognized_keys',path:[],message:'Unrecognized keys'},
+    ];
+    const fetcher = vi.fn().mockResolvedValue(json({error:JSON.stringify(issues,null,2)},400));
+    const client = new DaemonClient({baseUrl:'http://localhost:4317',sessionToken:'s'},fetcher);
+    await expect(client.request('/chat',{message:'hello'})).rejects.toThrow('400: templateVersion: Required; northStar.contributionType: Invalid; paper: Required (+1 more)');
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+  it.each([
+    [{path:['datasets',0,'name'],message:'Required'}],
+    {issues:[{path:['datasets',0,'name'],message:'Required'}]},
+    JSON.stringify({issues:[{path:['datasets',0,'name'],message:'Required'}]}),
+  ])('accepts structured validation errors with array field paths', async error => {
+    const fetcher = vi.fn().mockResolvedValue(json({error},400));
+    const client = new DaemonClient({baseUrl:'http://localhost:4317',sessionToken:'s'},fetcher);
+    await expect(client.request('/chat',{})).rejects.toThrow('400: datasets.0.name: Required');
+  });
+  it('bounds and sanitizes validation paths and messages before displaying them', async () => {
+    const error = JSON.stringify([{path:['paper\x1b]52;c;secret\x07','name\u202e'],message:'Required\n\t'+ 'x'.repeat(2000)}]);
+    const fetcher = vi.fn().mockResolvedValue(json({error},400));
+    const client = new DaemonClient({baseUrl:'http://localhost:4317',sessionToken:'s'},fetcher);
+    const failure = await client.request('/chat',{}).catch((error: Error) => error);
+    expect(failure).toBeInstanceOf(Error);
+    const message = (failure as Error).message;
+    expect(message).toContain('400: paper.name: Required ');
+    expect(message).not.toMatch(/[\x1b\u202e\n\t]/); expect(message).not.toContain('secret');
+    expect(message.length).toBeLessThanOrEqual(325);
+  });
+  it.each([null, {}, {error:null}, {error:{code:'invalid_type'}}])('handles an unusable error response without masking its HTTP status', async body => {
+    const client = new DaemonClient({baseUrl:'http://localhost:4317',sessionToken:'s'},vi.fn().mockResolvedValue(json(body,400)));
+    await expect(client.request('/chat',{})).rejects.toThrow('400: Daemon request failed');
+  });
+  it('keeps the HTTP status when an error body is not JSON', async () => {
+    const client = new DaemonClient({baseUrl:'http://localhost:4317',sessionToken:'s'},vi.fn().mockResolvedValue(new Response('<html>Bad gateway</html>',{status:502})));
+    await expect(client.request('/projects')).rejects.toThrow('502: Daemon request failed');
+  });
+  it('keeps ordinary errors readable and bounded without terminal controls or newlines', async () => {
+    const client = new DaemonClient({baseUrl:'http://localhost:4317',sessionToken:'s'},vi.fn().mockResolvedValue(json({error:'Invalid contract\n\x1b[31mpaper\x1b[0m: '+ 'x'.repeat(2000)},400)));
+    const failure = await client.request('/chat',{}).catch((error: Error) => error);
+    expect((failure as Error).message).toMatch(/^400: Invalid contract paper: /);
+    expect((failure as Error).message.length).toBeLessThanOrEqual(325);
+    expect((failure as Error).message).not.toMatch(/[\n\x1b]/);
+  });
   it('rejects credential-bearing URLs and plaintext remote hosts', () => {
     expect(() => new DaemonClient({baseUrl:'http://remote.invalid'})).toThrow('HTTPS');
     expect(() => new DaemonClient({baseUrl:'https://user:pass@remote.invalid'})).toThrow('Invalid');

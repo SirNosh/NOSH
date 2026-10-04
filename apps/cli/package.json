@@ -15,7 +15,8 @@
     "@nosh/core": "workspace:*",
     "@nosh/evidence": "workspace:*",
     "@nosh/persistence": "workspace:*",
-    "@nosh/wire": "workspace:*",
-    "@nosh/tui": "workspace:*"
+    "@nosh/pi-adapter": "workspace:*",
+    "@nosh/tui": "workspace:*",
+    "@nosh/wire": "workspace:*"
   }
 }

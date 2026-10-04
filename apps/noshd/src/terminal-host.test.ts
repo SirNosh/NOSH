@@ -129,6 +129,16 @@ describe("durable terminal host journal", () => {
     } finally { store.close(); }
   });
 
+  it("offers the one correction for a mis-copied own-scope ID but not for a foreign task", async () => {
+    const store = new EventStore(":memory:");
+    try {
+      const slip = host(store, vi.fn(() => { throw new Error("Scope field mismatch: experimentId must be exactly exp_a"); }));
+      expect(await slip.submitTerminal(context, records)).toMatchObject({ accepted: false, retryAllowed: true });
+      const foreign = host(store, vi.fn(() => { throw new Error("Terminal task scope mismatch"); }));
+      expect(await foreign.submitTerminal({ ...context, turnId: "ins_foreign" }, records)).toMatchObject({ accepted: false, retryAllowed: false });
+    } finally { store.close(); }
+  });
+
   it("admits at most two provider generations across host replacement", async () => {
     const store = new EventStore(":memory:");
     try {

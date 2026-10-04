@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import { EventEmitter } from "node:events";
+import { request } from "node:http";
 import { missionJobMatches, NoshDaemon } from "./daemon.js";
 import { isLoopbackAddress, LocalApiServer, parseModelSelection } from "./server.js";
 import { ResearchControl } from "./research-control.js";
@@ -78,6 +79,12 @@ describe("noshd local API", () => {
       expect((await fetch(`${base}/projects`, { headers: { origin: base } })).status).toBe(200);
       expect((await fetch(`${base}/projects`, { headers: { origin: "http://attacker.invalid" } })).status).toBe(401);
       expect((await fetch(`${base}/projects`, { headers: { "sec-fetch-site": "cross-site" } })).status).toBe(401);
+      // DNS rebinding: attacker Host and matching Origin arrive from loopback.
+      const rebound = (headers: Record<string, string>) => new Promise<number>((resolveStatus, rejectStatus) => { const req = request(`${base}/projects`, { headers }, (res) => { res.resume(); resolveStatus(res.statusCode ?? 0); }); req.once("error", rejectStatus); req.end(); });
+      const port = new URL(base).port;
+      expect(await rebound({ host: `attacker.invalid:${port}`, origin: `http://attacker.invalid:${port}` })).toBe(401);
+      expect(await rebound({ host: `attacker.invalid:${port}` })).toBe(401);
+      expect(await rebound({ host: `localhost:${port}` })).toBe(200);
       expect((await fetch(`${base}/session`, { method: "POST" })).status).toBe(401);
       const sessionResponse = await fetch(`${base}/session`, { method: "POST", headers: { authorization: `Bearer ${token}` } }); expect(sessionResponse.status).toBe(201); const session = await sessionResponse.json() as { token: string; expiresAt: string }; expect(Date.parse(session.expiresAt)).toBeGreaterThan(Date.now()); expect((await fetch(`${base}/projects`, { headers: { origin: "http://attacker.invalid", authorization: `Bearer ${session.token}` } })).status).toBe(200); const headers = { "content-type": "application/json" };
       const createdRoot = join(directory, "created-project"); const createdResponse = await fetch(`${base}/projects/open`, { method: "POST", headers, body: JSON.stringify({ path: createdRoot, createRepository: true, workingTitle: "Created Project" }) }); expect(createdResponse.status).toBe(201); const created = (await createdResponse.json() as { project: { projectId: string } }).project; expect(existsSync(join(createdRoot, ".nosh", "contracts", "project.v1.json"))).toBe(true); expect(existsSync(join(createdRoot, "docs", "paper.md"))).toBe(true); const draftContract = await fetch(`${base}/projects/${created.projectId}/contract`, { headers }); expect((await draftContract.json() as { contract: { approvedAt: string | null; northStar: { contributionType: string }; computeEnvelope: { maximumDiskBytes: number } } }).contract).toMatchObject({ approvedAt: null, northStar: { contributionType: "contribution_pending" }, computeEnvelope: { maximumDiskBytes: 0 } });
@@ -98,10 +105,6 @@ describe("noshd local API", () => {
       const events = await fetch(`${base}/events?projectId=${projectId}&after=0`, { headers });
       const replayed = (await events.json() as { events: Array<{ type: string }> }).events;
       expect(replayed.some((event) => event.type === "agent.started")).toBe(false);
-      const interruptedCommandId = createId("cmd");
-      const eventStore = new EventStore(projectDatabasePath);
-      eventStore.append({ $schema: schemaUri("event"), schemaVersion: 1, retention: "persistent", type: "remote.command_accepted", source: "test-device", scope: { projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: null }, correlationId: interruptedCommandId, causationId: null, payload: { accountId: "acc_test", commandId: interruptedCommandId, deviceId: "dev_test", type: "job.cancel", targetType: "job", targetId: createId("job"), expectedVersion: 9, requiredPermission: "job.cancel", issuedAt: "2026-07-17T20:00:00.000Z", envelopeHash: "sha256:test" } });
-      eventStore.close();
       const pageResponse = await fetch(`${base}/events?projectId=${projectId}&after=0&limit=1`, { headers });
       const page = await pageResponse.json() as { events: Array<{ sequence: number }>; nextCursor: number; hasMore: boolean };
       expect(page.events).toHaveLength(1);

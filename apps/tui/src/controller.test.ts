@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Controller, acceptPage, safeText, type NoshEvent } from './controller.js';
+import { eventEntries, collapseLines } from './view-model.js';
 import { DaemonClient } from './client.js';
 const event = (sequence: number, projectId = 'p'): NoshEvent => ({eventId:`e${sequence}`,sequence,type:'agent.completed',payload:{message:'hello'},scope:{projectId}});
 function setup() { const client = new DaemonClient({baseUrl:'http://localhost',sessionToken:'s'}); const request = vi.spyOn(client,'request').mockResolvedValue({}); const controller = new Controller(client,'p'); controller.projects = [{projectId:'p',repositoryRoot:'/p'},{projectId:'q',repositoryRoot:'/q'}]; return {controller,request}; }
@@ -16,6 +17,57 @@ describe('thin controller', () => {
     await controller.execute('/open {"path":"/new","workingTitle":"Study","createRepository":true}');
     expect(controller.projectId).toBe('new');
     expect(controller.selection).toEqual({model:{provider:'x',id:'model'},thinkingLevel:'low'});
+  });
+  it('labels an unapproved active contract as a draft, never approved', async () => {
+    const {controller,request} = setup();
+    request.mockResolvedValueOnce({contract:{workingTitle:'Study',approvedAt:null}}).mockResolvedValueOnce({proposals:[]});
+    await controller.execute('/approvals');
+    expect(controller.inspectorRows()[0]).toMatchObject({title:'Study',state:'draft'});
+    request.mockResolvedValueOnce({contract:{workingTitle:'Study',approvedAt:'2026-10-01T00:00:00.000Z'}}).mockResolvedValueOnce({proposals:[]});
+    await controller.execute('/approvals');
+    expect(controller.inspectorRows()[0]?.state).toBe('approved');
+  });
+  it('help and paths do not keep the previous view rows', async () => {
+    const {controller,request} = setup();
+    request.mockResolvedValueOnce({contract:{workingTitle:'Study',approvedAt:null}}).mockResolvedValueOnce({proposals:[]});
+    await controller.execute('/approvals'); expect(controller.inspectorRows()).not.toEqual([]);
+    await controller.execute('/help'); expect(controller.inspectorRows()).toEqual([]);
+    await controller.execute('/paths'); expect(controller.inspectorRows()).toEqual([]);
+  });
+  it('titles tools by their target and collapses long output', () => {
+    const scope = {projectId:'p',agentId:'a'};
+    const entries = eventEntries([
+      {eventId:'t1',sequence:1,type:'agent.tool_started',payload:{toolName:'bash',toolCallId:'c',args:{command:'ls -la .nosh'}},scope},
+      {eventId:'t2',sequence:2,type:'agent.tool_completed',payload:{toolName:'bash',toolCallId:'c',result:{content:[{type:'text',text:Array.from({length:20},(_,i)=>`line ${i}`).join('\n')}]}},scope},
+    ]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({title:'bash ls -la .nosh',status:'completed'});
+    expect(entries[0]?.text.split('\n')).toHaveLength(7);
+    expect(entries[0]?.text).toContain('… 14 more lines');
+    expect(collapseLines('x'.repeat(2000))).toHaveLength(360);
+  });
+  it('reports /open usage instead of a JSON parser error', async () => {
+    const {controller,request} = setup();
+    await expect(controller.execute('/open ')).rejects.toThrow('Use /open {"path"');
+    await expect(controller.execute('/open not-json')).rejects.toThrow('Use /open {"path"');
+    expect(request).not.toHaveBeenCalled();
+  });
+  it('omitted thinking uses only an advertised level', async () => {
+    const {controller} = setup();
+    controller.models = [{provider:'x',id:'plain',name:'Plain',thinkingLevels:['low','high']},{provider:'x',id:'off',name:'Off',thinkingLevels:['off','low']}];
+    await controller.execute('/model x plain'); expect(controller.selection?.thinkingLevel).toBe('low');
+    await controller.execute('/model x off'); expect(controller.selection?.thinkingLevel).toBe('off');
+  });
+  it('polls a switched project immediately while a stale poll is in flight', async () => {
+    const {controller,request} = setup();
+    let release!: (value: unknown) => void;
+    request.mockReturnValueOnce(new Promise(resolve => { release = resolve; })).mockResolvedValueOnce({events:[event(5,'q')]});
+    const stale = controller.poll();
+    controller.selectProject('q');
+    await controller.poll();
+    expect(request).toHaveBeenLastCalledWith('/events?projectId=q&after=0&limit=200&recent=true');
+    release({events:[event(9)]}); await stale;
+    expect(controller.events.map(e => e.sequence)).toEqual([5]);
   });
   it('bootstraps once, resumes deltas after reconnect, and resets on project switch', async () => {
     const {controller,request} = setup();
@@ -71,7 +123,18 @@ describe('thin controller', () => {
     const {controller,request} = setup(); controller.models = [{provider:'x',id:'model',name:'Model',thinkingLevels:['off','low']}];
     await expect(controller.execute('/model x model high')).rejects.toThrow('Thinking');
     await controller.execute('/model x model low'); await controller.execute('hello');
-    expect(request).toHaveBeenCalledWith('/chat',expect.objectContaining({model:{provider:'x',id:'model'},thinkingLevel:'low',message:'hello'}));
+    expect(request).toHaveBeenCalledWith('/chat',expect.objectContaining({model:{provider:'x',id:'model'},thinkingLevel:'low',message:'hello'}),120_000);
+  });
+  it('sends the daemon chat shape with default and selected Muse models', async () => {
+    const {controller,request} = setup();
+    controller.models = [{provider:'opencode',id:'muse-spark-1.3-contributor-free',name:'Muse',thinkingLevels:['off','high']}];
+    await controller.execute('hello');
+    expect(request).toHaveBeenLastCalledWith('/chat',{projectId:'p',message:'hello',idempotencyKey:expect.stringMatching(/^tui-chat-/)},120_000);
+    await controller.execute('/model opencode muse-spark-1.3-contributor-free high');
+    await controller.execute('hello');
+    expect(request).toHaveBeenLastCalledWith('/chat',{projectId:'p',message:'hello',idempotencyKey:expect.stringMatching(/^tui-chat-/),model:{provider:'opencode',id:'muse-spark-1.3-contributor-free'},thinkingLevel:'high'},120_000);
+    await controller.execute('/model default'); await controller.execute('hello again');
+    expect(request).toHaveBeenLastCalledWith('/chat',{projectId:'p',message:'hello again',idempotencyKey:expect.stringMatching(/^tui-chat-/)},120_000);
   });
   it('asks for bounded pages and reconnects without losing cursor', async () => {
     const {controller,request} = setup(); controller.cursor=9;
@@ -98,7 +161,7 @@ describe('workspace presentation', () => {
     expect(entries[1]).toMatchObject({id:toolId,status:'completed',text:'Paper contents'});
     expect(entries[2]).toMatchObject({model:'x/m',thinkingLevel:'low'});
     expect(JSON.stringify(entries)).not.toContain('never display');
-    expect(entries[3]?.text).toContain('accepted: true');
+    expect(entries[3]?.text).toContain('Accepted: true');
   });
   it('shows validation receipts separately from terminal JSON and preserves host failure', () => {
     const {controller} = setup(); controller.events = [agentEvent(1,'agent.completed',{message:JSON.stringify({$schema:'https://nosh.dev/schemas/terminal-output/v1',schemaVersion:1,records:[{summary:'Experiment finished'}]})}),agentEvent(2,'agent.terminal_receipt',{accepted:true,retryAllowed:false,status:'completed',effect:{state:'failed'}})];
@@ -170,7 +233,7 @@ describe('workspace presentation', () => {
     const {controller,request} = setup(); request.mockResolvedValueOnce({text:'old'.repeat(10000)+'\nrecent\x1b[31m text'}).mockResolvedValueOnce({job:{jobId:'j',state:'running',command:['python','train.py']},resources:{elapsedSeconds:12,residentBytes:1024,outputStalledSeconds:1}});
     await controller.execute('/tail j stderr'); expect(request).toHaveBeenLastCalledWith('/jobs/j/tail?projectId=p&stream=stderr');
     expect(controller.inspectorRows()[0]?.fields[0]?.value).toContain('recent text'); expect(controller.inspectorRows()[0]?.fields[0]?.value.length).toBeLessThanOrEqual(16000);
-    await controller.execute('/job j'); expect(controller.inspectorRows()[0]?.fields).toContainEqual({label:'elapsed Seconds',value:'12'});
+    await controller.execute('/job j'); expect(controller.inspectorRows()[0]?.fields).toContainEqual({label:'Elapsed seconds',value:'12'});
   });
   it('bounds rendered history, strips complete OSC/ANSI and ignores other-project events', () => {
     const {controller} = setup(); controller.events = Array.from({length:400},(_,i) => agentEvent(i+1,'agent.completed',{message:'x'.repeat(16000)}));
@@ -193,6 +256,23 @@ describe('project-scoped concurrency', () => {
     const {controller,request} = setup(); let reject!: (v:unknown) => void; request.mockReturnValue(new Promise((_r,j) => {reject=j;}));
     controller.view='help'; controller.detail='old help'; const pending=controller.execute('/jobs'); controller.selectProject('q'); reject(new Error('old error'));
     await expect(pending).rejects.toThrow('old error'); expect(controller.view).toBe('chat'); expect(controller.detail).toBe(''); expect(controller.error).toBe('');
+  });
+  it('stages a Project contract amendment from a JSON file', async () => {
+    const { mkdtempSync, writeFileSync } = await import('node:fs'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+    const file = join(mkdtempSync(join(tmpdir(), 'nosh-amend-')), 'contract.json'); writeFileSync(file, JSON.stringify({ contractVersion: 3 }));
+    const {controller} = setup(); await controller.execute(`/amend-contract ${file}`);
+    expect(controller.pendingAction()).toMatchObject({ path: '/projects/p/contract/amend', body: { contract: { contractVersion: 3 } } });
+    await expect(controller.execute('/amend-contract')).rejects.toThrow('Use /amend-contract');
+  });
+  it('stages a Mission steer with the full message text', async () => {
+    const {controller} = setup(); await controller.execute('/steer m 4 Keep  scope narrow; report blockers.');
+    expect(controller.pendingAction()).toMatchObject({ path: '/missions/m/steer', body: { expectedVersion: 4, message: 'Keep scope narrow; report blockers.' } });
+    await expect(controller.execute('/steer m 4')).rejects.toThrow('Use /steer');
+  });
+  it('stages a blocked node retry as a versioned node transition to ready', async () => {
+    const {controller} = setup(); await controller.execute('/retry directions d 7 dnode_x');
+    expect(controller.pendingAction()).toMatchObject({ path: '/directions/d/nodes/dnode_x/transition', body: { expectedVersion: 7, next: 'ready' } });
+    await expect(controller.execute('/retry autoresearch a 1 n')).rejects.toThrow('Use /retry');
   });
   it('never retries a failed confirmation and keeps its original project/version/idempotency', async () => {
     const {controller,request} = setup(); await controller.execute('/transition missions m 3 paused'); const action=controller.pendingAction()!;

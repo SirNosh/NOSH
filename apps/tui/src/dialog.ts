@@ -31,6 +31,8 @@ export interface DialogController {
   loadModels(): Promise<Model[]>;
   selectProject(projectId:string): void;
   pendingAction(): DialogPendingAction | undefined;
+  /** Model the active agent is running, as provider/id; used when nothing is selected explicitly. */
+  activity?(): { model: string };
 }
 export interface DialogOptions {
   onClose?: () => void;
@@ -154,10 +156,12 @@ export class DialogManager {
     if (!rows.length) state.list.add(new TextRenderable(this.renderer,{id:'nosh-dialog-empty',height:2,fg:this.theme.muted,content:dialogText(state.empty,200)}));
     rows.forEach((choice, offset) => {
       const index = start + offset, selected = index === state.index;
-      const category = choice.category ? `  · ${choice.category}` : '';
+      // Shortcuts are right-aligned like OpenCode; category is the fallback.
+      const label = `${selected ? '›' : ' '} ${choice.title}`, tag = choice.keybind ?? choice.category ?? '';
+      const gap = Math.max(2, width - label.length - tag.length);
       state.list.add(new TextRenderable(this.renderer,{
         id:`nosh-dialog-choice-${index}`,height:1,width:'100%',
-        content:dialogText(`${selected ? '›' : ' '} ${choice.title}${category}`,width),
+        content:dialogText(tag ? label + ' '.repeat(gap) + tag : label,width),
         fg:selected ? this.theme.accent : this.theme.text,bg:selected ? this.theme.selected : this.theme.panel,
         onMouseDown:event => { event.stopPropagation(); state.index = index; this.paintChoices(); },
         onMouseUp:event => { event.stopPropagation(); if (!this.locked && this.state === state) this.choose(); },
@@ -201,7 +205,8 @@ export class DialogManager {
     this.select('Commands', COMMANDS.map(command => ({...command,run:() => this.command(command)})), {query});
   }
   openSlash(query = ''): void {
-    this.select('Slash commands', COMMANDS.map(command => ({...command,title:command.command.trim() + '  ' + command.title,run:() => this.command(command)})),{
+    // The composer holds only the slash trigger; choosing a command consumes it.
+    this.select('Slash commands', COMMANDS.map(command => ({...command,title:command.command.trim() + '  ' + command.title,run:() => { this.options.setComposer?.(''); return this.command(command); }})),{
       query:query.replace(/^\//,''),hint:'↑↓ select   Enter choose   Esc close',
     });
   }
@@ -252,13 +257,15 @@ export class DialogManager {
           run:() => this.pickThinking(model),
         })),
       ];
-      const selected = this.controller.selection?.model;
-      this.select('Select model',choices,{current:selected ? selected.provider + '/' + selected.id : '__default',
+      const selected = this.controller.selection?.model, running = this.controller.activity?.().model ?? '';
+      const current = selected ? selected.provider + '/' + selected.id : choices.some(choice => choice.id === running) ? running : '__default';
+      this.select('Select model',choices,{current,
         hint:models.length ? '↑↓ select   Enter thinking levels   Esc close' : 'No authenticated models · Esc close'});
     });
   }
   openThinking(): void {
     const selected = this.controller.selection;
+    // Thinking levels belong to a model; choose one first.
     if (!selected) { this.openModels(); return; }
     void this.load('Thinking level',() => this.controller.loadModels(), models => {
       const model = models.find(model => model.provider === selected.model.provider && model.id === selected.model.id);
@@ -334,11 +341,10 @@ export class DialogManager {
       if (!current || current.projectId !== this.controller.projectId || actionFingerprint(current) !== fingerprint)
         throw new Error('The staged action changed. Close this dialog and inspect the current action.');
     };
-    const description = [pending.path,...pending.fields.map(field => `${field.label}: ${field.value}`)].join(' · ');
-    this.select(`Review · ${pending.title}`, [
-      {id:'keep',title:'Go back — keep staged',category:'Safe default',description,run:() => this.close()},
+    this.select(`Confirm · ${pending.title.replace(/^Review /, '')}`, [
+      {id:'keep',title:'Go back — keep staged',category:'Safe default',description:'Close this review. The action stays staged; nothing is applied.',run:() => this.close()},
       {id:'discard',title:'Discard staged action',category:'No mutation',description:'Remove this staged action without applying it.',run:() => { check(); return this.execute('/discard'); }},
-      {id:'apply',title:'Apply this action once',category:'Explicit confirmation',description,run:() => { check(); return this.execute('/confirm'); }},
+      {id:'apply',title:'Apply this action once',category:'Explicit confirmation',description:'Send the request above exactly once. It is not retried after a network failure.',run:() => { check(); return this.execute('/confirm'); }},
     ],{searchable:false,hint:'↑↓ review   Enter choose   Esc keep staged'});
     // Show each inspected field, rather than making the user decode request JSON.
     const state = this.state;
@@ -364,7 +370,7 @@ export class DialogManager {
         const delta = key.name === 'up' || (key.name === 'tab' && key.shift) ? -1 : key.name === 'pageup' ? -8 : key.name === 'pagedown' ? 8 : 1;
         state.index = moveSelection(state.index,delta,state.filtered.length); this.paintChoices();
       } else if (key.name === 'return' || key.name === 'enter') { consume(); this.choose(); }
-      else if (!state.searchable || (key.ctrl && ['p','o','m'].includes(key.name))) consume();
+      else if (!state.searchable || (key.ctrl && ['p','o','t'].includes(key.name)) || key.name === 'f2') consume();
       return true;
     }
     if (state?.kind === 'form') {
@@ -378,7 +384,7 @@ export class DialogManager {
         else this.close();
       } else if (key.name === 'space' && state.focus === 2) {
         consume(); state.values.createRepository = !state.values.createRepository; this.focusForm(2);
-      } else if (state.focus >= 2 || (key.ctrl && ['p','o','m'].includes(key.name))) consume();
+      } else if (state.focus >= 2 || (key.ctrl && ['p','o','t'].includes(key.name)) || key.name === 'f2') consume();
       return true;
     }
     consume(); return true;

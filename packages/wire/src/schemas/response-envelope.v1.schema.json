@@ -1,7 +1,410 @@
 {
   "$ref": "#/definitions/response-envelope",
   "definitions": {
-    "response-envelope": {}
+    "response-envelope": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/response-envelope/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "templateVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "responseId": {
+          "type": "string",
+          "pattern": "^rsp_[0-9a-f]{32}$"
+        },
+        "responseType": {
+          "type": "string",
+          "enum": [
+            "nosh.chat_turn",
+            "mission_director.cycle",
+            "research_director.cycle",
+            "worker.completion",
+            "librarian.research_completion",
+            "review.verdict",
+            "task.blocked",
+            "task.failure",
+            "graph.change_proposed",
+            "handoff.created",
+            "handoff.teachback",
+            "user_input.requested",
+            "steering.disposition"
+          ]
+        },
+        "taskId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^tsk_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attempt": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "nosh",
+            "mission_director",
+            "research_director",
+            "librarian_researcher",
+            "general_worker",
+            "reviewer"
+          ]
+        },
+        "agentId": {
+          "type": "string",
+          "pattern": "^agt_[0-9a-f]{32}$"
+        },
+        "scope": {
+          "type": "object",
+          "properties": {
+            "projectId": {
+              "type": "string",
+              "pattern": "^prj_[0-9a-f]{32}$"
+            },
+            "missionId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^mis_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "directionId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^dir_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "autoresearchId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^ar_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "experimentId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^exp_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "runId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^run_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "graphNodeId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "projectId",
+            "missionId",
+            "directionId",
+            "autoresearchId",
+            "experimentId",
+            "runId",
+            "graphNodeId"
+          ],
+          "additionalProperties": false
+        },
+        "observedVersions": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "completed",
+            "partial",
+            "blocked",
+            "failed",
+            "cancelled",
+            "superseded"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "goalAlignment": {
+          "type": "object",
+          "properties": {
+            "projectGoalId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "missionCriterionIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "maxItems": 100
+            },
+            "directionQuestionId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "graphNodeId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "contribution": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            }
+          },
+          "required": [
+            "projectGoalId",
+            "missionCriterionIds",
+            "directionQuestionId",
+            "graphNodeId",
+            "contribution"
+          ],
+          "additionalProperties": false
+        },
+        "artifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^art_[0-9a-f]{32}$"
+          },
+          "maxItems": 100
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^evd_[0-9a-f]{32}$"
+          },
+          "maxItems": 100
+        },
+        "decisionIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "maxItems": 100
+        },
+        "blockerIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^blk_[0-9a-f]{32}$"
+          },
+          "maxItems": 100
+        },
+        "requestIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "maxItems": 100
+        },
+        "nextActionCandidates": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          },
+          "maxItems": 100
+        },
+        "validationClaims": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          },
+          "maxItems": 100
+        },
+        "payload": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {}
+            },
+            {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          ]
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "submittedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "templateVersion",
+        "responseId",
+        "responseType",
+        "taskId",
+        "attempt",
+        "role",
+        "agentId",
+        "scope",
+        "observedVersions",
+        "status",
+        "summary",
+        "goalAlignment",
+        "artifactIds",
+        "evidenceIds",
+        "decisionIds",
+        "blockerIds",
+        "requestIds",
+        "nextActionCandidates",
+        "validationClaims",
+        "payload",
+        "startedAt",
+        "submittedAt"
+      ],
+      "additionalProperties": false
+    }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nosh.dev/schemas/response-envelope/v1"

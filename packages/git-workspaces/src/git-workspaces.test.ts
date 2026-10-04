@@ -1,9 +1,9 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { GitWorkspaceManager } from "./index.js";
+import { GitWorkspaceManager, worktreeGitEnvironment } from "./index.js";
 
 describe("GitWorkspaceManager", () => {
   it("freezes evaluated commits and contract provenance", () => {
@@ -28,3 +28,33 @@ function run(cwd: string, args: string[]): string {
   const result = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8", windowsHide: true });
   if (result.status !== 0) throw new Error(result.stderr); return result.stdout.trim();
 }
+
+describe("worktreeGitEnvironment", () => {
+  it("adds scoped safe.directory trust only for a linked worktree of a trusted repository", () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-trust-")); const repository = join(directory, "repo");
+    try {
+      mkdirSync(repository); const git = (cwd: string, ...args: string[]) => spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
+      git(repository, "init", "-q"); writeFileSync(join(repository, "a.txt"), "a\n"); git(repository, "add", "a.txt"); git(repository, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "a");
+      expect(worktreeGitEnvironment(repository)).toBe(process.env);
+      const worktree = new GitWorkspaceManager(repository, join(repository, ".nosh", "worktrees"), join(repository, ".nosh", "git")).create("nosh/task-trust", git(repository, "rev-parse", "HEAD").stdout.trim(), "wt_trust");
+      const environment = worktreeGitEnvironment(worktree);
+      const values = Object.entries(environment).filter(([key]) => key.startsWith("GIT_CONFIG_VALUE_")).map(([, value]) => String(value).toLowerCase());
+      expect(values).toEqual(expect.arrayContaining([worktree.replaceAll("\\", "/").toLowerCase(), repository.replaceAll("\\", "/").toLowerCase()]));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+});
+
+describe("worktree checkout bytes", () => {
+  it("matches committed blobs even when the user's Git converts line endings", () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-eol-")); const repository = join(directory, "repo");
+    try {
+      mkdirSync(repository); const git = (cwd: string, ...args: string[]) => spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
+      git(repository, "init", "-q"); git(repository, "config", "core.autocrlf", "true");
+      writeFileSync(join(repository, "config.json"), "{\n  \"threshold\": 0.5\n}\n"); git(repository, "add", "config.json"); git(repository, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "a");
+      const worktree = new GitWorkspaceManager(repository, join(repository, ".nosh", "worktrees"), join(repository, ".nosh", "git")).create("nosh/task-eol", git(repository, "rev-parse", "HEAD").stdout.trim(), "wt_eol");
+      expect(readFileSync(join(worktree, "config.json"), "utf8")).toBe("{\n  \"threshold\": 0.5\n}\n");
+      // Plumbing without user config must see a clean tree.
+      expect(spawnSync("git", ["-C", worktree, "-c", "core.autocrlf=false", "status", "--porcelain"], { encoding: "utf8" }).stdout.trim()).toBe("");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+});

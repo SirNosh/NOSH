@@ -1,7 +1,281 @@
 {
   "$ref": "#/definitions/mission-director-cycle",
   "definitions": {
-    "mission-director-cycle": {}
+    "mission-director-cycle": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/mission-director-cycle/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "cycleId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "missionId": {
+          "type": "string",
+          "pattern": "^mis_[0-9a-f]{32}$"
+        },
+        "directorAgentId": {
+          "type": "string",
+          "pattern": "^agt_[0-9a-f]{32}$"
+        },
+        "observedObjectiveVersion": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "observedGraphVersion": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "consumedEventRange": {
+          "type": "object",
+          "properties": {
+            "fromSequence": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "toSequence": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "fromSequence",
+            "toSequence"
+          ],
+          "additionalProperties": false
+        },
+        "northStarCheck": {
+          "type": "object",
+          "properties": {
+            "missionObjective": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "unsatisfiedCriterionIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              }
+            },
+            "criticalPathNodeIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              }
+            },
+            "currentWorkContributes": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "missionObjective",
+            "unsatisfiedCriterionIds",
+            "criticalPathNodeIds",
+            "currentWorkContributes"
+          ],
+          "additionalProperties": false
+        },
+        "portfolioCheck": {
+          "type": "object",
+          "properties": {
+            "readyNodeIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              }
+            },
+            "starvedNodeIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              }
+            },
+            "overfocusedNodeId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "fairnessAction": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "readyNodeIds",
+            "starvedNodeIds",
+            "overfocusedNodeId",
+            "fairnessAction"
+          ],
+          "additionalProperties": false
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "targetId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "action",
+              "targetId",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "createdTaskIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^tsk_[0-9a-f]{32}$"
+          }
+        },
+        "invokedDirectionIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^dir_[0-9a-f]{32}$"
+          }
+        },
+        "invokedAutoresearchIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^ar_[0-9a-f]{32}$"
+          }
+        },
+        "graphChangeProposalIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          }
+        },
+        "userInputRequestId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "budgetWarnings": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "maxItems": 100
+        },
+        "blockerIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^blk_[0-9a-f]{32}$"
+          }
+        },
+        "nextWake": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "event",
+                "deadline",
+                "event_or_deadline"
+              ]
+            },
+            "deadline": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "deadline"
+          ],
+          "additionalProperties": false
+        },
+        "submittedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "cycleId",
+        "missionId",
+        "directorAgentId",
+        "observedObjectiveVersion",
+        "observedGraphVersion",
+        "consumedEventRange",
+        "northStarCheck",
+        "portfolioCheck",
+        "decisions",
+        "createdTaskIds",
+        "invokedDirectionIds",
+        "invokedAutoresearchIds",
+        "graphChangeProposalIds",
+        "userInputRequestId",
+        "budgetWarnings",
+        "blockerIds",
+        "nextWake",
+        "submittedAt"
+      ],
+      "additionalProperties": false
+    }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nosh.dev/schemas/mission-director-cycle/v1"

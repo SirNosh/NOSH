@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { timingSafeEqual } from "node:crypto";
 import { createId } from "@nosh/core";
 import { EventStore, HostRegistry, applyScheduledRestores, createProjectBackup, listProjectBackups, scheduleProjectRestore, type RegisteredProject } from "@nosh/persistence";
@@ -8,9 +8,11 @@ import { StructuredSubmissionGate } from "@nosh/agent-runtime";
 import { PiAdapter, terminalSchemaTools, type TerminalContext, type TerminalReceipt, type PiSessionOptions } from "@nosh/pi-adapter";
 import { OrchestrationRuntime } from "@nosh/orchestration-runtime";
 import { JobSupervisor, type JobRecord, type JobSpec } from "@nosh/jobs";
-import { approveProjectContract, ArtifactStore, initializeResearchProject, readProjectContract, type ProjectContract, type ProjectInitialization } from "@nosh/evidence";
-import { canonicalJson, validateRecord, episodeDraftSchema, isTaskTerminalRecord, schemaUri, sha256, type EventDraft, type EventEnvelope, type JsonValue, type ModelSelection, type RemoteCommandEnvelope } from "@nosh/wire";
+import { ArtifactStore, amendProjectContract, approveProjectContract, commitProjectContract, detectRunnableCommands, initializeResearchProject, readProjectContract, type ProjectContract, type ProjectInitialization } from "@nosh/evidence";
+import { canonicalJson, validateRecord, episodeDraftSchema, scopeSchema, isTaskTerminalRecord, schemaUri, sha256, type EventDraft, type EventEnvelope, type JsonValue, type ModelSelection } from "@nosh/wire";
 import { SingleInstanceLock } from "./single-instance.js";
+import { gitWorktreeState } from "./task-postflight.js";
+import { taskWorktreePath } from "./task-worktree.js";
 import { ResearchControl } from "./research-control.js";
 import { MissionSupervisor } from "./mission-supervisor.js";
 import { DirectionSupervisor } from "./direction-supervisor.js";
@@ -21,6 +23,8 @@ export type NoshDaemonOptions = {
   bootstrapToken: string;
   packagePath?: string;
   maximumActivePiSessions?: number;
+  /** Model for every session without an explicit selection (from NOSH config, not Pi's shared global settings). */
+  defaultModel?: ModelSelection;
 };
 
 export class NoshDaemon {
@@ -47,10 +51,12 @@ export class NoshDaemon {
     this.registry = new HostRegistry(join(options.dataDirectory, "host.sqlite"));
     this.research = new ResearchControl((projectId) => this.storeFor(projectId), (projectId) => { const project = this.projects().find((entry) => entry.projectId === projectId); if (!project) throw new Error(`Project ${projectId} is not registered on this host`); return project; }, (event) => this.events.emit("event", event), (projectId) => this.assertProjectWritable(projectId));
     this.agents = new PiAdapter((event) => this.appendDraft(event), (tool, projectId, attemptKey, record, agentId) => this.submitTool(tool, projectId, attemptKey, record, agentId), undefined, { admit: (context) => this.admitTerminal(context), submit: (context, records) => this.submitTerminal(context, records), reject: (context, reason) => this.rejectTerminal(context, reason) });
+    this.agents.defaultModel = options.defaultModel;
     const packagePath = options.packagePath ?? resolve(import.meta.dirname, "..", "..", "..", "pi-package");
     this.runtime = new OrchestrationRuntime({ storeFor: (projectId) => { this.assertProjectWritable(projectId); return this.storeFor(projectId); }, projectFor: (projectId) => { const project = this.projects().find((entry) => entry.projectId === projectId); if (!project) throw new Error(`Project ${projectId} is not registered on this host`); return project; }, sessions: this.agents, packagePath, publish: (event) => this.events.emit("event", event) });
     this.missions = new MissionSupervisor(this.research, this.agents, () => this.projects(), packagePath, (event) => this.appendDraft(event), this.runtime);
-    this.directions = new DirectionSupervisor(this.research, this.agents, () => this.projects(), packagePath, (event) => this.appendDraft(event), this.runtime);
+    // Jobs are constructed below; resolve lazily so baseline evaluation uses the live supervisor.
+    this.directions = new DirectionSupervisor(this.research, this.agents, () => this.projects(), packagePath, (event) => this.appendDraft(event), this.runtime, { start: (spec) => this.startJob(spec), get: (jobId) => this.jobs.get(jobId) });
     this.jobs = new JobSupervisor(options.dataDirectory, (job) => {
       if (!this.projects().some((project) => project.projectId === job.projectId)) return;
       this.appendDraft({
@@ -112,6 +118,19 @@ export class NoshDaemon {
   }
 
   projectContract(projectId: string): ProjectContract { const project = this.projects().find((entry) => entry.projectId === projectId); if (!project) throw new Error(`Project ${projectId} is not registered on this host`); return readProjectContract(project.repositoryRoot); }
+  /** User-only: write the next approved contract version (e.g. declaring nosh_run commands). Agents cannot reach this route. */
+  amendProjectContract(projectId: string, input: unknown, idempotencyKey: string): ProjectContract {
+    this.assertProjectWritable(projectId); const project = this.projects().find((entry) => entry.projectId === projectId); if (!project) throw new Error(`Project ${projectId} is not registered on this host`);
+    const contract = amendProjectContract(project.repositoryRoot, input);
+    this.recordContractCommit(projectId, project.repositoryRoot, `${idempotencyKey}:contract-commit`);
+    this.appendDraft({ $schema: schemaUri("event"), schemaVersion: 1, retention: "persistent", type: "project.contract_amended", source: "user", scope: { projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: null }, correlationId: idempotencyKey, causationId: null, payload: { contractVersion: contract.contractVersion, commandIds: contract.execution?.commands.map((command) => command.commandId) ?? [] } });
+    return contract;
+  }
+  /** Approved contract files are committed at once so the next task preflight sees a clean checkout; the outcome is an event either way. */
+  private recordContractCommit(projectId: string, repositoryRoot: string, correlationId: string): void {
+    const outcome = commitProjectContract(repositoryRoot);
+    this.appendDraft({ $schema: schemaUri("event"), schemaVersion: 1, retention: "persistent", type: outcome.committed ? "project.contract_committed" : "project.contract_commit_skipped", source: "noshd", scope: { projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: null }, correlationId, causationId: null, payload: outcome });
+  }
   notificationAcks(projectId: string): string[] { return [...new Set(this.storeFor(projectId).replay(projectId).filter((event) => event.type === "notification.acknowledged").flatMap((event) => typeof event.payload === "object" && event.payload !== null && !Array.isArray(event.payload) && Array.isArray(event.payload.eventIds) ? event.payload.eventIds.filter((id): id is string => typeof id === "string") : []))]; }
   acknowledgeNotifications(projectId: string, eventIds: string[], idempotencyKey: string): EventEnvelope {
     this.assertProjectWritable(projectId);
@@ -134,7 +153,7 @@ export class NoshDaemon {
   async beginProjectIntake(projectId: string, selection?: ModelSelection): Promise<void> {
     const project = this.projects().find((entry) => entry.projectId === projectId); if (!project) throw new Error(`Project ${projectId} is not registered on this host`); await this.validateModelSelection(selection); const contract = this.projectContract(projectId); if (contract.approvedAt) return;
     const agent = await this.startAgent({ projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, taskId: null, agentId: createId("agt"), role: "nosh", cwd: project.repositoryRoot, packagePath: this.options.packagePath ?? resolve(import.meta.dirname, "..", "..", "..", "pi-package"), ...(selection ? { model: { provider: selection.provider, id: selection.id }, ...(selection.thinkingLevel === undefined ? {} : { thinkingLevel: selection.thinkingLevel }) } : {}) });
-    await this.agents.prompt(agent.agentId, intakePrompt(contract));
+    await this.agents.prompt(agent.agentId, intakePrompt(contract, project.repositoryRoot));
   }
 
   projects(): RegisteredProject[] {
@@ -232,7 +251,8 @@ export class NoshDaemon {
     return { accepted: false, retryAllowed: !receipt.closed && !receipt.records, status: receipt.status, error: reason };
   }
 
-  async submitTerminal(context: TerminalContext, records: Record<string, JsonValue>[]): Promise<TerminalReceipt> {
+  async submitTerminal(context: TerminalContext, submitted: Record<string, JsonValue>[]): Promise<TerminalReceipt> {
+    const records = submitted.map((record) => this.withDaemonCommands(context, record));
     return this.withTerminalTurn(context, async () => {
       this.assertProjectWritable(context.projectId);
       const store = this.storeFor(context.projectId);
@@ -243,7 +263,8 @@ export class NoshDaemon {
       if (journal.closed) return receipt();
       if (!journal.records) {
         try { this.validateTerminal(context, records); }
-        catch (error) { const message = error instanceof Error ? error.message : "Terminal validation failed"; const correctable = message.startsWith("Invalid terminal record:") || message.startsWith("Unexpected terminal episode type") || message.startsWith("Episode references") || message.startsWith("Changed file escapes") || message.startsWith("Terminal output requires"); return this.rejectTerminalAttempt(context, correctable ? message : `Terminal policy: ${message}`); }
+        catch (error) { const message = error instanceof Error ? error.message : "Terminal validation failed"; // A mis-copied ID of the session's own scope is a correctable model slip; the corrected record is checked by the same policy.
+          const correctable = message.startsWith("Invalid terminal record:") || message.startsWith("Unexpected terminal episode type") || message.startsWith("Episode references") || message.startsWith("Changed file escapes") || message.startsWith("Terminal output requires") || message.startsWith("Scope field mismatch:"); return this.rejectTerminalAttempt(context, correctable ? message : `Terminal policy: ${message}`); }
         // Freeze the complete validated intent before ANY record acceptance or effect.
         journal.records = structuredClone(records);
         journal.status = "pending";
@@ -303,8 +324,8 @@ export class NoshDaemon {
       if (roles[schema] && roles[schema] !== agent.role) throw new Error("Terminal record role does not match its session");
       if (record.taskId !== undefined && record.taskId !== context.taskId) throw new Error("Terminal task scope mismatch");
       for (const field of ["missionId", "directionId", "autoresearchId", "experimentId", "runId", "jobId"] as const) {
-        if (record[field] !== undefined && record[field] !== agent[field]) throw new Error(`Terminal ${field} scope mismatch`);
-        if (isObject(record.scope) && record.scope[field] !== undefined && record.scope[field] !== agent[field]) throw new Error(`Terminal nested ${field} scope mismatch`);
+        if (record[field] !== undefined && record[field] !== agent[field]) throw new Error(`Scope field mismatch: ${field} must be exactly ${agent[field]}`);
+        if (isObject(record.scope) && record.scope[field] !== undefined && record.scope[field] !== agent[field]) throw new Error(`Scope field mismatch: scope.${field} must be exactly ${agent[field]}`);
       }
       if (schema === schemaUri("episode-draft")) {
         episodes++;
@@ -329,7 +350,7 @@ export class NoshDaemon {
     const policyError = submissionScopeError(record, projectId, agentId); if (policyError) return { accepted: false, retryAllowed: false, errors: [{ pointer: policyError.pointer, code: "scope_policy", message: policyError.message }] };
     const result = this.submissionGate.submit(tool, `${attemptKey}:${tool}`, record);
     if (!result.ok) return { accepted: false, retryAllowed: result.retryAllowed, errors: result.errors };
-    const agent = agentId ? this.agents.inspect().find((entry) => entry.agentId === agentId && entry.projectId === projectId) : undefined; if (agentId && !agent) return { accepted: false, retryAllowed: false, errors: [{ pointer: "/", code: "scope_policy", message: "Submitting Pi session is no longer active in this Project" }] }; if (tool === "nosh_project_contract_submit") { if (agent?.role !== "nosh") return { accepted: false, retryAllowed: false, errors: [{ pointer: "/", code: "scope_policy", message: "Only the Project Nosh session may submit the approved Project contract" }] }; const project = this.projects().find((entry) => entry.projectId === projectId)!; try { approveProjectContract(project.repositoryRoot, result.record); } catch (error) { return { accepted: false, retryAllowed: false, errors: [{ pointer: "/", code: "contract_policy", message: error instanceof Error ? error.message : "Project contract approval failed" }] }; } }
+    const agent = agentId ? this.agents.inspect().find((entry) => entry.agentId === agentId && entry.projectId === projectId) : undefined; if (agentId && !agent) return { accepted: false, retryAllowed: false, errors: [{ pointer: "/", code: "scope_policy", message: "Submitting Pi session is no longer active in this Project" }] }; if (tool === "nosh_project_contract_submit") { if (agent?.role !== "nosh") return { accepted: false, retryAllowed: false, errors: [{ pointer: "/", code: "scope_policy", message: "Only the Project Nosh session may submit the approved Project contract" }] }; const project = this.projects().find((entry) => entry.projectId === projectId)!; try { approveProjectContract(project.repositoryRoot, result.record); this.recordContractCommit(projectId, project.repositoryRoot, `${attemptKey}:contract-commit`); } catch (error) { return { accepted: false, retryAllowed: false, errors: [{ pointer: "/", code: "contract_policy", message: error instanceof Error ? error.message : "Project contract approval failed" }] }; } }
     if (this.research.isDomainEffectRecord(result.record as JsonValue) && !agent) return { accepted: false, retryAllowed: false, errors: [{ pointer: "/", code: "domain_policy", message: "Domain-effect records require an active matching Pi agent" }] };
     if (agent) {
       try { this.research.validateDomainRecord(projectId, agent, result.record as JsonValue); } catch (error) {
@@ -369,6 +390,9 @@ export class NoshDaemon {
   }
 
   async submitTool(tool: string, projectId: string, attemptKey: string, record: unknown, agentId?: string): Promise<unknown> {
+    if (tool === "nosh_run") return this.runTaskCommand(projectId, agentId, record);
+    if (tool === "nosh_artifact_register") return this.registerTaskArtifact(projectId, agentId, record);
+    if (tool === "nosh_artifact_read") return this.readTaskArtifact(projectId, agentId, record);
     const submitted = this.submitRecord(tool, projectId, attemptKey, record, agentId);
     if (!submitted.accepted) return submitted;
     if (tool === "nosh_delegation_request" && record && typeof record === "object" && !Array.isArray(record)) {
@@ -418,6 +442,9 @@ export class NoshDaemon {
       if (prior.event.type !== "chat.user_message" || prior.event.source !== "user" || prior.event.scope.projectId !== projectId || !payload || typeof payload !== "object" || Array.isArray(payload) || payload.message !== text || typeof payload.agentId !== "string" || canonicalJson(payload.selection ?? null) !== canonicalJson(chatSelection(selection))) throw new Error("Chat idempotency key was reused for a different Project, message, or model selection");
       return { event: prior.event, agentId: payload.agentId, replayed: true };
     }
+    // Reject an invalid active contract before changing a session or persisting chat.
+    // Completed requests still replay above, even if the contract later changes.
+    const intake = this.projectContract(projectId);
     await this.validateModelSelection(selection);
     let agent = this.agents.inspect().find((entry) => entry.projectId === projectId && entry.role === "nosh");
     if (agent && selection) {
@@ -430,8 +457,7 @@ export class NoshDaemon {
     const stored = store.appendIdempotent(idempotencyKey, { $schema: "https://nosh.dev/schemas/event/v1", schemaVersion: 1, retention: "persistent", type: "chat.user_message", source: "user", scope: { projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: null }, correlationId: idempotencyKey, causationId: null, payload: { message: text, selection: chatSelection(selection), agentId: agent.agentId } });
     if (stored.replayed) return { event: stored.receipt.event, agentId: agent.agentId, replayed: true };
     this.events.emit("event", stored.receipt.event);
-    const intake = this.projectContract(projectId);
-    const prompt = fresh && !intake.approvedAt ? `${intakePrompt(intake)}\n\nThe user's first Project-discovery response is:\n${text}` : text;
+    const prompt = fresh && !intake.approvedAt ? `${intakePrompt(intake, project.repositoryRoot)}\n\nThe user's first Project-discovery response is:\n${text}` : text;
     const action = agent.status === "running" ? this.agents.followUp(agent.agentId, prompt) : this.agents.prompt(agent.agentId, prompt);
     void action.catch((error) => this.appendDraft({ $schema: "https://nosh.dev/schemas/event/v1", schemaVersion: 1, retention: "persistent", type: "agent.failed", source: "pi", scope: { projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: agent!.agentId }, correlationId: idempotencyKey, causationId: stored.receipt.event.eventId, payload: { message: error instanceof Error ? error.message : "Chat agent failed" } }));
     return { event: stored.receipt.event, agentId: agent.agentId, replayed: false };
@@ -605,13 +631,14 @@ export class NoshDaemon {
   }
 
   async steerMission(projectId: string, missionId: string, expectedVersion: number, message: string, idempotencyKey: string): Promise<void> {
-    const mission = this.research.mission(projectId, missionId); const text = message.trim(); if (mission.version !== expectedVersion) throw new Error("Mission version conflict"); if (mission.state !== "running") throw new Error("Only a running Mission may be steered"); if (!text) throw new Error("Mission steering message is required"); const directors = this.agents.inspect().filter((agent) => agent.projectId === projectId && agent.missionId === missionId && ["mission_director", "research_director"].includes(agent.role)); if (!directors.length) throw new Error("Mission has no active Director to steer"); await Promise.all(directors.map((agent) => this.agents.steer(agent.agentId, text))); this.appendDraft({ $schema: schemaUri("event"), schemaVersion: 1, retention: "persistent", type: "mission.steering_applied", source: "user", scope: { projectId, missionId, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: null }, correlationId: idempotencyKey, causationId: null, payload: { message: text, directorAgentIds: directors.map((agent) => agent.agentId) } });
+    const mission = this.research.assertInspectedMissionState(projectId, missionId, expectedVersion); const text = message.trim(); if (mission.state !== "running") throw new Error("Only a running Mission may be steered"); if (!text) throw new Error("Mission steering message is required"); const directors = this.agents.inspect().filter((agent) => agent.projectId === projectId && agent.missionId === missionId && ["mission_director", "research_director"].includes(agent.role)); // Steering is durable: it reaches any live Director now and every later Director cycle through the Mission brief.
+    await Promise.all(directors.map((agent) => this.agents.steer(agent.agentId, text))); this.appendDraft({ $schema: schemaUri("event"), schemaVersion: 1, retention: "persistent", type: "mission.steering_applied", source: "user", scope: { projectId, missionId, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: null }, correlationId: idempotencyKey, causationId: null, payload: { message: text, directorAgentIds: directors.map((agent) => agent.agentId) } });
   }
 
   async controlMission(projectId: string, missionId: string, expectedVersion: number, action: "pause" | "resume" | "stop", mode: "safe" | "checkpoint" | "immediate", idempotencyKey: string) {
-    const mission = this.research.mission(projectId, missionId); if (mission.version !== expectedVersion) throw new Error("Mission version conflict"); const agents = this.agents.inspect().filter((agent) => agent.projectId === projectId && agent.missionId === missionId);
+    const mission = this.research.assertInspectedMissionState(projectId, missionId, expectedVersion); const agents = this.agents.inspect().filter((agent) => agent.projectId === projectId && agent.missionId === missionId);
     if (action === "resume") return this.research.transitionMission(projectId, missionId, mission.version, "running", `${idempotencyKey}:running`);
-    if (action === "pause") { const pausing = this.research.transitionMission(projectId, missionId, mission.version, "pausing", `${idempotencyKey}:pausing`); if (mode === "immediate") await Promise.all(agents.map((agent) => this.agents.abort(agent.agentId))); else await Promise.all(agents.map((agent) => this.agents.steer(agent.agentId, "Pause at the next safe boundary and persist a canonical handoff."))); if (mode === "checkpoint") for (const job of this.jobs.list().filter((entry) => missionJobMatches(entry, projectId, missionId))) this.jobs.checkpoint(job.jobId); return this.research.transitionMission(projectId, missionId, pausing.version, "paused", `${idempotencyKey}:paused`); }
+    if (action === "pause") { const pausing = this.research.transitionMission(projectId, missionId, mission.version, "pausing", `${idempotencyKey}:pausing`); if (mode === "immediate") await Promise.all(agents.map((agent) => this.agents.abort(agent.agentId))); else await Promise.all(agents.map((agent) => this.agents.steer(agent.agentId, "Pause at the next safe boundary and persist a canonical handoff."))); if (mode === "checkpoint") for (const job of this.jobs.list().filter((entry) => missionJobMatches(entry, projectId, missionId))) this.jobs.checkpoint(job.jobId); return mode === "immediate" || !agents.length ? this.research.transitionMission(projectId, missionId, pausing.version, "paused", `${idempotencyKey}:paused`) : pausing; }
     const stopping = this.research.transitionMission(projectId, missionId, mission.version, "stopping", `${idempotencyKey}:stopping`); for (const job of this.jobs.list().filter((entry) => missionJobMatches(entry, projectId, missionId))) this.jobs.cancel(job.jobId, "mission_stopped"); await Promise.all(agents.map((agent) => this.agents.abort(agent.agentId))); return this.research.transitionMission(projectId, missionId, stopping.version, "stopped", `${idempotencyKey}:stopped`);
   }
   controlJob(projectId: string, jobId: string, action: "checkpoint" | "cancel", idempotencyKey: string): JobRecord {
@@ -636,9 +663,88 @@ export class NoshDaemon {
     }
   }
 
+  /** commands[] in a worker completion is factual and daemon-owned: when the task ran nosh_run, it is exactly those runs (models kept inventing its shape). */
+  private withDaemonCommands(context: TerminalContext, record: Record<string, JsonValue>): Record<string, JsonValue> {
+    if (record.$schema !== schemaUri("general-worker-completion") || !context.taskId) return record;
+    const runs = this.storeFor(context.projectId).replay(context.projectId).filter((event) => event.type === "task.command_run" && isObject(event.payload) && event.payload.taskId === context.taskId).map((event) => event.payload as { commandId?: string; argv?: string[]; exitCode?: number | null });
+    if (!runs.length) return record;
+    return { ...record, commands: runs.map((run) => ({ commandId: String(run.commandId), displayCommand: (run.argv ?? []).join(" ").slice(0, 2_000), exitCode: typeof run.exitCode === "number" ? run.exitCode : null, resultArtifactId: null })) };
+  }
+
+  /** Runs one command declared in the approved Project contract for a live task session, as a supervised Job in its worktree. The agent never spawns processes. */
+  private async runTaskCommand(projectId: string, agentId: string | undefined, record: unknown): Promise<unknown> {
+    try {
+      this.assertProjectWritable(projectId);
+      const agent = agentId ? this.agents.inspect().find((entry) => entry.agentId === agentId && entry.projectId === projectId) : undefined;
+      if (!agent?.taskId) throw new Error("nosh_run requires an active daemon-bound task session");
+      const taskId = agent.taskId;
+      const packet = this.research.records(projectId, "task-packet").filter((entry) => entry.taskId === taskId).at(-1) as { permissions?: { subprocess?: string; allowedToolIds?: string[] }; workspace?: { worktreeId?: string } } | undefined;
+      if (packet?.permissions?.subprocess !== "allowlisted" || !packet.permissions.allowedToolIds?.includes("tool_nosh.run") || !packet.workspace?.worktreeId) throw new Error("This task is not authorized to run commands");
+      const project = this.projects().find((entry) => entry.projectId === projectId)!;
+      const execution = readProjectContract(project.repositoryRoot).execution;
+      const commandId = (record as { commandId?: unknown } | null)?.commandId;
+      const command = execution?.commands.find((entry) => entry.commandId === commandId);
+      if (!execution || !command) throw new Error(`Unknown commandId; the approved Project contract declares: ${execution?.commands.map((entry) => entry.commandId).join(", ") || "none"}`);
+      const worktree = taskWorktreePath(project.repositoryRoot, packet.workspace.worktreeId);
+      // The code under test is HEAD plus any uncommitted edits; only a clean run on the final commit can validate a criterion.
+      const { head, dirty } = gitWorktreeState(worktree);
+      const jobId = createId("job");
+      this.startJob({ jobId, projectId, missionId: agent.missionId, directionId: agent.directionId, autoresearchId: agent.autoresearchId, runId: createId("run"), experimentId: agent.experimentId, commitSha: head, workingDirectory: worktree, runner: execution.runner, distribution: null, command: command.argv, checkpointCommand: null, environmentLockHash: sha256({ node: process.version, platform: process.platform, arch: process.arch }), evaluationContractHash: sha256(execution as unknown as JsonValue), timeoutSeconds: command.timeoutSeconds, usesGpu: false });
+      const terminal = ["completed", "failed", "cancelled", "lost"]; let job = this.jobs.get(jobId); const deadline = Date.now() + (command.timeoutSeconds + 60) * 1_000;
+      while (!terminal.includes(job.state) && Date.now() < deadline) { await new Promise((done) => setTimeout(done, 250)); job = this.jobs.get(jobId); }
+      // The record keeps a bounded stdout tail so reviewers can verify what a run printed without the logs.
+      const result = { taskId, jobId, commandId: command.commandId, description: command.description, argv: command.argv, commit: head, dirty, state: job.state, exitCode: job.exitCode, failureReason: job.failureReason, stdoutTail: this.jobs.tail(jobId, "stdout", 1_500) };
+      this.appendDraft({ $schema: schemaUri("event"), schemaVersion: 1, retention: "persistent", type: "task.command_run", source: "noshd", scope: { projectId, missionId: agent.missionId, directionId: agent.directionId, autoresearchId: agent.autoresearchId, experimentId: agent.experimentId, runId: null, jobId, agentId: agent.agentId }, correlationId: `task:${taskId}`, causationId: null, payload: result as unknown as JsonValue });
+      return { accepted: true, ...result, citable: job.state === "completed" && job.exitCode === 0 && !dirty, stderrTail: this.jobs.tail(jobId, "stderr", 2_000) };
+    } catch (error) { return { accepted: false, error: error instanceof Error ? error.message : "nosh_run failed" }; }
+  }
+
+  /** Read-only view of one Project Artifact for a live task session (reviewers verify what workers registered). Hash-checked; text only, bounded. */
+  private readTaskArtifact(projectId: string, agentId: string | undefined, record: unknown): unknown {
+    try {
+      const agent = agentId ? this.agents.inspect().find((entry) => entry.agentId === agentId && entry.projectId === projectId) : undefined;
+      if (!agent?.taskId) throw new Error("nosh_artifact_read requires an active daemon-bound task session");
+      const input = record as { artifactId?: unknown; offset?: unknown } | null; const offset = typeof input?.offset === "number" && input.offset > 0 ? Math.floor(input.offset) : 0;
+      if (typeof input?.artifactId !== "string" || !/^art_[0-9a-f]+$/.test(input.artifactId)) throw new Error("artifactId (art_...) is required");
+      const project = this.projects().find((entry) => entry.projectId === projectId)!;
+      const artifact = new ArtifactStore(join(project.repositoryRoot, ".nosh", "artifacts")).resolve(input.artifactId);
+      if (artifact.projectId !== projectId) throw new Error("Artifact belongs to another Project");
+      const text = readFileSync(artifact.storedPath, "utf8"); const content = text.slice(offset, offset + 12_000);
+      return { accepted: true, artifactId: artifact.artifactId, kind: artifact.kind, mediaType: artifact.mediaType, contentHash: artifact.contentHash, sizeBytes: artifact.sizeBytes, offset, content, remainingCharacters: Math.max(0, text.length - offset - content.length) };
+    } catch (error) { return { accepted: false, error: error instanceof Error ? error.message : "nosh_artifact_read failed" }; }
+  }
+
+  /** Snapshots one regular file from a live task's own worktree into the Artifact store and records it; the agent gets the art_ ID to cite. */
+  private registerTaskArtifact(projectId: string, agentId: string | undefined, record: unknown): unknown {
+    try {
+      this.assertProjectWritable(projectId);
+      const agent = agentId ? this.agents.inspect().find((entry) => entry.agentId === agentId && entry.projectId === projectId) : undefined;
+      if (!agent?.taskId) throw new Error("nosh_artifact_register requires an active daemon-bound task session");
+      const taskId = agent.taskId;
+      const packet = this.research.records(projectId, "task-packet").filter((entry) => entry.taskId === taskId).at(-1) as { workspace?: { worktreeId?: string } } | undefined;
+      if (!packet?.workspace?.worktreeId) throw new Error("This task has no workspace");
+      const input = record as { path?: unknown; kind?: unknown } | null;
+      if (typeof input?.path !== "string" || typeof input.kind !== "string" || !/^artifact_[a-z0-9][a-z0-9.:-]*$/.test(input.kind)) throw new Error("path and kind (artifact_<name>) are required");
+      const project = this.projects().find((entry) => entry.projectId === projectId)!;
+      const worktree = taskWorktreePath(project.repositoryRoot, packet.workspace.worktreeId);
+      const target = resolve(worktree, input.path); const inside = relative(worktree, target).replaceAll("\\", "/");
+      if (!inside || inside.startsWith("..") || isAbsolute(inside) || inside.split("/").includes(".git")) throw new Error("path must be a relative file inside your worktree, outside .git");
+      const stat = lstatSync(target); if (!stat.isFile() || stat.nlink !== 1) throw new Error("path must be a regular, unlinked file"); if (stat.size > 5_000_000) throw new Error("file exceeds 5 MB");
+      const mediaType = /\.md$/i.test(inside) ? "text/markdown" : /\.json$/i.test(inside) ? "application/json" : /\.bib$/i.test(inside) ? "application/x-bibtex" : "text/plain";
+      const artifactId = createId("art"); const artifact = new ArtifactStore(join(project.repositoryRoot, ".nosh", "artifacts")).add({ artifactId, projectId, kind: input.kind, mediaType, sourcePath: target, retentionClass: "accepted_evidence" });
+      const scope = { missionId: agent.missionId, directionId: agent.directionId, autoresearchId: agent.autoresearchId, experimentId: agent.experimentId };
+      const artifactRecord: JsonValue = { $schema: schemaUri("artifact"), schemaVersion: 1, artifactId, projectId, kind: input.kind, mediaType, contentHash: artifact.contentHash, sizeBytes: artifact.sizeBytes, version: artifact.version, producer: { type: "agent", agentId: agent.agentId, taskId, path: inside }, scope, git: null, evaluationContractHash: null, retentionClass: "accepted_evidence", remotePreviewPolicy: "encrypted_allowed", redactionStatus: "checked", createdAt: artifact.createdAt };
+      this.research.submitDaemonRecord(projectId, { projectId, ...scope, runId: null, jobId: null, agentId: agent.agentId }, `artifact:${artifactId}`, artifactRecord, `task-artifact:${artifactId}`);
+      return { accepted: true, artifactId, path: inside, kind: input.kind, contentHash: artifact.contentHash, sizeBytes: artifact.sizeBytes };
+    } catch (error) { return { accepted: false, error: error instanceof Error ? error.message : "nosh_artifact_register failed" }; }
+  }
+
   startJob(spec: JobSpec): JobRecord {
     if (!this.projects().some((project) => project.projectId === spec.projectId)) throw new Error(`Project ${spec.projectId} is not registered on this host`);
     this.assertProjectWritable(spec.projectId);
+    // Job events carry this scope; reject malformed IDs before a record or intent exists,
+    // otherwise the saved Job stays "starting" forever when its first event is rejected.
+    scopeSchema.parse({ projectId: spec.projectId, missionId: spec.missionId, directionId: spec.directionId, autoresearchId: spec.autoresearchId, experimentId: spec.experimentId, runId: spec.runId, jobId: spec.jobId, agentId: null });
     const store = this.storeFor(spec.projectId);
     const intent = store.beginOperation(spec.projectId, "job.launch", `job-launch:${spec.jobId}`, spec as unknown as JsonValue);
     if (intent.state === "completed") { const result = intent.result as unknown as JobRecord; assertJobIdentity(result, spec, "Stored Job launch result"); return result; }
@@ -658,74 +764,11 @@ export class NoshDaemon {
     return this.storeFor(projectId).replayPage(projectId, afterSequence, limit, recent);
   }
 
-  unresolvedRemoteCommands(projectId: string): Array<{ commandId: string; type: string; targetType: string; targetId: string; expectedVersion: number; acceptedAt: string }> {
-    const events = this.storeFor(projectId).replay(projectId); const terminal = new Set(events.filter((event) => ["remote.command_completed", "remote.command_failed"].includes(event.type) && event.correlationId).map((event) => event.correlationId!));
-    return events.filter((event) => event.type === "remote.command_accepted" && event.correlationId && !terminal.has(event.correlationId)).map((event) => { const payload = event.payload as { type?: string; targetType?: string; targetId?: string; expectedVersion?: number }; return { commandId: event.correlationId!, type: payload.type ?? "unknown", targetType: payload.targetType ?? "unknown", targetId: payload.targetId ?? "unknown", expectedVersion: payload.expectedVersion ?? 0, acceptedAt: event.timestamp }; });
-  }
-
-  resolveRemoteCommand(projectId: string, commandId: string, outcome: "applied" | "not_applied", note: string, idempotencyKey: string): EventEnvelope {
-    this.assertProjectWritable(projectId);
-    const store = this.storeFor(projectId); const receipt = store.commandReceipt(projectId, `remote-resolution:${idempotencyKey}`); if (receipt) return receipt.event; const events = store.replay(projectId); const accepted = events.find((event) => event.type === "remote.command_accepted" && event.correlationId === commandId); if (!accepted) throw new Error("Unknown remote command"); if (events.some((event) => ["remote.command_completed", "remote.command_failed"].includes(event.type) && event.correlationId === commandId)) throw new Error("Remote command already has a terminal outcome"); if (!note.trim()) throw new Error("A local resolution note is required"); const payload = accepted.payload as { type?: string }; const stored = store.appendIdempotent(`remote-resolution:${idempotencyKey}`, { $schema: "https://nosh.dev/schemas/event/v1", schemaVersion: 1, retention: "persistent", type: outcome === "applied" ? "remote.command_completed" : "remote.command_failed", source: "local_user", scope: accepted.scope, correlationId: commandId, causationId: accepted.eventId, payload: { commandId, type: payload.type ?? "unknown", resolution: outcome, note: note.trim() } }); if (!stored.replayed) this.events.emit("event", stored.receipt.event); return stored.receipt.event;
-  }
-
-  remoteVersion(command: RemoteCommandEnvelope): number { if (command.targetType === "mission") return this.research.mission(command.projectId, command.targetId).version; if (command.targetType === "thread") return this.runtime.thread(command.projectId, command.targetId).version; return this.storeFor(command.projectId).currentSequence(command.projectId); }
-  remoteReplay(command: RemoteCommandEnvelope): boolean { const store = this.storeFor(command.projectId); const receipt = store.commandReceipt(command.projectId, `remote:${command.idempotencyKey}`); if (!receipt) return false; const payload = receipt.event.payload as { envelopeHash?: string }; if (payload.envelopeHash !== sha256(command as unknown as JsonValue)) throw new Error("Idempotency key was reused for a different remote command"); const terminal = store.replay(command.projectId).find((event) => event.correlationId === command.commandId && ["remote.command_completed", "remote.command_failed"].includes(event.type)); if (!terminal) throw new Error("Remote command was accepted but its outcome is unresolved after interruption"); if (terminal.type === "remote.command_failed") throw new Error("Remote command previously failed"); return true; }
-
-  async executeRemoteCommand(command: RemoteCommandEnvelope, payload: JsonValue): Promise<{ replayed: boolean; currentVersion: number }> {
-    if (!this.projects().some((project) => project.projectId === command.projectId)) throw new Error("Remote command Project is not registered on this host");
-    this.assertProjectWritable(command.projectId);
-    const scope = { projectId: command.projectId, missionId: command.targetType === "mission" ? command.targetId : null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: command.targetType === "job" ? command.targetId : null, agentId: command.targetType === "agent" ? command.targetId : null };
-    const accepted = this.storeFor(command.projectId).appendIdempotent(`remote:${command.idempotencyKey}`, { $schema: "https://nosh.dev/schemas/event/v1", schemaVersion: 1, retention: "persistent", type: "remote.command_accepted", source: command.deviceId, scope, correlationId: command.commandId, causationId: null, payload: { accountId: command.accountId, commandId: command.commandId, deviceId: command.deviceId, type: command.type, targetType: command.targetType, targetId: command.targetId, expectedVersion: command.expectedVersion, requiredPermission: command.requiredPermission, issuedAt: command.issuedAt, envelopeHash: sha256(command as unknown as JsonValue) } });
-    if (accepted.replayed) return { replayed: true, currentVersion: this.remoteVersion(command) };
-    this.events.emit("event", accepted.receipt.event);
-    try {
-      await this.dispatchRemote(command, payload);
-      this.appendDraft({ $schema: "https://nosh.dev/schemas/event/v1", schemaVersion: 1, retention: "persistent", type: "remote.command_completed", source: "noshd", scope, correlationId: command.commandId, causationId: accepted.receipt.event.eventId, payload: { commandId: command.commandId, type: command.type } });
-      return { replayed: false, currentVersion: this.remoteVersion(command) };
-    } catch (error) {
-      this.appendDraft({ $schema: "https://nosh.dev/schemas/event/v1", schemaVersion: 1, retention: "persistent", type: "remote.command_failed", source: "noshd", scope, correlationId: command.commandId, causationId: accepted.receipt.event.eventId, payload: { commandId: command.commandId, type: command.type, error: error instanceof Error ? error.message : "remote_command_failed" } });
-      throw error;
-    }
-  }
-
   private appendDraft(draft: EventDraft): EventEnvelope {
     this.assertProjectWritable(draft.scope.projectId);
     const event = this.storeFor(draft.scope.projectId).append(draft);
     this.events.emit("event", event);
     return event;
-  }
-
-  private async dispatchRemote(command: RemoteCommandEnvelope, payload: JsonValue): Promise<void> {
-    if (command.targetType === "agent") {
-      const agent = this.agents.inspect().find((entry) => entry.agentId === command.targetId && entry.projectId === command.projectId); if (!agent) throw new Error("Remote agent target is outside the Project or no longer active");
-      if (command.type === "agent.message") await this.agents.steer(command.targetId, (payload as { message: string }).message);
-      else if (command.type === "agent.safe_pause") await this.agents.steer(command.targetId, "Pause at the next safe boundary, persist a canonical handoff, and do not start another tool call.");
-      else if (command.type === "agent.cancel") await this.agents.abort(command.targetId);
-      return;
-    }
-    if (command.targetType === "job") {
-      const job = this.jobs.get(command.targetId); if (job.projectId !== command.projectId) throw new Error("Remote job target is outside the Project");
-      if (command.type === "job.checkpoint") this.jobs.checkpoint(command.targetId); else if (command.type === "job.cancel") this.jobs.cancel(command.targetId, "remote_cancel");
-      return;
-    }
-    if (command.targetType === "mission") {
-      const mission = this.research.mission(command.projectId, command.targetId); const agents = this.agents.inspect().filter((entry) => entry.projectId === command.projectId && entry.missionId === command.targetId);
-      if (command.type === "mission.steer") { if (mission.state !== "running") throw new Error("Only a running Mission may be steered"); await Promise.all(agents.filter((entry) => ["mission_director", "research_director"].includes(entry.role)).map((entry) => this.agents.steer(entry.agentId, (payload as { message: string }).message))); }
-      if (command.type === "mission.pause") { const pausing = this.research.transitionMission(command.projectId, command.targetId, mission.version, "pausing", `${command.idempotencyKey}:pausing`); const mode = (payload as { mode: string }).mode; if (mode === "immediate") await Promise.all(agents.map((entry) => this.agents.abort(entry.agentId))); else await Promise.all(agents.map((entry) => this.agents.steer(entry.agentId, "Pause at the next safe boundary and persist a canonical handoff."))); if (mode === "checkpoint") for (const job of this.jobs.list().filter((entry) => missionJobMatches(entry, command.projectId, command.targetId))) this.jobs.checkpoint(job.jobId); this.research.transitionMission(command.projectId, command.targetId, pausing.version, "paused", `${command.idempotencyKey}:paused`); }
-      if (command.type === "mission.stop") { const stopping = this.research.transitionMission(command.projectId, command.targetId, mission.version, "stopping", `${command.idempotencyKey}:stopping`); for (const job of this.jobs.list().filter((entry) => missionJobMatches(entry, command.projectId, command.targetId))) this.jobs.cancel(job.jobId, "mission_stopped_remotely"); await Promise.all(agents.map((entry) => this.agents.abort(entry.agentId))); this.research.transitionMission(command.projectId, command.targetId, stopping.version, "stopped", `${command.idempotencyKey}:stopped`); }
-      if (command.type === "mission.resume") { if (!agents.length) throw new Error("Mission resume requires a persisted Director session to resume"); this.research.transitionMission(command.projectId, command.targetId, mission.version, "running", `${command.idempotencyKey}:running`); }
-      return;
-    }
-    if (command.targetType === "thread") {
-      const thread = this.runtime.thread(command.projectId, command.targetId).value;
-      if (thread.executionMode !== "foreground_fork") throw new Error("Only a foreground fork may be controlled remotely");
-      if (command.type === "thread.message") await this.runtime.forkMessage(command.projectId, command.targetId, (payload as { message: string }).message, `remote-fork-message:${command.idempotencyKey}`);
-      else if (command.type === "thread.stop") await this.runtime.execute({ $schema: schemaUri("runtime-instruction"), schemaVersion: 1, instructionId: `ins_${sha256(command.commandId).slice(7, 39)}`, projectId: command.projectId, idempotencyKey: `remote-fork-stop:${command.idempotencyKey}`, proposedByAgentId: null, issuedAt: command.issuedAt, operation: "STOP", threadId: command.targetId, programId: null, reason: "Foreground interaction completed by the remote user" });
-      return;
-    }
-    if (command.targetType === "review") { this.appendDraft({ $schema: "https://nosh.dev/schemas/event/v1", schemaVersion: 1, retention: "persistent", type: "review.user_responded", source: command.deviceId, scope: { projectId: command.projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: null }, correlationId: command.targetId, causationId: command.commandId, payload: { reviewId: command.targetId, ...(payload as { verdict: string; comment: string }) } }); return; }
-    if (command.targetType === "artifact") { const project = this.projects().find((entry) => entry.projectId === command.projectId)!; const artifact = new ArtifactStore(join(project.repositoryRoot, ".nosh", "artifacts")).resolve(command.targetId); const maximumBytes = (payload as { maximumBytes: number }).maximumBytes; const bytes = readFileSync(artifact.storedPath); this.appendDraft({ $schema: "https://nosh.dev/schemas/event/v1", schemaVersion: 1, retention: "persistent", type: "artifact.preview_ready", source: "noshd", scope: { projectId: command.projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: null }, correlationId: command.targetId, causationId: command.commandId, payload: { artifactId: command.targetId, mediaType: artifact.mediaType, contentHash: artifact.contentHash, bytes: Math.min(bytes.length, maximumBytes), truncated: bytes.length > maximumBytes, base64: bytes.subarray(0, maximumBytes).toString("base64") } }); return; }
-    throw new Error("Unsupported remote target");
   }
 
   private storeFor(projectId: string): EventStore {
@@ -792,19 +835,23 @@ export class NoshDaemon {
     const programs = this.runtime.programStates(project.projectId).filter(({ value }) => value.status === "running");
     for (const { entityId } of programs) void this.runtime.runProgram(project.projectId, entityId).catch((error) => this.appendDraft({ $schema: schemaUri("event"), schemaVersion: 1, retention: "persistent", type: "recovery.program_failed", source: "noshd", scope: { projectId: project.projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: null }, correlationId: entityId, causationId: null, payload: { message: error instanceof Error ? error.message : "Program recovery failed" } }));
     const unresolved = store.operationIntents(project.projectId, "pending").map((intent) => ({ intentId: intent.intentId, operationType: intent.operationType }));
-    const unresolvedRemoteCommands = this.unresolvedRemoteCommands(project.projectId).map((command) => command.commandId);
-    this.appendDraft({ $schema: "https://nosh.dev/schemas/event/v1", schemaVersion: 1, retention: "persistent", type: "recovery.report", source: "noshd", scope: { projectId: project.projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: null }, correlationId: null, causationId: null, payload: { reconciledPaperOperations: papers, recoveredDomainEffects: domainEffects.recovered, failedDomainEffects: domainEffects.failed, recoveredDelegations, rejectedDelegations, reconciledJobLaunches: jobs, resumingRuntimeInstructions: runtime.length, resumingPrograms: programs.length, unresolvedIntents: unresolved, unresolvedRemoteCommands } });
+    this.appendDraft({ $schema: "https://nosh.dev/schemas/event/v1", schemaVersion: 1, retention: "persistent", type: "recovery.report", source: "noshd", scope: { projectId: project.projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: null }, correlationId: null, causationId: null, payload: { reconciledPaperOperations: papers, recoveredDomainEffects: domainEffects.recovered, failedDomainEffects: domainEffects.failed, recoveredDelegations, rejectedDelegations, reconciledJobLaunches: jobs, resumingRuntimeInstructions: runtime.length, resumingPrograms: programs.length, unresolvedIntents: unresolved } });
   }
 }
 
 export function missionJobMatches(job: Pick<JobRecord, "projectId" | "missionId">, projectId: string, missionId: string): boolean {
   return job.projectId === projectId && job.missionId === missionId;
 }
-function intakePrompt(contract: ProjectContract): string {
-  return `This Project has a draft, unapproved Project contract for "${contract.workingTitle}". Conduct a facilitated research-discovery conversation: ask exactly one focused question per turn; do not invent requirements; challenge vague, contradictory, unfalsifiable, or overly broad claims; and periodically reflect the shared understanding. Establish the research problem, motivation, decision use, contribution, scope, datasets and licenses, baselines, evaluation and falsification criteria, reproducibility, risks, intended paper outcome, and realistic GPU and time budgets before proposing an approved contract. Current north-star question: ${contract.northStar.question}`;
+// Generated by `pnpm schemas`; shipped with the release under packages/wire/src/schemas.
+const PROJECT_CONTRACT_SCHEMA = resolve(import.meta.dirname, "..", "..", "..", "packages", "wire", "src", "schemas", "project-contract.v1.schema.json");
+function intakePrompt(contract: ProjectContract, repositoryRoot: string): string {
+  const detected = detectRunnableCommands(repositoryRoot);
+  // Commands approved here let workers run tests/evaluations as daemon Jobs from the first Direction, with no later amendment.
+  const commands = detected.length ? `\n\nRunnable commands detected in this repository: ${JSON.stringify(detected)}. Before proposing the contract, confirm with the user which of these (if any) are the right validators, and include the confirmed ones verbatim in the contract's optional execution field as { "runner": "native", "commands": [...] }.` : "\n\nNo runnable test or evaluation command was detected. Ask whether one exists (argv form, no shell); if the user gives one, include it in the contract's optional execution field as { \"runner\": \"native\", \"commands\": [{ commandId, description, argv, timeoutSeconds }] }.";
+  return `This Project has a draft, unapproved Project contract for "${contract.workingTitle}". Conduct a facilitated research-discovery conversation: ask exactly one focused question per turn; do not invent requirements; challenge vague, contradictory, unfalsifiable, or overly broad claims; and periodically reflect the shared understanding. Establish the research problem, motivation, decision use, contribution, scope, datasets and licenses, baselines, evaluation and falsification criteria, reproducibility, risks, intended paper outcome, and realistic GPU and time budgets before proposing an approved contract. Current north-star question: ${contract.northStar.question}\n\nThe canonical project-contract JSON Schema is ${PROJECT_CONTRACT_SCHEMA}. Read it before proposing the successor contract; do not search the filesystem or network for it.${commands}`;
 }
 function terminalOutcomeTaskId(tool: string, schema: string, attemptKey: string, record: unknown): string | null {
-  if (!isTaskTerminalRecord(record) || !((tool === "nosh_response_submit" && schema !== schemaUri("review-verdict")) || (tool === "nosh_review_submit" && schema === schemaUri("review-verdict")))) return null;
+  if (!isTaskTerminalRecord(record) || !((tool === "nosh_response_submit" && schema !== schemaUri("review-verdict")) || (tool === "nosh_review_submit" && schema === schemaUri("review-verdict")) || (tool === "nosh_experiment_propose" && schema === schemaUri("experiment-proposal")))) return null;
   const task = /^task:(tsk_[0-9a-f]{32})$/.exec(attemptKey)?.[1];
   if (task) return task;
   if (!record || typeof record !== "object" || Array.isArray(record)) return null;

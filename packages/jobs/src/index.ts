@@ -5,7 +5,7 @@ import { execFile, spawn, spawnSync, type ChildProcess } from "node:child_proces
 
 export type JobState = "queued" | "starting" | "running" | "checkpointing" | "finishing" | "completed" | "failed" | "cancelled" | "lost";
 export type JobSpec = {
-  jobId: string; projectId: string; missionId: string | null; directionId: string | null; autoresearchId: string | null; runId: string; experimentId: string; commitSha: string; workingDirectory: string;
+  jobId: string; projectId: string; missionId: string | null; directionId: string | null; autoresearchId: string | null; runId: string; experimentId: string | null; commitSha: string; workingDirectory: string;
   runner: "native" | "wsl2"; distribution: string | null; command: string[]; checkpointCommand: string[] | null;
   environmentLockHash: string; evaluationContractHash: string; timeoutSeconds: number; usesGpu: boolean;
 };
@@ -18,6 +18,7 @@ export type ResourceSnapshot = { elapsedSeconds: number; residentBytes: number |
 
 export class JobSupervisor {
   private readonly children = new Map<string, ChildProcess>();
+  private closed = false;
   private readonly telemetry = new Map<string, { expires: number; value: Promise<ResourceSnapshot> }>();
   private gpuCache: { expires: number; value: Promise<JsonValue | null> } | undefined;
   private readonly timers = new Map<string, NodeJS.Timeout>();
@@ -60,7 +61,7 @@ export class JobSupervisor {
     child.unref();
     this.save(record);
     if (record.timeoutSeconds > 0) {
-      const timer = setTimeout(() => void this.cancel(record.jobId, "timeout"), record.timeoutSeconds * 1000);
+      const timer = setTimeout(() => { try { this.cancel(record.jobId, "timeout"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; } }, record.timeoutSeconds * 1000);
       timer.unref();
       this.timers.set(record.jobId, timer);
     }
@@ -164,12 +165,18 @@ export class JobSupervisor {
   }
 
   close(): void {
+    this.closed = true;
     for (const timer of this.timers.values()) clearTimeout(timer);
     this.timers.clear();
   }
 
   private finish(jobId: string, code: number | null, signal: NodeJS.Signals | null): void {
-    if (!existsSync(this.recordPath(jobId))) return;
+    // After close(), restart recovery reconciles the outcome; a late exit event must not write or throw.
+    if (this.closed || !existsSync(this.recordPath(jobId))) return;
+    try { this.finishRecord(jobId, code, signal); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  }
+  private finishRecord(jobId: string, code: number | null, signal: NodeJS.Signals | null): void {
     const record = this.get(jobId);
     if (["completed", "failed", "cancelled", "lost"].includes(record.state)) return;
     record.state = "finishing";
@@ -186,6 +193,8 @@ export class JobSupervisor {
 
   private watchRecovered(jobId: string): void {
     const timer = setInterval(() => {
+      // A record removed underneath a timer (deleted data) ends the watch; it must not become an unhandled exception.
+      if (!existsSync(this.recordPath(jobId))) { clearInterval(timer); this.timers.delete(jobId); return; }
       const record = this.get(jobId);
       if (record.state !== "running") { clearInterval(timer); this.timers.delete(jobId); return; }
       const alive = record.runner === "wsl2" ? wslAlive(record) : nativeAlive(record);
@@ -214,7 +223,12 @@ export class JobSupervisor {
       return;
     }
     if (!record.windowsPid) return;
-    if (process.platform === "win32") spawnSync("taskkill.exe", ["/PID", String(record.windowsPid), "/T", "/F"], { windowsHide: true });
+    if (process.platform === "win32") {
+      spawnSync("taskkill.exe", ["/PID", String(record.windowsPid), "/T", "/F"], { windowsHide: true });
+      // taskkill returns once termination is requested; wait (bounded) until the process identity is really gone so "terminated" is true.
+      const pause = new Int32Array(new SharedArrayBuffer(4));
+      for (let attempt = 0; attempt < 50 && nativeAlive(record); attempt++) Atomics.wait(pause, 0, 0, 100);
+    }
     else { try { process.kill(-record.windowsPid, "SIGTERM"); } catch { /* already stopped */ } }
   }
   private save(record: JobRecord): void {

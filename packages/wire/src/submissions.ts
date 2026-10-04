@@ -2,7 +2,8 @@ import { id, observedVersionsSchema, schemaUri, schemaVersion, sha256Digest, tem
 import { jsonValueSchema } from "./json.js";
 import { z } from "zod";
 
-const ref = z.string().regex(/^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$/).max(128);
+// Validation receipts reach models; say what the format is, not just "Invalid".
+const ref = z.string().regex(/^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$/, "Expected a reference: lowercase prefix, exactly one underscore, then lowercase letters, digits, '.', ':' or '-' (e.g. contribution_method-fixture)").max(128);
 const text = z.string().min(1).max(2000);
 const gitObjectId = z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
 const gitBranch = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/).refine((value) => !value.includes("..") && !value.includes("//") && !value.endsWith("/") && !value.endsWith(".") && !value.split("/").some((part) => part === "." || part.startsWith(".") || part.endsWith(".lock")), "must be a safe Git branch name");
@@ -51,7 +52,7 @@ export const generalWorkerCompletionSchema = z.object({
   workPerformed: z.array(z.object({ action: ref, subject: text, artifactIds: z.array(id("art")) }).strict()),
   codeChanges: z.object({ startingCommit: gitObjectId, endingCommit: gitObjectId, changedPaths: list, diffArtifactId: id("art").nullable(), branch: gitBranch }).strict(),
   commands: z.array(z.object({ commandId: ref, displayCommand: z.string().max(2000), exitCode: z.number().int().nullable(), resultArtifactId: id("art").nullable() }).strict()),
-  criteria: z.array(z.object({ criterionId: ref, workerClaim: z.enum(["satisfied", "unsatisfied", "inconclusive", "not_applicable"]), validatorRunIds: z.array(ref), artifactIds: z.array(id("art")), notes: z.string().max(2000) }).strict()),
+  criteria: z.array(z.object({ criterionId: ref, workerClaim: z.enum(["satisfied", "unsatisfied", "inconclusive", "not_applicable", "deferred_to_review"]), validatorRunIds: z.array(ref), artifactIds: z.array(id("art")), notes: z.string().max(2000) }).strict()),
   scientificImpact: z.object({ claimIds: z.array(id("clm")), evidenceIds: z.array(id("evd")), interpretation: text }).strict(),
   deviations: list, newRisks: list, unresolvedItems: list,
   suggestedNextActions: z.array(z.object({ actionType: ref, targetId: ref, reason: text, priority: z.enum(["low", "normal", "high", "critical"]) }).strict()),
@@ -161,7 +162,7 @@ export function isTaskTerminalRecord(record: unknown): boolean {
   if (!record || typeof record !== "object" || Array.isArray(record)) return false;
   const value = record as { $schema?: unknown; status?: unknown };
   const schema = value.$schema;
-  if ([schemaUri("general-worker-completion"), schemaUri("librarian-completion"), schemaUri("task-failure"), schemaUri("mission-director-cycle"), schemaUri("research-director-cycle"), schemaUri("review-verdict")].includes(schema as string)) return true;
+  if ([schemaUri("general-worker-completion"), schemaUri("librarian-completion"), schemaUri("task-failure"), schemaUri("mission-director-cycle"), schemaUri("research-director-cycle"), schemaUri("review-verdict"), schemaUri("experiment-proposal")].includes(schema as string)) return true;
   return schema === schemaUri("response-envelope") && ["completed", "failed", "cancelled", "superseded"].includes(String(value.status));
 }
 export const submissionRegistry = {

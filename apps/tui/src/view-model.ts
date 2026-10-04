@@ -19,13 +19,17 @@ export function record(value: unknown): Record<string, unknown> { return value &
 export function text(value: unknown, limit = 512): string {
   return ['string','number','boolean'].includes(typeof value) ? safeText(value).slice(0, limit) : '';
 }
-function label(key: string): string { return safeText(key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]/g, ' ')).slice(0, 80); }
+function label(key: string): string {
+  const words = safeText(key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]/g, ' ')).toLowerCase().slice(0, 80);
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 export function fields(value: unknown, maximum = 16): ViewField[] {
   const result: ViewField[] = [];
   const visit = (data: unknown, prefix: string, depth: number): void => {
     for (const [key, item] of Object.entries(record(data)).slice(0, 40)) {
       if (result.length >= maximum) break;
-      if (['$schema','schemaVersion','idempotencyKey','payload','records','content','thinking','reasoning'].includes(key)) continue;
+      // projectId is always the current project; piSessionId is Pi-internal.
+      if (['$schema','schemaVersion','idempotencyKey','payload','records','content','thinking','reasoning','projectId','piSessionId'].includes(key)) continue;
       const name = prefix ? `${prefix} / ${label(key)}` : label(key);
       if (item === null || item === undefined) continue;
       if (Array.isArray(item)) {
@@ -33,10 +37,15 @@ export function fields(value: unknown, maximum = 16): ViewField[] {
         result.push({label:name, value:scalars.length ? scalars.join(' · ') + (item.length > 8 ? ' …' : '') : `${item.length} items`});
       } else if (typeof item === 'object') {
         if (depth < 1) visit(item, name, depth + 1);
-      } else result.push({label:name, value:text(item)});
+      } else result.push({label:name, value:shortDigest(text(item))});
     }
   };
   visit(value, '', 0); return result;
+}
+/** Full digests are provenance, not reading material: keep a recognizable prefix/suffix. */
+function shortDigest(value: string): string {
+  const digest = /^(sha256:)?([0-9a-f]{40,64})$/.exec(value);
+  return digest ? `${digest[1] ?? ''}${digest[2]!.slice(0, 12)}…${digest[2]!.slice(-4)}` : value;
 }
 export function formatFields(items: ViewField[]): string { return items.map(f => `${f.label}: ${f.value}`).join('\n'); }
 export function modelName(value: unknown): string {
@@ -51,7 +60,9 @@ export function entityRow(section: string, value: unknown, index = 0): ViewRow {
   const state = text(stored.state ?? v.state ?? v.status);
   const version = typeof stored.version === 'number' && Number.isSafeInteger(stored.version) ? stored.version : undefined;
   const subtitle = text(v.objective ?? v.decisionUse ?? v.failureReason ?? proposal.contractImpact ?? v.currentTool ?? v.workingDirectory);
-  return {id,section,title,...(state ? {state} : {}),...(version === undefined ? {} : {version}),...(subtitle ? {subtitle} : {}),fields:fields({...v,...resources})};
+  // A job's title is already its command line.
+  const {command, ...detail} = v;
+  return {id,section,title,...(state ? {state} : {}),...(version === undefined ? {} : {version}),...(subtitle ? {subtitle} : {}),fields:fields({...(section === 'jobs' ? detail : {command,...detail}),...resources})};
 }
 export function responseRows(section: string, data: unknown): ViewRow[] {
   const body = record(data), listKey: Record<string, string> = {autoresearch:'executions',approvals:'proposals'};
@@ -61,7 +72,10 @@ export function responseRows(section: string, data: unknown): ViewRow[] {
   if (typeof body.text === 'string') return [{id:'output',section:'output',title:'Bounded job output',fields:[{label:'output',value:safeText(body.text.slice(-16000))}]}];
   if ('contract' in body) {
     if (!body.contract) return [{id:'contract',section:'contract',title:'Project contract',state:'not approved',fields:[{label:'next step',value:'Continue intake in the conversation. Contract approval is explicit.'}]}];
-    return [{...entityRow('contract',body.contract),id:'contract',title:text(record(body.contract).workingTitle) || 'Project contract',state:'approved'}];
+    // The daemon returns the active contract even while it is an unapproved draft.
+    const approved = !!record(body.contract).approvedAt;
+    return [{...entityRow('contract',body.contract),id:'contract',title:text(record(body.contract).workingTitle) || 'Project contract',
+      state:approved ? 'approved' : 'draft',...(approved ? {} : {subtitle:'Not approved. Approval happens explicitly in the intake conversation.'})}];
   }
   const nested = ['mission','direction','execution','proposal'].find(key => body[key]);
   return Object.keys(body).length ? [entityRow(section,nested ? body[nested] : body)] : [];
@@ -115,6 +129,21 @@ function assistantText(value: unknown): string {
   }
   return plain;
 }
+/** One-line target of a tool call (command, path, pattern…) for its transcript title. */
+function toolSummary(args: unknown): string {
+  const a = record(args);
+  const value = text(a.command ?? a.path ?? a.file_path ?? a.pattern ?? a.query ?? a.url, 200).replace(/\s+/g, ' ').trim();
+  return value.length > 72 ? value.slice(0, 71) + '…' : value;
+}
+/** Tool output is evidence, not conversation: show the head, count the rest. */
+export function collapseLines(value: string, maximum = 6, characters = 360): string {
+  const lines = value.replace(/\n+$/, '').split('\n');
+  let head = lines.slice(0, maximum).join('\n');
+  // A single long line (minified JSON) also floods the transcript.
+  if (head.length > characters) head = head.slice(0, characters - 1) + '…';
+  const more = lines.length - maximum;
+  return more > 0 ? `${head}\n… ${more} more lines` : head;
+}
 export function eventEntries(events: NoshEvent[]): TranscriptEntry[] {
   const result: TranscriptEntry[] = [], tools = new Map<string, TranscriptEntry>();
   const selections = new Map<string, {model?: string; thinkingLevel?: string}>();
@@ -133,7 +162,9 @@ export function eventEntries(events: NoshEvent[]): TranscriptEntry[] {
     else if (e.type === 'agent.tool_started' || e.type === 'agent.tool_completed') {
       const toolKey = p.toolCallId ? `${agentId}:${text(p.toolCallId)}` : e.eventId;
       const previous = tools.get(toolKey), complete = e.type === 'agent.tool_completed';
-      const entry: TranscriptEntry = {...base,id:previous?.id ?? `tool:${e.scope.projectId}:${toolKey}`,kind:'tool',title:text(p.toolName) || 'Tool',text:complete ? contentText(p.result) : formatFields(fields(p.args,8)),status:complete ? p.isError ? 'failed' : 'completed' : 'running'};
+      // Completion events carry no args; keep the started title (tool + target).
+      const summary = toolSummary(p.args), title = previous?.title ?? ((text(p.toolName) || 'Tool') + (summary ? ' ' + summary : ''));
+      const entry: TranscriptEntry = {...base,id:previous?.id ?? `tool:${e.scope.projectId}:${toolKey}`,kind:'tool',title,text:complete ? collapseLines(contentText(p.result)) : summary ? '' : formatFields(fields(p.args,8)),status:complete ? p.isError ? 'failed' : 'completed' : 'running'};
       if (previous) Object.assign(previous,entry); else { tools.set(toolKey,entry); result.push(entry); }
     } else if (e.type === 'agent.terminal_receipt') {
       const accepted = p.accepted === true, failed = record(p.effect).state === 'failed';

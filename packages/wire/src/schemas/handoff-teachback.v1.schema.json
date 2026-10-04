@@ -1,7 +1,170 @@
 {
   "$ref": "#/definitions/handoff-teachback",
   "definitions": {
-    "handoff-teachback": {}
+    "handoff-teachback": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/handoff-teachback/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "handoffId": {
+          "type": "string",
+          "pattern": "^hnd_[0-9a-f]{32}$"
+        },
+        "toAgentId": {
+          "type": "string",
+          "pattern": "^agt_[0-9a-f]{32}$"
+        },
+        "logicalOwnerId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "rejected_conflict",
+            "clarification_required"
+          ]
+        },
+        "understoodGoalStack": {
+          "type": "object",
+          "properties": {
+            "projectGoalId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "missionCriterionIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              }
+            },
+            "directionQuestionId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "currentGraphNodeId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "projectGoalId",
+            "missionCriterionIds",
+            "directionQuestionId",
+            "currentGraphNodeId"
+          ],
+          "additionalProperties": false
+        },
+        "observedVersions": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "observedBranchHead": {
+          "type": "string",
+          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+        },
+        "acknowledgedDefectIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          }
+        },
+        "acknowledgedBlockerIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^blk_[0-9a-f]{32}$"
+          }
+        },
+        "selectedNextNodeId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plannedFirstAction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "maxItems": 100
+        },
+        "submittedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "handoffId",
+        "toAgentId",
+        "logicalOwnerId",
+        "decision",
+        "understoodGoalStack",
+        "observedVersions",
+        "observedBranchHead",
+        "acknowledgedDefectIds",
+        "acknowledgedBlockerIds",
+        "selectedNextNodeId",
+        "plannedFirstAction",
+        "conflicts",
+        "submittedAt"
+      ],
+      "additionalProperties": false
+    }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nosh.dev/schemas/handoff-teachback/v1"

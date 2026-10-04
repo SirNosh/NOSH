@@ -1,7 +1,393 @@
 {
   "$ref": "#/definitions/mission-contract",
   "definitions": {
-    "mission-contract": {}
+    "mission-contract": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/mission-contract/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "templateVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "missionId": {
+          "type": "string",
+          "pattern": "^mis_[0-9a-f]{32}$"
+        },
+        "projectId": {
+          "type": "string",
+          "pattern": "^prj_[0-9a-f]{32}$"
+        },
+        "predecessorMissionId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^mis_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "objectiveVersion": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "objective": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "nonObjectives": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "maxItems": 200
+        },
+        "projectAlignment": {
+          "type": "object",
+          "properties": {
+            "projectGoalId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "contribution": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            }
+          },
+          "required": [
+            "projectGoalId",
+            "contribution"
+          ],
+          "additionalProperties": false
+        },
+        "deliverables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {}
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          },
+          "minItems": 1
+        },
+        "successCriteria": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {}
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          },
+          "minItems": 1
+        },
+        "exitProofs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {}
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          },
+          "minItems": 1
+        },
+        "startingEvidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^evd_[0-9a-f]{32}$"
+          }
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {}
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          }
+        },
+        "initialGraphVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "budgets": {
+          "type": "object",
+          "properties": {
+            "deadline": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "maximumWallClockSeconds": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "maximumModelTokens": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "maximumGpuSeconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maximumDiskBytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maximumExperiments": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maximumConcurrentAgents": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "maximumConcurrentGpuJobs": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "deadline",
+            "maximumWallClockSeconds",
+            "maximumModelTokens",
+            "maximumGpuSeconds",
+            "maximumDiskBytes",
+            "maximumExperiments",
+            "maximumConcurrentAgents",
+            "maximumConcurrentGpuJobs"
+          ],
+          "additionalProperties": false
+        },
+        "approvalBoundaries": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "pausePolicy": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "finalReviewRubric": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {}
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          },
+          "minItems": 1
+        },
+        "approvedBy": {
+          "type": "string",
+          "enum": [
+            "user"
+          ]
+        },
+        "approvedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "contractHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "templateVersion",
+        "missionId",
+        "projectId",
+        "predecessorMissionId",
+        "objectiveVersion",
+        "title",
+        "objective",
+        "nonObjectives",
+        "projectAlignment",
+        "deliverables",
+        "successCriteria",
+        "exitProofs",
+        "startingEvidenceIds",
+        "assumptions",
+        "initialGraphVersion",
+        "budgets",
+        "approvalBoundaries",
+        "pausePolicy",
+        "finalReviewRubric",
+        "approvedBy",
+        "approvedAt",
+        "contractHash"
+      ],
+      "additionalProperties": false
+    }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nosh.dev/schemas/mission-contract/v1"

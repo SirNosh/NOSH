@@ -51,11 +51,81 @@ Artifact and evidence IDs must already exist in authoritative storage. Repositor
 
 The context router passes only explicitly selected Episode projections, capped at 20 and packed into a 16,000-character Episode-projection budget. Recent projections win; older selected Episodes remain addressable by immutable ID. It never injects a parent or worker's full transcript.
 
+## Director briefs
+
+Mission and Research Directors supervise; they do not execute. Before the deterministic scheduler runs a selected node, the supervisor gives the director one `THREAD_STEP` whose objective is a **brief** rendered by `apps/noshd/src/director-brief.ts` from durable typed state, with no summarization model:
+
+- goal stack: Project north star, the Mission objective/criteria or the Direction question, decision use, and falsifiability;
+- state, version, graph version, frozen evaluation contract and hash, and baseline status;
+- every graph node with state, attempts, and hard dependencies, plus the node selected to run next;
+- failure ledger (failed/blocked nodes), Review verdicts with blocking/major defects, and Evidence under the contract;
+- an event digest (counts and notable events) for the range since the scope's previous cycle record.
+
+Raw logs and transcripts are never included; the brief is clipped at 14,000 characters. Directors get no file, shell, or Job tools. The daemon allocates the cycle ID, timestamp, and consumed event range and supplies both terminal records (`research-director-cycle` or `mission-director-cycle`, plus `episode-draft`) as complete schema-valid templates; the director edits only judgment fields such as disposition, uncertainties, decision reasons, and `currentWorkContributes`. A valid cycle with `currentWorkContributes: false` halts the scope for user attention (`direction.director_halted`). Runtime steps always permit `nosh_episode_submit` in the terminal contract.
+
+## Task execution
+
+Workers, reviewers, and proposers follow the same rule: the daemon executes and judges; models decide.
+
+- **Task worktrees.** Every Direction, Mission, and Autoresearch task runs in its own Git worktree.
+  - Location: `.nosh/worktrees/<wt_id>`, on branch `nosh/task-<12hex>`.
+  - Created from the scope's starting commit with `core.autocrlf=false`, by `apps/noshd/src/task-worktree.ts`.
+  - The Pi session cwd and the postflight both use that worktree; the main checkout is never edited.
+  - Plumbing runs with no global or system Git config and a scoped `safe.directory`.
+  - Agent commits are authored as `NOSH <role> <agentId@agents.nosh.invalid>`.
+  - Worktrees are not yet garbage-collected.
+- **Templates, not prose.** Acknowledgement, completion, Review, experiment-proposal, and episode-draft records are handed to the model as complete schema-valid JSON envelopes (`apps/noshd/src/task-templates.ts`).
+  - The model edits only the `EDIT:` judgment fields.
+  - A reviewer's verdict starts as a deliberately invalid placeholder, so an undecided Review cannot pass validation.
+- **Baseline reproduction.** The daemon runs the frozen evaluation command as a Job and records its metrics, stdout, and stderr as Artifacts. The worker audits that evidence; an independent reviewer PASS accepts the baseline.
+- **Hypothesis nodes.** A Direction's hypothesis-family node waits (`direction.awaiting_autoresearch`) for a Direction-backed Autoresearch.
+  - Each run is consumed once (`direction.hypothesis_resolved`).
+  - A completed run accepts the node; a stopped or failed run counts as a failed attempt.
+- **Autoresearch experiments.**
+  - The proposer sees prior proposals and results. The daemon computes the idea and nearest-attempt fingerprints.
+  - An implementation that fails postflight emits `autoresearch.experiment_failed`, and that experiment is retired; it still counts against the experiment budget.
+  - Wall-clock budget counts only time spent `running`.
+  - Guardrails: an evaluation contract may declare `guardrails: [{ "name": "<metric>", "direction": "maximize" | "minimize", "threshold": <number> }]`.
+    - The daemon checks each one against the measured metrics (a boolean counts as 0/1; a missing value fails).
+    - An experiment is kept only if every guardrail passes.
+    - The experiment-result lists each check, and the reviewer is shown the measured metrics and checks.
+  - Round and closure reviewers receive compact daemon digests of results and Evidence, not just IDs. The round prompt states that "held" means "awaiting this review".
+  - A reviewer that never produces a valid verdict leaves the experiment unreviewed (`autoresearch.review_failed`). Its result records the actual verdict, but only a passing review marks Evidence `reviewed`.
+  - When a budget is exhausted, the run is closed through a closure Review if it has results, and blocked otherwise.
+
+- **Direction synthesis and closure.**
+  - Director briefs and Direction reviewer nodes include every consumed Autoresearch's completion, measured results, and Evidence statements (`directionAutoresearchOutcomes`).
+  - The closure packet classifies held experiments as inconclusive and derives its disposition (supported, refuted, or inconclusive) and its answer from the results.
+  - The closure review judges fidelity: an honest inconclusive or refuted answer passes.
+- **Repair.**
+  - A blocked or paused Direction or Mission accepts exactly one node change: blocked or failed → `ready` (TUI `/retry`). Reactivating it then resumes scheduling.
+- **Mission controls.**
+  - Steering (TUI `/steer`) is durable: it reaches any live Director and appears in every later Mission brief.
+  - Steer, pause, resume, and stop accept any inspected version at or after the Mission's last *state* transition, so node progress does not invalidate them.
+- **Librarian network.** Network access is granted only under the `network_research.allowlisted` Project policy; see THREAT_MODEL.md.
+- **Running commands (`nosh_run`).** Workers never spawn processes and never get a shell.
+  - A Project contract may opt in with `execution: { "runner": "native", "commands": [{ "commandId", "description", "argv", "timeoutSeconds" }] }`. Commands are argv lists, never shell strings.
+  - Add or change commands with the user-only `/amend-contract <file>`, which writes the next approved contract version.
+  - When commands are declared, general workers get `subprocess: "allowlisted"` and `nosh_run({ commandId })`. The daemon runs the command as a supervised Job in the task worktree, records `task.command_run` (commit, dirty flag, exit code), and returns the exit code and output tails.
+  - Postflight accepts a cited `job_…` validator only if it is this task's own run that passed on the ending commit with a clean worktree.
+  - Native execution runs the worktree's code with the user's privileges. Declaring commands is a trust decision, and OS isolation (WSL2) is not yet the default.
+- **Artifacts for evidence.** `nosh_artifact_register({ path, kind })` snapshots a file from the task's own worktree into the Artifact store and returns an `art_` ID. `nosh_artifact_read({ artifactId, offset? })` returns a hash-checked text slice to any task session, including reviewers without a packet. Librarians register sources, report and bibliography; reviewers read every required Artifact.
+- **Daemon-owned facts.**
+  - A worker completion's `commands[]` is filled from the task's `nosh_run` records.
+  - Task reviewers receive `daemonTaskFacts` (postflight outcome and each run's command, description, commit, clean flag, exit code and stdout tail).
+  - Mission reviewer nodes and the completion Review receive `missionOutcomes` (criteria, accepted work, reviews, runs).
+  - Reviewers judge contents, never bare IDs.
+- **Deferred criteria.** `workerClaim: "deferred_to_review"` marks a criterion only the independent Review can establish (such as "linked to an independent Review"). Completion counts it only on that Review's criterion PASS.
+- **Safe pause.** `pause safe` records `pausing` and reports `paused` only after every Mission agent has stopped at its boundary. `immediate` aborts agents and pauses at once.
+- **Budget tokens.** Budgets count `input + output + cacheWrite + ⌈cacheRead/10⌉` (`eventBudgetTokens` in `@nosh/wire`), recomputed from the raw counts on every usage event. A thread step that crosses its budget but delivered its typed episode keeps the result (`runtime.thread_step_over_budget`), and the budget then blocks further steps.
+- **Default model.** Sessions without an explicit selection use `defaultModel` from the NOSH config (for example `openai-codex/gpt-6-luna:low`); see the quick start.
+- **User retry of an exhausted node.** `/retry` on a node that has used all its attempts grants exactly one more attempt (`userGrantedAttempt` on the transition event). Automatic retries never exceed the budget.
+
 ## Token and cache discipline
 
 - Full records remain authoritative in SQLite and immutable Episodes. Continuation uses a deterministic generated projection, so agents do not maintain parallel summary or “truth” documents.
 - Step prompts put invariant instructions before selected context and the changing objective. Accepted typed-tool calls return a fixed short receipt instead of echoing a potentially large projection.
-- Pi sessions use a compact role system prompt. OpenAI requests receive a stable, privacy-preserving cache key derived from Project, role, and tool profile; task, Agent, and request IDs do not perturb it. Completion events record input, output, cache-read, and cache-write tokens so hit rates can be measured rather than inferred.
+- Pi sessions use a stable, structured system prompt with shared architecture, authority, turn-mode, recovery, and scientific-integrity rules plus role-specific guidance. The adapter supplies this base prompt; Task Packets, selected Episodes, objectives, and the host terminal contract provide dynamic scope and output requirements. Package task templates and repository context do not grant authority. OpenAI requests receive a stable, privacy-preserving cache key derived from Project, role, and tool profile; task, Agent, and request IDs do not perturb it. Completion events record input, output, cache-read, and cache-write tokens so hit rates can be measured rather than inferred.
 
 These choices follow the shared prefix rule documented by [OpenAI](https://developers.openai.com/api/docs/guides/prompt-caching), [Anthropic](https://platform.claude.com/docs/en/build-with-claude/prompt-caching), and [Google](https://ai.google.dev/gemini-api/docs/caching/): place stable content first, keep tool and prompt ordering deterministic, reuse cache affinity, and put volatile content last.
 
@@ -81,7 +151,7 @@ Hooks run after schema and actor validation and before dispatch. A hook may exec
 
 ## Daemon and UI integration
 
-Mission, Direction, and Autoresearch worker sessions now pass through `THREAD_OPEN`, `THREAD_STEP`, and `STOP`. Pi also exposes `nosh_runtime_instruct` so an authorized model can choose typed operations directly. `noshd` exposes authenticated routes for instructions, threads, session rotation, foreground messages, Episodes/traces, skills, programs, program states, and program execution. The TUI provides bounded status and event views, not a Threads graph or foreground-fork controls. There are no encrypted remote snapshots or remote devices.
+Mission, Direction, and Autoresearch worker sessions now pass through `THREAD_OPEN`, `THREAD_STEP`, and `STOP`. Pi also exposes `nosh_runtime_instruct` so an authorized model can choose typed operations directly. `noshd` exposes authenticated routes for instructions, threads, session rotation, foreground messages, Episodes/traces, skills, programs, program states, and program execution (see [local API](api.md)). The TUI provides bounded status and event views, not a Threads graph or foreground-fork controls. There are no encrypted remote snapshots or remote devices.
 
 ## Phase completion and adversarial disposition
 

@@ -26,6 +26,7 @@ provider, configuration, persistence, or shell-command runtime is imported.
 | [theme/assets/opencode.json](https://github.com/anomalyco/opencode/blob/b3f1a96c6dd7adeb28b36dd11add1998fc84d67b/packages/tui/src/theme/assets/opencode.json) | `src/theme.ts`: resolved dark palette. Muted text is lifted from `#808080` to `#909090`; NOSH uses upstream primary orange as its prompt accent. |
 | [theme/index.ts](https://github.com/anomalyco/opencode/blob/b3f1a96c6dd7adeb28b36dd11add1998fc84d67b/packages/tui/src/theme/index.ts) | `src/theme.ts`: selected Markdown/syntax scope definitions, reduced to the scopes needed by this native scene. |
 | [ui/border.ts](https://github.com/anomalyco/opencode/blob/b3f1a96c6dd7adeb28b36dd11add1998fc84d67b/packages/tui/src/ui/border.ts) | `src/theme.ts`: copied `SplitBorder.customBorderChars` merged constant (renamed `splitBorder`). |
+| ui/dialog.tsx, ui/dialog-select.tsx, component/command-palette.tsx, component/dialog-model.tsx, component/prompt/autocomplete.tsx (same revision) | `src/dialog.ts`, `src/palette.ts`: interaction reference only for modal dialogs, searchable selection, command palette, model picker, and slash autocomplete. Independent imperative implementation; no Solid source copied. |
 | [component/logo.tsx](https://github.com/anomalyco/opencode/blob/b3f1a96c6dd7adeb28b36dd11add1998fc84d67b/packages/tui/src/component/logo.tsx) | Inspected for block-logo presentation. NOSH's five-row lettering is original, not the OpenCode wordmark. |
 
 The responsive NOSH sidebar hides below 80 columns. This differs deliberately
