@@ -15,13 +15,15 @@ import { ResearchControl } from "./research-control.js";
 class ExperimentAgents {
   private readonly sessions = new Map<string, PiSessionOptions>();
   readonly reviewedEvidenceCandidates: Record<string, JsonValue>[] = [];
-  constructor(private readonly append: (draft: EventDraft) => void, private readonly transformReview: (record: Record<string, JsonValue>) => Record<string, JsonValue> = (record) => record) {}
+  constructor(private readonly append: (draft: EventDraft) => void, private readonly transformReview: (record: Record<string, JsonValue>) => Record<string, JsonValue> = (record) => record, private failProposals = 0) {}
   inspect(): AgentInspection[] { return [...this.sessions.values()].map((session) => ({ ...session, piSessionId: `pi_${session.agentId}`, status: "running", currentTool: null, activeToolIds: [], startedAt: new Date().toISOString(), lastEventAt: new Date().toISOString(), modelProvider: session.model?.provider ?? null, modelId: session.model?.id ?? null, modelName: null, thinkingLevel: session.thinkingLevel ?? "medium", contextTokens: null, contextWindow: null, contextPercent: null })); }
   async start(options: PiSessionOptions): Promise<AgentInspection> { this.sessions.set(options.agentId, options); return this.inspect().find((agent) => agent.agentId === options.agentId)!; }
   async prompt(agentId: string, prompt: string): Promise<void> {
     const session = this.sessions.get(agentId)!; const now = new Date().toISOString();
+    // Live models sometimes return a malformed proposal envelope; the host rejects it after its one correction.
+    if (prompt.includes(schemaUri("experiment-proposal")) && this.failProposals > 0) { this.failProposals -= 1; throw new Error('Terminal output rejected: {"accepted":false,"retryAllowed":false,"error":"Expected \',\' or \']\' after array element in JSON"}'); }
     if (prompt.includes(schemaUri("experiment-proposal"))) { const experimentId = required(prompt, /(?:experimentId=|"experimentId":")(exp_[0-9a-f]{32})/); const autoresearchId = required(prompt, /(?:autoresearchId=|"autoresearchId":")(ar_[0-9a-f]{32})/); const parentExperimentId = required(prompt, /(?:parentExperimentId=|"parentExperimentId":")(exp_[0-9a-f]{32})/); const round = Number(required(prompt, /(?:round=|"round":)(\d+)/)); const evaluationContractHash = required(prompt, /(?:evaluationContractHash=|"evaluationContractHash":")(sha256:[0-9a-f]{64})/); this.submit(session, { $schema: schemaUri("experiment-proposal"), schemaVersion: 1, proposalId: `proposal_${experimentId.slice(4)}`, autoresearchId, experimentId, parentExperimentId, round, hypothesis: `Variant ${experimentId.slice(4, 10)} improves the primary metric`, rationale: "Exercise the frozen evaluation contract", primaryChange: { category: "change_variant", description: "Write the bounded variant input", expectedFiles: ["variant.json"] }, expectedEffect: { score: "measurable" }, guardrailRisks: ["Fixture only"], novelty: { ideaFingerprint: sha256({ experimentId }), nearestAttemptFingerprint: null, difference: "Distinct fixture ordinal", duplicateStatus: "distinct" }, evaluationContractHash, estimatedGpuSeconds: 0, proposedByAgentId: agentId, submittedAt: now }); return; }
-    const packetText = prompt.split("before work: ")[1]?.split(". Then implement")[0]; if (packetText) { const packet = JSON.parse(packetText) as { taskId: string; attempt: number; assignedAgentId: string; requiredOutputs: Array<{ outputId: string }>; acceptanceCriteria: Array<{ criterionId: string }>; workspace: { startingCommit: string; branch: string }; lease: { leaseId: string } }; this.submit(session, { $schema: schemaUri("task-acknowledgement"), schemaVersion: 1, taskId: packet.taskId, attempt: packet.attempt, agentId, decision: "accepted", understoodObjective: "Implement one bounded variant", understoodOutputIds: packet.requiredOutputs.map((output) => output.outputId), understoodCriterionIds: packet.acceptanceCriteria.map((criterion) => criterion.criterionId), observedLeaseId: packet.lease.leaseId, observedStartingCommit: packet.workspace.startingCommit, conflicts: [], clarificationRequest: null, submittedAt: now }); const ordinal = Number(required(prompt, /variantOrdinal=(\d+)/)); const score = [2, 3, 5, 1][ordinal - 1]!; writeFileSync(join(session.cwd, "variant.json"), `${JSON.stringify({ score })}\n`); git(session.cwd, ["add", "--", "variant.json"]); git(session.cwd, ["commit", "-m", `experiment variant ${ordinal}`]); const endingCommit = git(session.cwd, ["rev-parse", "HEAD"]); const validator = `validator_${packet.taskId.slice(4)}`; this.submit(session, { $schema: schemaUri("general-worker-completion"), schemaVersion: 1, taskOutcome: "completed", workPerformed: [{ action: "action_implementation", subject: "Bounded variant", artifactIds: [] }], codeChanges: { startingCommit: packet.workspace.startingCommit, endingCommit, changedPaths: ["variant.json"], diffArtifactId: null, branch: packet.workspace.branch }, commands: [{ commandId: validator, displayCommand: "fixture validation", exitCode: 0, resultArtifactId: null }], criteria: [{ criterionId: packet.acceptanceCriteria[0]!.criterionId, workerClaim: "satisfied", validatorRunIds: [validator], artifactIds: [], notes: "Fixture passed" }], scientificImpact: { claimIds: [], evidenceIds: [], interpretation: "Fixture variant" }, deviations: [], newRisks: [], unresolvedItems: [], suggestedNextActions: [], readyForDeterministicPostflight: true, readyForReview: true }); return; }
+    const packetText = prompt.includes(". Implement exactly") ? prompt.split("Task Packet: ")[1]?.split(". Implement exactly")[0] : undefined; if (packetText) { const packet = JSON.parse(packetText) as { taskId: string; attempt: number; assignedAgentId: string; requiredOutputs: Array<{ outputId: string }>; acceptanceCriteria: Array<{ criterionId: string }>; workspace: { startingCommit: string; branch: string }; lease: { leaseId: string } }; const ordinal = Number(required(prompt, /variantOrdinal=(\d+)/)); const score = [2, 3, 5, 1][ordinal - 1]!; writeFileSync(join(session.cwd, "variant.json"), `${JSON.stringify({ score })}\n`); /* stands in for the daemon's completion commit */ git(session.cwd, ["add", "--", "variant.json"]); git(session.cwd, ["commit", "-m", `experiment variant ${ordinal}`]); const endingCommit = git(session.cwd, ["rev-parse", "HEAD"]); const validator = `validator_${packet.taskId.slice(4)}`; this.submit(session, { $schema: schemaUri("general-worker-completion"), schemaVersion: 1, taskOutcome: "completed", workPerformed: [{ action: "action_implementation", subject: "Bounded variant", artifactIds: [] }], codeChanges: { startingCommit: packet.workspace.startingCommit, endingCommit, changedPaths: ["variant.json"], diffArtifactId: null, branch: packet.workspace.branch }, commands: [{ commandId: validator, displayCommand: "fixture validation", exitCode: 0, resultArtifactId: null }], criteria: [{ criterionId: packet.acceptanceCriteria[0]!.criterionId, workerClaim: "satisfied", validatorRunIds: [validator], artifactIds: [], notes: "Fixture passed" }], scientificImpact: { claimIds: [], evidenceIds: [], interpretation: "Fixture variant" }, deviations: [], newRisks: [], unresolvedItems: [], suggestedNextActions: [], readyForDeterministicPostflight: true, readyForReview: true }); return; }
     const requestText = prompt.split("Review Request: ")[1]?.split(". Submit")[0]; if (requestText) { const request = JSON.parse(requestText) as { reviewId: string; reviewRequestId: string; reviewType: string; target: JsonValue; criteria: Array<{ criterionId: string; required: boolean }>; requiredArtifactIds: string[]; requiredEvidenceIds: string[] };
       if (request.reviewType === "experiment") {
         const candidateText = prompt.split("Review this candidate Evidence for publication with your exact disposition: ")[1]?.split(" Review Request: ")[0];
@@ -83,6 +85,21 @@ describe("AutoresearchSupervisor", () => {
       run.cleanup();
     }
   }, 90_000);
+
+  it("retries a malformed proposal with a fresh one, and blocks only after consecutive failures", async () => {
+    const recovered = await runAutoresearchFixture(targetContract(), { failProposals: 2 });
+    try {
+      expect(recovered.errors).toEqual([]);
+      expect(recovered.proposalFailures).toBe(2);
+      expect(recovered.execution.state).toBe("completed");
+    } finally { recovered.cleanup(); }
+    const exhausted = await runAutoresearchFixture(targetContract(), { failProposals: 3 });
+    try {
+      expect(exhausted.proposalFailures).toBe(3);
+      expect(exhausted.execution.state).toBe("blocked");
+      expect(exhausted.errors).toEqual([{ message: "No valid experiment proposal after 3 consecutive attempts" }]);
+    } finally { exhausted.cleanup(); }
+  }, 120_000);
 
   it("rejects an improving experiment that violates a contract guardrail", async () => {
     const run = await runAutoresearchFixture({ primaryMetric: { name: "score", objective: "minimize", minimumEffect: 1 }, baselineMetrics: { score: 4 }, guardrails: [{ name: "guardrail_pass", direction: "maximize", threshold: 1 }], roundWidths: [1], execution: { runner: "native", command: [process.execPath, "-e", "require('fs').writeFileSync('metrics.json','{\"score\":2,\"guardrail_pass\":false}')"], resultPath: "metrics.json", timeoutSeconds: 30, usesGpu: false } });
@@ -206,7 +223,7 @@ function expectReviewedEvidenceAuthority(records: unknown[]): void {
   }
 }
 
-async function runAutoresearchFixture(evaluationContract: JsonValue, options: { transformReview?: (record: Record<string, JsonValue>) => Record<string, JsonValue>; deferCompletion?: boolean } = {}) {
+async function runAutoresearchFixture(evaluationContract: JsonValue, options: { transformReview?: (record: Record<string, JsonValue>) => Record<string, JsonValue>; deferCompletion?: boolean; failProposals?: number } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "nosh-autoresearch-terminal-"));
   const repositoryRoot = join(directory, "repository");
   mkdirSync(repositoryRoot);
@@ -215,7 +232,7 @@ async function runAutoresearchFixture(evaluationContract: JsonValue, options: { 
   const project: RegisteredProject = { projectId, repositoryRoot, databasePath: join(directory, "project.sqlite"), registeredAt: new Date().toISOString() };
   const store = new EventStore(project.databasePath);
   const research = new ResearchControl(() => store, () => project, () => undefined);
-  const agents = new ExperimentAgents((draft) => { appendFixtureEvent(store, draft); }, options.transformReview);
+  const agents = new ExperimentAgents((draft) => { appendFixtureEvent(store, draft); }, options.transformReview, options.failProposals ?? 0);
   const jobEvents = new EventEmitter();
   const jobs = new JobSupervisor(join(directory, "jobs"), (job) => {
     store.append({ $schema: schemaUri("event"), schemaVersion: 1, retention: "persistent", type: "job.state_changed", source: "fixture", scope: { projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: job.runId, jobId: job.jobId, agentId: null }, correlationId: job.jobId, causationId: null, payload: job as unknown as JsonValue });
@@ -241,7 +258,8 @@ async function runAutoresearchFixture(evaluationContract: JsonValue, options: { 
   const records = research.submitted(projectId).filter((entry) => entry.event.scope.autoresearchId === execution.entityId).map((entry) => entry.record as Record<string, unknown>);
   const errors = store.replay(projectId).filter((entry) => entry.scope.autoresearchId === execution.entityId && entry.type === "autoresearch.supervisor_error").map((entry) => entry.payload);
   transitionSpy.mockRestore();
-  return { execution: completed, records, errors, completionAttempts, reviewedEvidenceCandidates: agents.reviewedEvidenceCandidates, cleanup: () => { jobs.close(); store.close(); rmSync(directory, { recursive: true, force: true }); } };
+  const proposalFailures = store.replay(projectId).filter((entry) => entry.scope.autoresearchId === execution.entityId && entry.type === "autoresearch.proposal_failed").length;
+  return { execution: completed, records, errors, completionAttempts, proposalFailures, reviewedEvidenceCandidates: agents.reviewedEvidenceCandidates, cleanup: () => { jobs.close(); store.close(); rmSync(directory, { recursive: true, force: true }); } };
 }
 
 function initializeRepository(path: string): void { git(path, ["init", "-b", "main"]); git(path, ["config", "user.email", "fixture@nosh.test"]); git(path, ["config", "user.name", "NOSH Fixture"]); writeFileSync(join(path, ".gitignore"), ".nosh/\n"); writeFileSync(join(path, "README.md"), "# Fixture\n"); git(path, ["add", "--", ".gitignore", "README.md"]); git(path, ["commit", "-m", "fixture baseline"]); }

@@ -185,3 +185,48 @@ export function boundEntries(entries: TranscriptEntry[]): TranscriptEntry[] {
   }
   return result.reverse();
 }
+
+export type MapTone = 'success' | 'active' | 'waiting' | 'error' | 'idle';
+export interface MapLine { prefix: string; glyph: string; tone: MapTone; label: string; title: string; state: string; detail: string; heading?: boolean }
+const MAP_ROOTS: Record<string, { glyph: string; label: string }> = { mission: { glyph: '◆', label: 'MISSION' }, direction: { glyph: '◇', label: 'DIRECTION' }, autoresearch: { glyph: '⟳', label: 'AUTORESEARCH' } };
+export function mapTone(state: string): MapTone {
+  if (/fail|error|reject|cancel|stop|blocked|lost/i.test(state)) return 'error';
+  if (/accept|complete|promoted|passed|closed/i.test(state)) return 'success';
+  if (/review|postflight|approval|pending|paus|held|awaiting|planning|draft/i.test(state)) return 'waiting';
+  if (/running|working|active|evaluating|implementing|leased|starting|idle/i.test(state)) return 'active';
+  return 'idle';
+}
+function mapGlyph(kind: string, state: string): string {
+  if (MAP_ROOTS[kind]) return MAP_ROOTS[kind]!.glyph;
+  if (kind === 'worker') return '⚙';
+  if (kind === 'job') return '▸';
+  if (state === 'promoted') return '★';
+  return { success: '✓', active: '●', waiting: '◐', error: '✗', idle: '○' }[mapTone(state)];
+}
+export function progressBar(done: number, total: number, cells = 10): string {
+  if (!total) return '';
+  const filled = Math.round(Math.min(1, Math.max(0, done / total)) * cells);
+  return `${'▰'.repeat(filled)}${'▱'.repeat(cells - filled)} ${done}/${total}`;
+}
+/** The daemon's /research-map tree as indented lines with tree connectors; bounded. */
+export function researchMapLines(map: unknown, maximum = 400): MapLine[] {
+  const lines: MapLine[] = []; const value = record(map);
+  const visit = (node: Record<string, unknown>, prefix: string, branch: string, root: boolean): void => {
+    if (lines.length >= maximum) return;
+    const kind = text(node.kind), state = text(node.state, 40), progress = record(node.progress);
+    const bar = root && typeof progress.total === 'number' ? progressBar(Number(progress.done), progress.total) : '';
+    lines.push({ prefix: prefix + branch, glyph: mapGlyph(kind, state), tone: root ? (MAP_ROOTS[kind] ? mapTone(state) : 'idle') : mapTone(state), label: root ? MAP_ROOTS[kind]?.label ?? '' : '', title: text(node.title, 200), state, detail: [bar, text(node.detail, 160)].filter(Boolean).join('  ') });
+    const children = Array.isArray(node.children) ? node.children.map(record) : [];
+    const nested = root ? prefix : prefix + (branch === '└─ ' ? '   ' : '│  ');
+    children.forEach((child, index) => visit(child, nested, index === children.length - 1 ? '└─ ' : '├─ ', false));
+  };
+  const roots = Array.isArray(value.roots) ? value.roots.map(record) : [];
+  for (const root of roots) { if (lines.length) lines.push({ prefix: '', glyph: '', tone: 'idle', label: '', title: '', state: '', detail: '' }); visit(root, '', '', true); }
+  const workers = Array.isArray(value.workers) ? value.workers.map(record) : [];
+  if (workers.length && lines.length < maximum) {
+    lines.push({ prefix: '', glyph: '', tone: 'idle', label: '', title: '', state: '', detail: '' });
+    lines.push({ prefix: '', glyph: '', tone: 'idle', label: 'WORKERS', title: `${workers.length} live`, state: '', detail: '', heading: true });
+    workers.forEach((worker, index) => visit(worker, '', index === workers.length - 1 ? '└─ ' : '├─ ', false));
+  }
+  return lines.slice(0, maximum);
+}

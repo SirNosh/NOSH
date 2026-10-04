@@ -48,7 +48,7 @@ export function declaredTaskCommands(project: RegisteredProject): Array<{ comman
 }
 /** Task-packet instruction listing the runnable commands, or nothing when none are declared. */
 export function taskCommandInstructions(commands: ReturnType<typeof declaredTaskCommands>): string[] {
-  return commands.length ? [`You may run these Project-contract commands with nosh_run (by commandId) in your worktree: ${commands.map((command) => `${command.commandId} = ${command.argv.join(" ")} (${command.description})`).join("; ")}. To cite a run as a criterion validator, commit first, run on the clean final commit, and put its jobId in validatorRunIds.`] : [];
+  return commands.length ? [`You may run these Project-contract commands with nosh_run (by commandId) in your worktree: ${commands.map((command) => `${command.commandId} = ${command.argv.join(" ")} (${command.description})`).join("; ")}. The daemon commits your edits before each run; to cite a run as a criterion validator, run it after your last edit and put its jobId in validatorRunIds.`] : [];
 }
 /** What a task reviewer must see besides the worker's claims: the daemon's own verified facts for that task. */
 export function daemonTaskFacts(research: ResearchControl, projectId: string, taskId: string): string {

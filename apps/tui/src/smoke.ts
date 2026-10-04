@@ -50,6 +50,13 @@ try {
   controller.view = 'help'; controller.detail = 'Native help check'; workspace.render();
   await test.renderOnce();
   check(test.captureCharFrame().includes('ctrl+b hide'), 'Session sidebar missing at wide size');
+  controller.researchMap = { generatedAt: '2026-10-03T12:00:00.000Z', workers: [{ kind: 'worker', id: 'agt_1', title: 'general worker', state: 'running nosh_run', detail: 'gpt-6-luna:low', children: [] }],
+    roots: [{ kind: 'mission', id: 'mis_1', title: 'Boundary tests', state: 'running', detail: 'v4', progress: { done: 1, total: 2 }, children: [
+      { kind: 'node', id: 'n1', title: 'Write tests', state: 'working', detail: 'implementation', children: [] },
+      { kind: 'node', id: 'n2', title: 'Final review', state: 'ready', detail: 'final review', children: [] }] }] };
+  controller.view = 'map'; workspace.render(); await test.renderOnce();
+  frame = test.captureCharFrame();
+  check(frame.includes('RESEARCH MAP') && frame.includes('MISSION Boundary tests') && frame.includes('├─ ● Write tests') && frame.includes('└─ ○ Final review') && frame.includes('▰▰▰▰▰▱▱▱▱▱ 1/2') && frame.includes('WORKERS'), 'Research map did not render as a tree');
   test.resize(60,20); workspace.render(); await test.renderOnce();
   frame = test.captureCharFrame();
   check(frame.includes('nosh 0.1.0') && !frame.includes('ctrl+b hide'), 'Narrow layout must hide sidebar');
@@ -57,7 +64,7 @@ try {
   test.resize(100, 30);
   await checkNativeTranscript();
 } finally { workspace.dispose(); controller.dispose(); client.close(); test.renderer.destroy(); }
-console.log('OpenTUI native smoke passed: home/session, multiline input, searchable palette, modal focus, form, resize, transcript reconciliation.');
+console.log('OpenTUI native smoke passed: home/session, multiline input, searchable palette, modal focus, form, research map, resize, transcript reconciliation.');
 
 async function checkNativeTranscript() {
   const syntax = createMarkdownStyle();

@@ -18,6 +18,7 @@ Tool calls are titled by their target (for example `bash ls .nosh` or `read docs
 - **F2:** select an authenticated model, then one of its advertised thinking levels. Ctrl+M is not used because most terminals send it as Enter.
 - **Ctrl+T:** cycle to the selected model's next advertised thinking level; with no model selected, it opens the picker.
 - **Ctrl+B:** toggle the research sidebar.
+- **Ctrl+G** (or `/map`): the research map. It is a live tree of what the Project is doing: each Mission and Direction with a progress bar and its graph nodes (with the worker holding each node, its current tool and model), each Autoresearch with its round and best score and every experiment's state (proposed, implementing, evaluating, ★ promoted, held, rejected, failed) and score delta, all live workers, and running Jobs. Glyphs and colors: ✓ done, ● running, ◐ waiting or in review, ✗ failed or blocked, ○ not started. It refreshes every few seconds while open; Esc returns to the conversation.
 - **Esc:** close a dialog without applying an action; from any other view, return to the conversation. In the conversation a single Esc keeps the draft; a second Esc within 1.5 seconds clears it (the status line shows `esc again to clear the draft`).
 - **Up/Down** at composer boundaries recall input history (100 entries, this session only).
 - **PgUp/PgDn:** scroll. **Ctrl+Home/End:** jump to start/end.

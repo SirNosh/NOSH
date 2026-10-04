@@ -8,7 +8,7 @@ export const legalNodeTransitions: Readonly<Record<NodeState, readonly NodeState
 };
 export const legalMissionTransitions: Readonly<Record<MissionState, readonly MissionState[]>> = {
   draft: ["planning"], planning: ["awaiting_approval"], awaiting_approval: ["running"], running: ["pausing", "reviewing", "blocked", "stopping", "failed"],
-  pausing: ["paused"], paused: ["running", "stopping"], reviewing: ["running", "completed"], blocked: ["running"], stopping: ["stopped"], completed: [], stopped: [], failed: [],
+  pausing: ["paused"], paused: ["running", "stopping"], reviewing: ["running", "completed"], blocked: ["running", "stopping"], stopping: ["stopped"], completed: [], stopped: [], failed: [],
 };
 export const legalDirectionTransitions: Readonly<Record<DirectionState, readonly DirectionState[]>> = {
   draft: ["proposed", "stopped"], proposed: ["active", "stopped"], active: ["paused", "blocked", "reviewing", "stopped"], paused: ["active", "stopped"],

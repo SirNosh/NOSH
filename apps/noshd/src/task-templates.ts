@@ -3,20 +3,10 @@
  * fills identity, commits, branch, criteria, and validator/Job references; the worker edits only
  * judgment fields. Prose descriptions of strict schemas were paraphrased by models in live runs.
  */
-import { episodeTypeForRole, schemaDocumentPath, schemaUri, sha256, type JsonValue } from "@nosh/wire";
+import { episodeTypeForRole, schemaDocumentPath, schemaUri, type JsonValue } from "@nosh/wire";
 
 export type DaemonEvaluation = { jobId: string; state: string; exitCode: number | null; displayCommand: string; metrics: JsonValue; metricArtifactId: string | null; failure: string | null };
 type PacketFacts = { acceptanceCriteria: Array<{ criterionId: string; validatorIds: string[]; required: boolean }>; workspace: { startingCommit: string; branch: string } };
-type AckFacts = { taskId: string; attempt: number; assignedAgentId: string; requiredOutputs: Array<{ outputId: string }>; acceptanceCriteria: Array<{ criterionId: string }>; lease: { leaseId: string }; workspace: { startingCommit: string } };
-
-/** The acknowledgement must echo the packet exactly; the daemon compares every field before work counts. */
-export function acknowledgementInstructions(packet: AckFacts): string {
-  const template = { $schema: schemaUri("task-acknowledgement"), schemaVersion: 1, taskId: packet.taskId, attempt: packet.attempt, agentId: packet.assignedAgentId, decision: "accepted", understoodObjective: "EDIT: the objective in one sentence.", understoodOutputIds: packet.requiredOutputs.map((output) => output.outputId), understoodCriterionIds: packet.acceptanceCriteria.map((criterion) => criterion.criterionId), observedLeaseId: packet.lease.leaseId, observedStartingCommit: packet.workspace.startingCommit, conflicts: [], clarificationRequest: null, submittedAt: new Date().toISOString() };
-  // Progress is optional and informational; a prebuilt record keeps a milestone note to one cheap tool call.
-  const progress = { $schema: schemaUri("progress-update"), schemaVersion: 1, progressId: `progress_${packet.taskId.slice(4)}_1`, taskId: packet.taskId, attempt: packet.attempt, agentId: packet.assignedAgentId, kind: "milestone", summary: "EDIT: what durable progress was made.", goalStackIds: [packet.taskId], durableDelta: { commitIds: [], artifactIds: [], evidenceIds: [], graphNodeStateChanges: [], closedDefectIds: [] }, validation: [], currentOperation: "EDIT: what you are doing now.", nextOperation: "EDIT: what comes next.", estimatedRemainingSeconds: null, newRisk: null, blockerId: null, attemptFingerprint: sha256({ taskId: packet.taskId, attempt: packet.attempt }), emittedAt: new Date().toISOString() };
-  const progressNote = ` Progress updates are optional: send one only at a real milestone, with nosh_progress_emit and record set to this object (edit only the EDIT strings and kind; increment the progressId suffix for each further update): ${JSON.stringify(progress)}`;
-  return `First call nosh_task_acknowledge with record set to exactly this object, replacing only the EDIT string (use decision rejected_conflict, rejected_missing_input, rejected_permission, or clarification_required with conflicts/clarificationRequest only if you cannot do the task): ${JSON.stringify(template)}${progressNote}`;
-}
 
 export function generalWorkerCompletionTemplate(packet: PacketFacts, evaluation: DaemonEvaluation | null): JsonValue {
   const evidenceArtifacts = evaluation?.metricArtifactId ? [evaluation.metricArtifactId] : [];
@@ -51,17 +41,17 @@ export function completionInstructions(template: JsonValue, role = "general_work
   const envelope = { $schema: schemaUri("terminal-output"), schemaVersion: 1, records: [template, episodeDraftTemplate(role, artifacts.slice(0, 1))] };
   return [
     `Your final answer must be exactly this JSON envelope (completion schema: ${schemaDocumentPath("general-worker-completion")}; episode schema: ${schemaDocumentPath("episode-draft")}). Copy it, keep every key and bracket, and replace each "EDIT: ..." string.`,
-    "Judgment you may change in the completion: taskOutcome (partial/blocked/failed when the work is not done), criteria[].workerClaim (unsatisfied/inconclusive when the evidence does not support the criterion; deferred_to_review with empty validatorRunIds only for a criterion that only the independent reviewer can establish, such as one requiring an independent Review), notes, and the plain-string arrays newRisks, unresolvedItems, and deviations. Keep suggestedNextActions empty: the director plans next actions. In the episode you may add facts/decisions objects of the same shape (their evidenceRefs are plain ID strings such as 'art_...', never objects) and plain-string unresolvedQuestions; leave artifactIds, evidenceIds, changedFiles, and recommendedNextActions as given unless you committed files (then list them in changedFiles).",
-    "criteria[].validatorRunIds names what establishes each criterion: validator_task.postflight is the daemon's own Git/scope postflight (keep it for criteria it checks, such as no protected or out-of-scope changes), and job_... IDs are your passing nosh_run runs on the final commit. Never leave a satisfied criterion without one. Keep commands exactly as given: the daemon records every nosh_run itself, and you cite runs only through validatorRunIds.",
-    "If you commit with nosh_git_commit, set codeChanges.endingCommit to the returned commit and codeChanges.changedPaths to exactly the committed paths; otherwise leave codeChanges unchanged. Leave every ID you did not receive from the host unchanged.",
+    "Judgment you may change in the completion: taskOutcome (partial/blocked/failed when the work is not done), criteria[].workerClaim (unsatisfied/inconclusive when the evidence does not support the criterion; deferred_to_review with empty validatorRunIds only for a criterion that only the independent reviewer can establish, such as one requiring an independent Review), notes, and the plain-string arrays newRisks, unresolvedItems, and deviations. Keep suggestedNextActions empty: the director plans next actions. In the episode you may add facts/decisions objects of the same shape (their evidenceRefs are plain ID strings such as 'art_...', never objects) and plain-string unresolvedQuestions; leave artifactIds, evidenceIds, changedFiles, and recommendedNextActions as given.",
+    "criteria[].validatorRunIds names what establishes each criterion: validator_task.postflight is the daemon's own Git/scope postflight (keep it for criteria it checks, such as no protected or out-of-scope changes), and job_... IDs are your passing nosh_run runs on your final content (a run made after your last edit). Never leave a satisfied criterion without one. Keep commands exactly as given: the daemon records every nosh_run itself, and you cite runs only through validatorRunIds.",
+    "Do not commit and leave codeChanges as given: the daemon commits all your worktree edits after this answer and fills codeChanges and the episode's changedFiles. To cite a file from your worktree as evidence, put \"artifact:<relative/path>\" in an artifactIds list; the daemon snapshots it and substitutes its art_ ID. Leave every other ID you did not receive from the host unchanged.",
     JSON.stringify(envelope),
   ].join("\n");
 }
 
-/** Deliberately invalid until replaced with an ID returned by nosh_artifact_register. */
-export const REGISTER_ARTIFACT = "REGISTER: art_ id returned by nosh_artifact_register";
+/** Deliberately unresolvable until replaced with a real worktree path; the daemon snapshots each "artifact:<path>" citation. */
+export const REGISTER_ARTIFACT = "artifact:EDIT/relative/path";
 
-/** Librarian completion: every cited source, the report, and the bibliography are Artifacts the librarian registers itself. */
+/** Librarian completion: every cited source, the report, and the bibliography are cited by worktree path; the daemon snapshots them as Artifacts. */
 export function librarianInstructions(taskId: string, networkAllowed: boolean): string {
   const folder = `research/${taskId}`;
   const record = {
@@ -70,11 +60,11 @@ export function librarianInstructions(taskId: string, networkAllowed: boolean): 
     sources: [{ sourceId: "source_1", sourceType: "source_repository.file", title: "EDIT: source title", authors: [], publicationDate: null, canonicalUrl: "file:///EDIT/relative/path", persistentId: null, version: "EDIT: commit or version", primarySource: true, accessedAt: new Date().toISOString(), artifactId: REGISTER_ARTIFACT, relevance: "EDIT: why this source matters" }],
     findings: [{ findingId: "finding_1", statement: "EDIT: one finding", support: [{ sourceId: "source_1", locator: "EDIT: line, section, or key", artifactId: REGISTER_ARTIFACT }], confidence: "medium", noveltyImplication: "" }],
     contradictions: [], evaluationDifferences: [], knowledgeGaps: [], candidateClaimEffects: [],
-    bibliographyArtifactId: REGISTER_ARTIFACT, reportArtifactId: REGISTER_ARTIFACT, readyForReview: true,
+    bibliographyArtifactId: `artifact:${folder}/bibliography.bib`, reportArtifactId: `artifact:${folder}/report.md`, readyForReview: true,
   };
   return [
-    `Steps: (1) for each file you rely on, call nosh_artifact_register({ path, kind: "artifact_source" }) and use the returned artifactId; (2) write your report to ${folder}/report.md and a BibTeX bibliography to ${folder}/bibliography.bib with nosh_workspace_write, then register them (kinds artifact_report and artifact_bibliography); ${networkAllowed ? "(3) you may read allowlisted literature APIs with nosh_network_read; " : "(3) network is disabled: research only the local repository; "}(4) answer with the envelope below.`,
-    `Your final answer must be exactly this JSON envelope (schema: ${schemaDocumentPath("librarian-completion")}). Copy it, keep every key and bracket, replace each "EDIT: ..." and every "${REGISTER_ARTIFACT}" with real values, and add sources/findings objects of the same shape (sourceId/findingId are refs like source_2, finding_2). knowledgeGaps is a list of plain strings; leave contradictions, evaluationDifferences, and candidateClaimEffects empty unless you have them. Record 2 is your episode: keep exactly its keys, add facts/decisions objects of the same shape (evidenceRefs are plain ID strings such as 'art_...'), put your art_ IDs in artifactIds, and leave recommendedNextActions empty (the director plans next actions).`,
+    `Steps: (1) ${networkAllowed ? "read allowlisted literature APIs with nosh_network_read and the local repository" : "network is disabled: research only the local repository"}; (2) write your report to ${folder}/report.md and a BibTeX bibliography to ${folder}/bibliography.bib with nosh_workspace_write; (3) answer with the envelope below. Cite each file you rely on as "artifact:<relative/path>" (no registration step: the daemon snapshots every cited file after your answer and substitutes its art_ ID).`,
+    `Your final answer must be exactly this JSON envelope (schema: ${schemaDocumentPath("librarian-completion")}). Copy it, keep every key and bracket, replace each "EDIT: ..." and every "${REGISTER_ARTIFACT}" with real values (a source's artifactId and its findings' support artifactId are the same "artifact:<path>"), and add sources/findings objects of the same shape (sourceId/findingId are refs like source_2, finding_2). knowledgeGaps is a list of plain strings; leave contradictions, evaluationDifferences, and candidateClaimEffects empty unless you have them. Record 2 is your episode: keep exactly its keys, add facts/decisions objects of the same shape (evidenceRefs are plain ID strings such as 'art_...'), put your "artifact:<path>" citations in artifactIds, and leave recommendedNextActions empty (the director plans next actions).`,
     terminalEnvelope(record, "librarian_researcher"),
   ].join("\n");
 }

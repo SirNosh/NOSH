@@ -39,6 +39,16 @@ describe("typed orchestration runtime", () => {
     expect(() => fixture.runtime.validateDraft(fixture.projectId, draft as never)).not.toThrow();
     expect(() => fixture.runtime.validateDraft(fixture.projectId, { ...draft, facts: [{ ...draft.facts[0]!, evidenceRefs: [createId("job")] }] } as never)).toThrow("unknown record");
   });
+  test("a reviewer's episode may cite the candidate its Review Request names before that candidate is published", () => {
+    const fixture = setup(); const reviewer = createId("agt"); const candidate = createId("evd");
+    fixture.store.append({ $schema: schemaUri("event"), schemaVersion: 1, retention: "persistent", type: "record.submitted", source: "noshd", scope: { projectId: fixture.projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: reviewer }, correlationId: "review:x", causationId: null, payload: { $schema: schemaUri("review-request"), reviewerAgentId: reviewer, requiredEvidenceIds: [candidate], requiredArtifactIds: [] } });
+    const draft = { $schema: schemaUri("episode-draft"), schemaVersion: 1 as const, episodeType: "episode_reviewer", summary: "s", facts: [{ statement: "metrics match", evidenceRefs: [candidate], confidence: "high" as const }], decisions: [], artifactIds: [], evidenceIds: [candidate], changedFiles: [], unresolvedQuestions: [], recommendedNextActions: [] };
+    expect(() => fixture.runtime.validateDraft(fixture.projectId, draft as never, reviewer)).not.toThrow();
+    // Only that reviewer, and only the IDs its request names.
+    expect(() => fixture.runtime.validateDraft(fixture.projectId, draft as never, createId("agt"))).toThrow("unknown record");
+    expect(() => fixture.runtime.validateDraft(fixture.projectId, draft as never)).toThrow("unknown record");
+    expect(() => fixture.runtime.validateDraft(fixture.projectId, { ...draft, evidenceIds: [createId("evd")] } as never, reviewer)).toThrow("unknown record");
+  });
   test("runs parallel threads, awaits episodes, composes context, and survives Pi rotation/restart", async () => {
     const fixture = setup(); const first = open(fixture.projectId, "first"); const second = open(fixture.projectId, "second"); await Promise.all([fixture.runtime.execute(first), fixture.runtime.execute(second)]); fixture.sessions.delay = 20;
     const stepOne = fixture.runtime.execute(step(fixture.projectId, first.threadId, "one")); const stepTwo = fixture.runtime.execute(step(fixture.projectId, second.threadId, "two"));

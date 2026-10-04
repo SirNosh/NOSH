@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Controller, acceptPage, safeText, type NoshEvent } from './controller.js';
-import { eventEntries, collapseLines } from './view-model.js';
+import { eventEntries, collapseLines, researchMapLines, progressBar, mapTone } from './view-model.js';
 import { DaemonClient } from './client.js';
 const event = (sequence: number, projectId = 'p'): NoshEvent => ({eventId:`e${sequence}`,sequence,type:'agent.completed',payload:{message:'hello'},scope:{projectId}});
 function setup() { const client = new DaemonClient({baseUrl:'http://localhost',sessionToken:'s'}); const request = vi.spyOn(client,'request').mockResolvedValue({}); const controller = new Controller(client,'p'); controller.projects = [{projectId:'p',repositoryRoot:'/p'},{projectId:'q',repositoryRoot:'/q'}]; return {controller,request}; }
@@ -26,6 +26,39 @@ describe('thin controller', () => {
     request.mockResolvedValueOnce({contract:{workingTitle:'Study',approvedAt:'2026-10-01T00:00:00.000Z'}}).mockResolvedValueOnce({proposals:[]});
     await controller.execute('/approvals');
     expect(controller.inspectorRows()[0]?.state).toBe('approved');
+  });
+  it('opens the research map, refreshes it while open, and clears it on project switch', async () => {
+    const {controller,request} = setup();
+    const map = {generatedAt:'2026-10-03T12:00:00.000Z',roots:[{kind:'mission',id:'mis_1',title:'Boundary tests',state:'running',detail:'v4',progress:{done:1,total:3},children:[]}],workers:[]};
+    request.mockResolvedValueOnce(map);
+    await controller.execute('/map');
+    expect(request).toHaveBeenCalledWith('/research-map?projectId=p');
+    expect(controller.view).toBe('map'); expect(controller.researchMap).toEqual(map); expect(controller.inspectorRows()).toEqual([]);
+    // While the map is open, a poll refreshes it (throttled); other views never fetch it.
+    (controller as unknown as {mapRequestedAt:number}).mapRequestedAt = 0;
+    const next = {...map,roots:[{...map.roots[0],state:'completed'}]};
+    request.mockImplementation(async (path: string) => path.startsWith('/research-map') ? next : {events:[]});
+    await controller.poll(); await new Promise(resolve => setTimeout(resolve, 0));
+    expect(controller.researchMap).toEqual(next);
+    controller.selectProject('q'); expect(controller.researchMap).toBeUndefined(); expect(controller.view).toBe('chat');
+  });
+  it('lays the research map out as a tree with tones, progress and nested workers', () => {
+    expect(progressBar(1,3)).toBe('▰▰▰▱▱▱▱▱▱▱ 1/3'); expect(progressBar(0,0)).toBe('');
+    expect([mapTone('accepted'),mapTone('working'),mapTone('reviewing'),mapTone('failed'),mapTone('ready')]).toEqual(['success','active','waiting','error','idle']);
+    const lines = researchMapLines({roots:[
+      {kind:'mission',id:'mis_1',title:'Boundary tests',state:'running',detail:'v4',progress:{done:1,total:2},children:[
+        {kind:'node',id:'n1',title:'Write tests',state:'working',detail:'implementation',children:[{kind:'worker',id:'agt_1',title:'general worker',state:'running nosh_run',detail:'gpt-6-luna:low',children:[]}]},
+        {kind:'node',id:'n2',title:'Review',state:'ready',detail:'final review',children:[]}]},
+      {kind:'autoresearch',id:'ar_1',title:'Tune threshold',state:'running',detail:'round 1/3',progress:null,children:[{kind:'experiment',id:'exp_1',title:'Raise threshold',state:'promoted',detail:'score 0.86',children:[]}]}],
+      workers:[{kind:'worker',id:'agt_1',title:'general worker',state:'running nosh_run',detail:'',children:[]}]});
+    const rendered = lines.map(line => `${line.prefix}${line.glyph} ${line.label}${line.label ? ' ' : ''}${line.title} [${line.state}]`.trimEnd());
+    expect(rendered).toEqual([
+      '◆ MISSION Boundary tests [running]', '├─ ● Write tests [working]', '│  └─ ⚙ general worker [running nosh_run]', '└─ ○ Review [ready]',
+      '  []', '⟳ AUTORESEARCH Tune threshold [running]', '└─ ★ Raise threshold [promoted]',
+      '  []', ' WORKERS 1 live []', '└─ ⚙ general worker [running nosh_run]']);
+    expect(lines[0]!.detail).toBe('▰▰▰▰▰▱▱▱▱▱ 1/2  v4');
+    expect(researchMapLines(undefined)).toEqual([]);
+    expect(researchMapLines({roots:Array.from({length:50},(_,index)=>({kind:'mission',id:`m${index}`,title:'x',state:'running',children:[]}))},20)).toHaveLength(20);
   });
   it('help and paths do not keep the previous view rows', async () => {
     const {controller,request} = setup();

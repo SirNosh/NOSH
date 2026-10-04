@@ -2,9 +2,10 @@
  * Message spacing and left-accent user blocks adapted from OpenCode session UI.
  * Copyright (c) 2025 opencode. MIT license and pinned source: ../UPSTREAM.md.
  */
-import { BoxRenderable, TextRenderable, MarkdownRenderable, TextAttributes,
+import { BoxRenderable, TextRenderable, MarkdownRenderable, TextAttributes, StyledText, fg, bold,
   type CliRenderer, type SyntaxStyle } from '@opentui/core';
-import { safeText, type TranscriptEntry, type ViewRow } from './controller.js';
+import { safeText, type MapTone, type TranscriptEntry, type ViewRow } from './controller.js';
+import { researchMapLines } from './view-model.js';
 import { theme, splitBorder } from './theme.js';
 
 export function text(renderer: CliRenderer, id: string, content: string, color: string = theme.text): TextRenderable {
@@ -187,6 +188,46 @@ export function createResearchSidebar(renderer: CliRenderer) {
       ].entries()) {
         heading('side-empty-' + i, title!);
         root.add(text(renderer, 'side-hint-' + i, hint!, theme.muted));
+      }
+    }
+  }
+  return { root, update };
+}
+
+const MAP_TONES: Record<MapTone, string> = { success: theme.success, active: theme.secondary, waiting: theme.warning, error: theme.error, idle: theme.muted };
+const EMPTY_MAP = 'Nothing is running yet.\nMissions, research directions, autoresearch experiments and workers appear here, live, as they start.\nAsk NOSH in the conversation to propose research, or /create one.';
+
+/** The research map: a live tree of what the Project is doing, rebuilt only when the daemon's picture changes. */
+export function createResearchMap(renderer: CliRenderer) {
+  const root = new BoxRenderable(renderer, { id: 'research-map', width: '100%', flexDirection: 'column', flexShrink: 0 });
+  let previous = '';
+  function update(map: unknown, width: number) {
+    const lines = researchMapLines(map);
+    const signature = JSON.stringify([lines, width]);
+    if (signature === previous) return;
+    previous = signature;
+    for (const child of root.getChildren()) { root.remove(child); child.destroyRecursively(); }
+    const generatedAt = typeof (map as { generatedAt?: unknown } | undefined)?.generatedAt === 'string' ? String((map as { generatedAt: string }).generatedAt).slice(11, 19) : '';
+    const summary = text(renderer, 'map-summary', `live · refreshes every few seconds${generatedAt ? ` · updated ${generatedAt} UTC` : ''}`, theme.muted); summary.marginBottom = 1;
+    root.add(summary);
+    if (!lines.length) { root.add(text(renderer, 'map-empty', EMPTY_MAP, theme.muted)); return; }
+    for (const [index, line] of lines.entries()) {
+      const tone = MAP_TONES[line.tone];
+      const head = `${line.prefix}${line.glyph ? `${line.glyph} ` : ''}`;
+      const label = line.label ? `${line.label} ` : '';
+      const room = Math.max(8, width - head.length - label.length - line.state.length - 4);
+      const title = line.title.length > room ? `${line.title.slice(0, room - 1)}…` : line.title;
+      const chunks = [fg(theme.muted)(line.prefix), fg(tone)(line.glyph ? `${line.glyph} ` : ''),
+        ...(line.label ? [bold(fg(line.heading ? theme.accent : tone)(label))] : []),
+        line.label && !line.heading ? bold(fg(theme.text)(title)) : fg(line.heading ? theme.muted : theme.text)(title),
+        fg(tone)(line.state ? `  ${line.state}` : '')];
+      const row = new TextRenderable(renderer, { id: `map-line-${index}`, content: new StyledText(chunks), width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 });
+      if (line.label && !line.heading && index) row.marginTop = 0;
+      root.add(row);
+      if (line.detail) {
+        const indent = `${line.prefix.replace(/[├└]─ $/, (match) => match.startsWith('├') ? '│  ' : '   ')}${' '.repeat(line.glyph ? 2 : 0)}`;
+        const detail = `${indent}${line.detail}`;
+        root.add(new TextRenderable(renderer, { id: `map-detail-${index}`, content: new StyledText([fg(theme.muted)(detail.length > width ? `${detail.slice(0, width - 1)}…` : detail)]), width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 }));
       }
     }
   }

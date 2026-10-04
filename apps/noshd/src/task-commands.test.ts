@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createId } from "@nosh/core";
 import { approveProjectContract, readProjectContract } from "@nosh/evidence";
-import { schemaUri } from "@nosh/wire";
+import { schemaUri, validateRecord, type JsonValue } from "@nosh/wire";
 import { describe, expect, it, vi } from "vitest";
 import { NoshDaemon } from "./daemon.js";
 import { citedRunIssues } from "./task-postflight.js";
 import { createTaskWorktree } from "./task-worktree.js";
 
 describe("nosh_run task commands", () => {
-  it("runs only contract-declared commands in the task worktree and makes only clean final-commit passes citable", async () => {
+  it("runs only contract-declared commands, commits worker edits itself, and fills completion facts without model tool calls", async () => {
     const directory = mkdtempSync(join(tmpdir(), "nosh-run-"));
     const daemon = new NoshDaemon({ dataDirectory: join(directory, "data"), bootstrapToken: "test" });
     try {
@@ -25,24 +25,27 @@ describe("nosh_run task commands", () => {
       const head = git(["rev-parse", "HEAD"]);
       const tree = createTaskWorktree(daemon.research, project, taskId, head);
       vi.spyOn(daemon.agents, "inspect").mockReturnValue([{ agentId, projectId: project.projectId, taskId, role: "general_worker", missionId: null, directionId: null, autoresearchId: null, experimentId: null }] as unknown as ReturnType<typeof daemon.agents.inspect>);
-      const packet = { taskId, permissions: { subprocess: "allowlisted", allowedToolIds: ["tool_nosh.run"] }, workspace: { worktreeId: tree.worktreeId } };
+      const packet: Record<string, JsonValue> & { permissions: Record<string, JsonValue> } = { taskId, permissions: { subprocess: "allowlisted", allowedToolIds: ["tool_nosh.run"] }, workspace: { worktreeId: tree.worktreeId } };
       const records = daemon.research.records.bind(daemon.research);
       vi.spyOn(daemon.research, "records").mockImplementation((projectId, schema) => schema === "task-packet" ? [packet] : records(projectId, schema));
       expect(await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_check" }, agentId)).toMatchObject({ accepted: false, error: expect.stringContaining("declares: none") });
 
       daemon.amendProjectContract(project.projectId, { ...approved, contractVersion: 3, execution: { runner: "native", commands: [
-        { commandId: "command_check", description: "Exit with the code in exit.txt", argv: [process.execPath, "-e", "const c=Number(require('fs').readFileSync('exit.txt','utf8'));console.log('code',c);process.exit(c)"], timeoutSeconds: 30 },
+        { commandId: "command_check", description: "Exit with the code in exit.txt", argv: [process.execPath, "-e", "const c=Number(require('fs').readFileSync('exit.txt','utf8'));console.log('code '+c);process.exit(c)"], timeoutSeconds: 30 },
       ] } }, "amend-0001");
       writeFileSync(join(tree.path, "exit.txt"), "0");
       const dirty = await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_check" }, agentId) as Record<string, unknown>;
       expect(dirty).toMatchObject({ accepted: true, exitCode: 0, dirty: true, citable: false, commit: head });
       expect(String(dirty.stdoutTail)).toContain("code 0");
 
-      spawnSync("git", ["-C", tree.path, "add", "exit.txt"], { windowsHide: true });
-      spawnSync("git", ["-C", tree.path, "-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-m", "exit"], { windowsHide: true });
-      const ending = spawnSync("git", ["-C", tree.path, "rev-parse", "HEAD"], { encoding: "utf8", windowsHide: true }).stdout.trim();
+      // With commit authority, the daemon commits the worker's edits before each run, so every run is tied to an exact clean commit.
+      Object.assign(packet, { attempt: 1, permissions: { network: "disabled", subprocess: "allowlisted", gitCommit: true, gitPush: false, delegation: "request_only", networkAllowlist: [], allowedToolIds: ["tool_nosh.run", "tool_nosh.git.commit", "tool_pi.read", "tool_pi.write"] }, workspace: { worktreeId: tree.worktreeId, branch: tree.branch, startingCommit: head, writeScopes: ["**"], protectedScopes: [".nosh/contracts/**"] } });
       const clean = await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_check" }, agentId) as Record<string, unknown>;
+      const worktreeGit = (args: string[]) => spawnSync("git", ["-C", tree.path, ...args], { encoding: "utf8", windowsHide: true }).stdout.trim();
+      const ending = worktreeGit(["rev-parse", "HEAD"]);
+      expect(ending).not.toBe(head);
       expect(clean).toMatchObject({ accepted: true, exitCode: 0, dirty: false, citable: true, commit: ending });
+      expect(worktreeGit(["log", "-1", "--format=%an|%s"])).toBe(`NOSH general_worker|nosh: ${taskId} edits before command_check`);
 
       const runs = daemon.replay(project.projectId, 0).filter((event) => event.type === "task.command_run").map((event) => event.payload as Record<string, unknown>);
       expect(runs).toHaveLength(2);
@@ -54,17 +57,56 @@ describe("nosh_run task commands", () => {
       const normalized = (daemon as unknown as { withDaemonCommands(context: unknown, record: Record<string, unknown>): Record<string, unknown> }).withDaemonCommands({ projectId: project.projectId, taskId }, { $schema: schemaUri("general-worker-completion"), commands: [{ commandId: "command_check", jobId: clean.jobId }] });
       expect(normalized.commands).toEqual([{ commandId: "command_check", displayCommand: expect.stringContaining("exit.txt"), exitCode: 0, resultArtifactId: null }, { commandId: "command_check", displayCommand: expect.any(String), exitCode: 0, resultArtifactId: null }]);
 
-      // Any task with a workspace can snapshot its own files as Artifacts, nothing outside the worktree.
-      writeFileSync(join(tree.path, "report.md"), "# report\n");
-      const registered = await daemon.submitTool("nosh_artifact_register", project.projectId, `task:${taskId}`, { path: "report.md", kind: "artifact_report" }, agentId) as Record<string, unknown>;
-      expect(registered).toMatchObject({ accepted: true, path: "report.md", kind: "artifact_report", artifactId: expect.stringMatching(/^art_/) });
-      expect(daemon.research.records(project.projectId, "artifact").some((entry) => entry.artifactId === registered.artifactId)).toBe(true);
-      expect(await daemon.submitTool("nosh_artifact_read", project.projectId, `task:${taskId}`, { artifactId: registered.artifactId }, agentId)).toMatchObject({ accepted: true, kind: "artifact_report", content: "# report\n", remainingCharacters: 0 });
+      // Final answer: the daemon commits the remaining edits, fills codeChanges and changedFiles, and snapshots "artifact:<path>" citations.
+      writeFileSync(join(tree.path, "report.md"), "# report\n"); writeFileSync(join(tree.path, "notes.md"), "notes\n");
+      const withFacts = (records: Array<Record<string, unknown>>) => (daemon as unknown as { withDaemonFacts(context: unknown, records: Array<Record<string, unknown>>): Array<Record<string, unknown>> }).withDaemonFacts({ projectId: project.projectId, taskId, agentId }, records);
+      const submitted = [
+        { $schema: schemaUri("general-worker-completion"), workPerformed: [{ subject: "artifact: prose with spaces is untouched", artifactIds: ["artifact:report.md"] }], codeChanges: { startingCommit: head, endingCommit: head, changedPaths: [], diffArtifactId: null, branch: tree.branch } },
+        { $schema: schemaUri("episode-draft"), artifactIds: ["artifact:report.md"], changedFiles: [] },
+      ];
+      const [completion, episode] = withFacts(submitted) as [{ workPerformed: Array<{ subject: string; artifactIds: string[] }>; codeChanges: Record<string, unknown> }, { artifactIds: string[]; changedFiles: string[] }];
+      const final = worktreeGit(["rev-parse", "HEAD"]);
+      expect(final).not.toBe(ending);
+      expect(worktreeGit(["status", "--porcelain"])).toBe("");
+      expect(completion.codeChanges).toEqual({ startingCommit: head, endingCommit: final, changedPaths: expect.arrayContaining(["exit.txt", "notes.md", "report.md"]), diffArtifactId: expect.stringMatching(/^art_[0-9a-f]{32}$/), branch: tree.branch });
+      // Each nosh_run is a daemon-produced Artifact cited by commands[] and by the criteria that name its Job.
+      const withRuns = withFacts([{ $schema: schemaUri("general-worker-completion"), commands: [], criteria: [{ criterionId: "criterion_1", validatorRunIds: [String(clean.jobId)], artifactIds: [] }] }])[0] as { commands: Array<{ resultArtifactId: string }>; criteria: Array<{ artifactIds: string[] }> };
+      const cleanRunArtifact = withRuns.commands[1]!.resultArtifactId;
+      expect(withRuns.criteria[0]!.artifactIds).toEqual([cleanRunArtifact]);
+      expect(await daemon.submitTool("nosh_artifact_read", project.projectId, `task:${taskId}`, { artifactId: cleanRunArtifact }, agentId)).toMatchObject({ accepted: true, kind: "artifact_run-result", content: expect.stringContaining(String(clean.jobId)) });
+      // The exact change is a daemon-produced Artifact, so reviewers judge the code itself.
+      expect(await daemon.submitTool("nosh_artifact_read", project.projectId, `task:${taskId}`, { artifactId: completion.codeChanges.diffArtifactId }, agentId)).toMatchObject({ accepted: true, kind: "artifact_diff", content: expect.stringContaining("+notes") });
+      expect(completion.codeChanges.changedPaths).toHaveLength(3);
+      expect(episode.changedFiles).toEqual(completion.codeChanges.changedPaths);
+      const artifactId = completion.workPerformed[0]!.artifactIds[0]!;
+      expect(artifactId).toMatch(/^art_[0-9a-f]{32}$/);
+      expect(episode.artifactIds).toEqual([artifactId]);
+      expect(completion.workPerformed[0]!.subject).toBe("artifact: prose with spaces is untouched");
+      expect(daemon.research.records(project.projectId, "artifact").find((entry) => entry.artifactId === artifactId)).toMatchObject({ kind: "artifact_file", producer: { type: "agent", agentId, taskId, path: "report.md" } });
+      expect(await daemon.submitTool("nosh_artifact_read", project.projectId, `task:${taskId}`, { artifactId }, agentId)).toMatchObject({ accepted: true, kind: "artifact_file", content: "# report\n", remainingCharacters: 0 });
       expect(await daemon.submitTool("nosh_artifact_read", project.projectId, `task:${taskId}`, { artifactId: "art_missing" }, agentId)).toMatchObject({ accepted: false });
-      for (const [path, kind] of [["../outside.md", "artifact_report"], [".git/HEAD", "artifact_report"], ["report.md", "report"]]) expect(await daemon.submitTool("nosh_artifact_register", project.projectId, `task:${taskId}`, { path, kind }, agentId)).toMatchObject({ accepted: false });
+      // A corrected or replayed answer is idempotent: same Artifact, no new commit.
+      const [again] = withFacts(submitted) as [{ workPerformed: Array<{ artifactIds: string[] }>; codeChanges: { endingCommit: string } }];
+      expect(again.workPerformed[0]!.artifactIds).toEqual([artifactId]);
+      expect(again.codeChanges.endingCommit).toBe(final);
+      // One file cited under different fields (report field and episode) is one Artifact with the most specific kind.
+      const [librarian, librarianEpisode] = withFacts([{ $schema: schemaUri("librarian-completion"), reportArtifactId: "artifact:report.md" }, { $schema: schemaUri("episode-draft"), artifactIds: ["artifact:report.md"] }]) as [{ reportArtifactId: string }, { artifactIds: string[] }];
+      expect(librarianEpisode.artifactIds).toEqual([librarian.reportArtifactId]);
+      expect(daemon.research.records(project.projectId, "artifact").find((entry) => entry.artifactId === librarian.reportArtifactId)).toMatchObject({ kind: "artifact_report" });
+      // Citations must name files inside the worktree; the reason is correctable by the model.
+      for (const [path, reason] of [["missing.md", "names no file"], ["../outside.md", "inside your worktree"], [".git/HEAD", "inside your worktree"]] as const) expect(() => withFacts([{ $schema: schemaUri("general-worker-completion"), workPerformed: [{ artifactIds: [`artifact:${path}`] }] }])).toThrow(reason);
+
+      // Progress is a text line the daemon turns into a schema-valid progress-update (no model tool call).
+      const recorded: unknown[] = [];
+      vi.spyOn(daemon, "submitRecord").mockImplementation((tool, _projectId, attemptKey, record) => { recorded.push({ tool, attemptKey, record }); return { accepted: true } as ReturnType<typeof daemon.submitRecord>; });
+      expect(await daemon.submitTool("nosh_progress_note", project.projectId, `task:${taskId}`, { note: "tests pass -> write the report" }, agentId)).toMatchObject({ accepted: true });
+      const note = recorded[0] as { tool: string; attemptKey: string; record: Record<string, unknown> };
+      expect(note).toMatchObject({ tool: "nosh_progress_emit", attemptKey: `task:${taskId}`, record: { taskId, agentId, attempt: 1, summary: "tests pass", nextOperation: "write the report" } });
+      expect(validateRecord(schemaUri("progress-update"), note.record as never)).toMatchObject({ ok: true });
+      expect(await daemon.submitTool("nosh_progress_note", project.projectId, `task:${createId("tsk")}`, { note: "spoofed" }, agentId)).toMatchObject({ accepted: false });
 
       // A session whose packet lacks subprocess authority cannot run anything.
-      packet.permissions.subprocess = "disabled";
+      packet.permissions = { ...packet.permissions, subprocess: "disabled" };
       expect(await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_check" }, agentId)).toMatchObject({ accepted: false, error: "This task is not authorized to run commands" });
     } finally { daemon.stop(); rmSync(directory, { recursive: true, force: true }); }
   }, 60_000);

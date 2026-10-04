@@ -1,22 +1,26 @@
 import { EventEmitter } from "node:events";
-import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { createId } from "@nosh/core";
 import { EventStore, HostRegistry, applyScheduledRestores, createProjectBackup, listProjectBackups, scheduleProjectRestore, type RegisteredProject } from "@nosh/persistence";
 import { StructuredSubmissionGate } from "@nosh/agent-runtime";
-import { PiAdapter, terminalSchemaTools, type TerminalContext, type TerminalReceipt, type PiSessionOptions } from "@nosh/pi-adapter";
+import { PiAdapter, commitAllWorkspaceChanges, terminalSchemaTools, type AgentInspection, type TerminalContext, type TerminalReceipt, type PiSessionOptions } from "@nosh/pi-adapter";
 import { OrchestrationRuntime } from "@nosh/orchestration-runtime";
+import { worktreeGitEnvironment } from "@nosh/git-workspaces";
 import { JobSupervisor, type JobRecord, type JobSpec } from "@nosh/jobs";
 import { ArtifactStore, amendProjectContract, approveProjectContract, commitProjectContract, detectRunnableCommands, initializeResearchProject, readProjectContract, type ProjectContract, type ProjectInitialization } from "@nosh/evidence";
-import { canonicalJson, validateRecord, episodeDraftSchema, scopeSchema, isTaskTerminalRecord, schemaUri, sha256, type EventDraft, type EventEnvelope, type JsonValue, type ModelSelection } from "@nosh/wire";
+import { canonicalJson, validateRecord, episodeDraftSchema, scopeSchema, isTaskTerminalRecord, schemaUri, sha256, type EventDraft, type EventEnvelope, type JsonValue, type ModelSelection, type TaskPermissions, type TaskWorkspace } from "@nosh/wire";
 import { SingleInstanceLock } from "./single-instance.js";
-import { gitWorktreeState } from "./task-postflight.js";
+import { gitChangedPaths, gitWorktreeState } from "./task-postflight.js";
 import { taskWorktreePath } from "./task-worktree.js";
 import { ResearchControl } from "./research-control.js";
 import { MissionSupervisor } from "./mission-supervisor.js";
 import { DirectionSupervisor } from "./direction-supervisor.js";
 import { AutoresearchSupervisor } from "./autoresearch-supervisor.js";
+import { buildResearchMap, type ResearchMap } from "./research-map.js";
 
 export type NoshDaemonOptions = {
   dataDirectory: string;
@@ -230,7 +234,7 @@ export class NoshDaemon {
       store.saveTerminalTurn(context.projectId, context.turnId, journal);
       return { accepted: false, retryAllowed: true, admitted: true };
     });
-    if (frozen) return this.submitTerminal(context, frozen);
+    if (frozen) return this.submitTerminal(context, frozen, true);
     return result.admitted ? undefined : result;
   }
 
@@ -251,8 +255,12 @@ export class NoshDaemon {
     return { accepted: false, retryAllowed: !receipt.closed && !receipt.records, status: receipt.status, error: reason };
   }
 
-  async submitTerminal(context: TerminalContext, submitted: Record<string, JsonValue>[]): Promise<TerminalReceipt> {
-    const records = submitted.map((record) => this.withDaemonCommands(context, record));
+  async submitTerminal(context: TerminalContext, submitted: Record<string, JsonValue>[], frozen = false): Promise<TerminalReceipt> {
+    let records = submitted;
+    if (!frozen) {
+      try { records = this.withDaemonFacts(context, submitted); }
+      catch (error) { return this.rejectTerminal(context, error instanceof Error ? error.message : "Terminal policy: daemon facts failed"); }
+    }
     return this.withTerminalTurn(context, async () => {
       this.assertProjectWritable(context.projectId);
       const store = this.storeFor(context.projectId);
@@ -330,7 +338,7 @@ export class NoshDaemon {
       if (schema === schemaUri("episode-draft")) {
         episodes++;
         if (!context.expectedEpisodeType || record.episodeType !== context.expectedEpisodeType) throw new Error("Unexpected terminal episode type");
-        this.runtime.validateDraft(context.projectId, episodeDraftSchema.parse(record));
+        this.runtime.validateDraft(context.projectId, episodeDraftSchema.parse(record), context.agentId);
       } else {
         terminals++;
         if (!context.taskId) throw new Error("Task terminal output requires a daemon-bound task");
@@ -391,7 +399,7 @@ export class NoshDaemon {
 
   async submitTool(tool: string, projectId: string, attemptKey: string, record: unknown, agentId?: string): Promise<unknown> {
     if (tool === "nosh_run") return this.runTaskCommand(projectId, agentId, record);
-    if (tool === "nosh_artifact_register") return this.registerTaskArtifact(projectId, agentId, record);
+    if (tool === "nosh_progress_note") return this.recordProgressNote(projectId, attemptKey, agentId, record);
     if (tool === "nosh_artifact_read") return this.readTaskArtifact(projectId, agentId, record);
     const submitted = this.submitRecord(tool, projectId, attemptKey, record, agentId);
     if (!submitted.accepted) return submitted;
@@ -663,6 +671,84 @@ export class NoshDaemon {
     }
   }
 
+  /**
+   * Daemon-owned facts a model would otherwise spend tool calls on, filled into a task's terminal records before
+   * validation: commands[] (its nosh_run Jobs), "artifact:<path>" citations (snapshotted as Artifacts), codeChanges
+   * (the daemon commits the worktree on the worker's behalf), and the episode's changedFiles.
+   * Throws a correctable reason for a bad citation and a "Terminal policy:" reason when the commit itself fails.
+   */
+  private withDaemonFacts(context: TerminalContext, submitted: Record<string, JsonValue>[]): Record<string, JsonValue>[] {
+    let records = submitted.map((record) => this.withDaemonCommands(context, record));
+    const agent = context.taskId ? this.agents.inspect().find((entry) => entry.agentId === context.agentId && entry.projectId === context.projectId && entry.taskId === context.taskId) : undefined;
+    const packet = agent ? this.taskPacketFacts(context.projectId, agent.taskId!) : undefined;
+    if (!agent || !packet?.workspace) return records;
+    // One Artifact per cited path per envelope, with its most specific kind (a report cited again in the episode is the same report).
+    const kinds = new Map<string, string>();
+    for (const record of records) collectArtifactCitations(record, String(record.$schema), "", kinds);
+    const resolved = new Map([...kinds].map(([path, kind]) => [path, this.snapshotTaskArtifact(context.projectId, agent, packet, path, kind)]));
+    records = records.map((record) => replaceArtifactCitations(record, resolved) as Record<string, JsonValue>);
+    records = records.map((record) => this.withRunArtifacts(context.projectId, agent, record));
+    const completion = records.find((record) => record.$schema === schemaUri("general-worker-completion"));
+    if (!completion || !packet.permissions?.gitCommit) return records;
+    try { this.commitTaskWorktree(context.projectId, agent, packet, `nosh: ${agent.taskId} completion`); }
+    catch (error) { throw new Error(`Terminal policy: daemon commit of your worktree failed: ${error instanceof Error ? error.message : "unknown error"}`); }
+    const worktree = this.taskWorktree(context.projectId, packet.workspace);
+    const endingCommit = gitWorktreeState(worktree).head; const changedPaths = gitChangedPaths(worktree, packet.workspace.startingCommit, endingCommit);
+    const diffArtifactId = changedPaths.length ? this.snapshotTaskDiff(context.projectId, agent, worktree, packet.workspace.startingCommit, endingCommit) : null;
+    const codeChanges = { ...(isObject(completion.codeChanges) ? completion.codeChanges : {}), startingCommit: packet.workspace.startingCommit, endingCommit, changedPaths, diffArtifactId, branch: packet.workspace.branch };
+    return records.map((record) => record === completion ? { ...record, codeChanges } : record.$schema === schemaUri("episode-draft") ? { ...record, changedFiles: changedPaths } : record);
+  }
+
+  private taskPacketFacts(projectId: string, taskId: string): TaskPacketFacts | undefined {
+    return this.research.records(projectId, "task-packet").filter((entry) => entry.taskId === taskId).at(-1) as TaskPacketFacts | undefined;
+  }
+
+  private taskWorktree(projectId: string, workspace: { worktreeId: string }): string {
+    return taskWorktreePath(this.projects().find((entry) => entry.projectId === projectId)!.repositoryRoot, workspace.worktreeId);
+  }
+
+  /** Workers have no commit tool: the daemon commits every worktree change under the task's commit authority. Null when unauthorized or clean. */
+  private commitTaskWorktree(projectId: string, agent: AgentInspection, packet: TaskPacketFacts, message: string): { commit: string; paths: string[] } | null {
+    if (!packet.permissions?.gitCommit || !packet.workspace) return null;
+    return commitAllWorkspaceChanges({ projectId, missionId: agent.missionId, directionId: agent.directionId, autoresearchId: agent.autoresearchId, experimentId: agent.experimentId, runId: null, jobId: null, taskId: agent.taskId, agentId: agent.agentId, role: agent.role, cwd: this.taskWorktree(projectId, packet.workspace), packagePath: "", taskPermissions: packet.permissions, taskWorkspace: packet.workspace }, message);
+  }
+
+  /** A `PROGRESS: done -> next` line in a live task's assistant text, recorded as a daemon-built progress-update (no model tool call). */
+  private recordProgressNote(projectId: string, attemptKey: string, agentId: string | undefined, record: unknown): unknown {
+    const agent = agentId ? this.agents.inspect().find((entry) => entry.agentId === agentId && entry.projectId === projectId) : undefined;
+    const packet = agent?.taskId ? this.taskPacketFacts(projectId, agent.taskId) : undefined;
+    const note = String((record as { note?: unknown } | null)?.note ?? "").trim();
+    if (!agent?.taskId || !packet || attemptKey !== `task:${agent.taskId}` || !note) return { accepted: false, error: "Progress notes require an active daemon-bound task session" };
+    const [summary = note, next = ""] = note.split(/\s*->\s*/, 2);
+    const ordinal = this.research.submitted(projectId, attemptKey).filter((entry) => (entry.record as { $schema?: string }).$schema === schemaUri("progress-update")).length + 1;
+    const progress = { $schema: schemaUri("progress-update"), schemaVersion: 1, progressId: `progress_${agent.taskId.slice(4)}_${ordinal}`, taskId: agent.taskId, attempt: packet.attempt, agentId: agent.agentId, kind: "milestone", summary: summary.slice(0, 2_000), goalStackIds: [agent.taskId], durableDelta: { commitIds: [], artifactIds: [], evidenceIds: [], graphNodeStateChanges: [], closedDefectIds: [] }, validation: [], currentOperation: summary.slice(0, 1_000), nextOperation: next.slice(0, 1_000), estimatedRemainingSeconds: null, newRisk: null, blockerId: null, attemptFingerprint: sha256({ taskId: agent.taskId, attempt: packet.attempt }), emittedAt: new Date().toISOString() };
+    return this.submitRecord("nosh_progress_emit", projectId, attemptKey, progress, agent.agentId);
+  }
+
+  /**
+   * Each nosh_run of the task becomes a hash-checked Artifact (command, commit, exit code, output tail): commands[]
+   * cite it, and so does every criterion whose validator is that Job. Downstream reviewers, who cannot run commands,
+   * then verify a run from the Artifact set they are required to read.
+   */
+  private withRunArtifacts(projectId: string, agent: AgentInspection, record: Record<string, JsonValue>): Record<string, JsonValue> {
+    if (record.$schema !== schemaUri("general-worker-completion")) return record;
+    const runs = this.storeFor(projectId).replay(projectId).filter((event) => event.type === "task.command_run" && isObject(event.payload) && event.payload.taskId === agent.taskId).map((event) => event.payload as Record<string, JsonValue>);
+    if (!runs.length) return record;
+    const byJob = new Map(runs.map((run) => {
+      const directory = mkdtempSync(join(tmpdir(), "nosh-run-")); const file = join(directory, "run.json");
+      try { writeFileSync(file, `${canonicalJson(run)}\n`, "utf8"); return [String(run.jobId), this.recordTaskArtifact(projectId, agent, file, `art_${sha256({ taskId: agent.taskId!, jobId: run.jobId }).slice(7, 39)}`, "artifact_run-result", "application/json", { type: "noshd", taskId: agent.taskId!, jobId: run.jobId })] as const; }
+      finally { rmSync(directory, { recursive: true, force: true }); }
+    }));
+    const commands = Array.isArray(record.commands) ? record.commands.map((command, index) => isObject(command) ? { ...command, resultArtifactId: byJob.get(String(runs[index]?.jobId)) ?? null } : command) : record.commands;
+    const criteria = Array.isArray(record.criteria) ? record.criteria.map((criterion) => {
+      if (!isObject(criterion) || !Array.isArray(criterion.validatorRunIds)) return criterion;
+      const cited = criterion.validatorRunIds.map((id) => byJob.get(String(id))).filter((id): id is string => Boolean(id));
+      const artifactIds = Array.isArray(criterion.artifactIds) ? criterion.artifactIds.map(String) : [];
+      return { ...criterion, artifactIds: [...new Set([...artifactIds, ...cited])] };
+    }) : record.criteria;
+    return { ...record, ...(commands === undefined ? {} : { commands }), ...(criteria === undefined ? {} : { criteria }) };
+  }
+
   /** commands[] in a worker completion is factual and daemon-owned: when the task ran nosh_run, it is exactly those runs (models kept inventing its shape). */
   private withDaemonCommands(context: TerminalContext, record: Record<string, JsonValue>): Record<string, JsonValue> {
     if (record.$schema !== schemaUri("general-worker-completion") || !context.taskId) return record;
@@ -678,7 +764,7 @@ export class NoshDaemon {
       const agent = agentId ? this.agents.inspect().find((entry) => entry.agentId === agentId && entry.projectId === projectId) : undefined;
       if (!agent?.taskId) throw new Error("nosh_run requires an active daemon-bound task session");
       const taskId = agent.taskId;
-      const packet = this.research.records(projectId, "task-packet").filter((entry) => entry.taskId === taskId).at(-1) as { permissions?: { subprocess?: string; allowedToolIds?: string[] }; workspace?: { worktreeId?: string } } | undefined;
+      const packet = this.taskPacketFacts(projectId, taskId);
       if (packet?.permissions?.subprocess !== "allowlisted" || !packet.permissions.allowedToolIds?.includes("tool_nosh.run") || !packet.workspace?.worktreeId) throw new Error("This task is not authorized to run commands");
       const project = this.projects().find((entry) => entry.projectId === projectId)!;
       const execution = readProjectContract(project.repositoryRoot).execution;
@@ -686,7 +772,9 @@ export class NoshDaemon {
       const command = execution?.commands.find((entry) => entry.commandId === commandId);
       if (!execution || !command) throw new Error(`Unknown commandId; the approved Project contract declares: ${execution?.commands.map((entry) => entry.commandId).join(", ") || "none"}`);
       const worktree = taskWorktreePath(project.repositoryRoot, packet.workspace.worktreeId);
-      // The code under test is HEAD plus any uncommitted edits; only a clean run on the final commit can validate a criterion.
+      // Each run is tied to an exact commit: the daemon commits the worker's current edits first (workers have no commit tool).
+      try { this.commitTaskWorktree(projectId, agent, packet, `nosh: ${taskId} edits before ${command.commandId}`); }
+      catch (error) { throw new Error(`Could not commit your edits before the run: ${error instanceof Error ? error.message : "unknown error"}`); }
       const { head, dirty } = gitWorktreeState(worktree);
       const jobId = createId("job");
       this.startJob({ jobId, projectId, missionId: agent.missionId, directionId: agent.directionId, autoresearchId: agent.autoresearchId, runId: createId("run"), experimentId: agent.experimentId, commitSha: head, workingDirectory: worktree, runner: execution.runner, distribution: null, command: command.argv, checkpointCommand: null, environmentLockHash: sha256({ node: process.version, platform: process.platform, arch: process.arch }), evaluationContractHash: sha256(execution as unknown as JsonValue), timeoutSeconds: command.timeoutSeconds, usesGpu: false });
@@ -714,29 +802,41 @@ export class NoshDaemon {
     } catch (error) { return { accepted: false, error: error instanceof Error ? error.message : "nosh_artifact_read failed" }; }
   }
 
-  /** Snapshots one regular file from a live task's own worktree into the Artifact store and records it; the agent gets the art_ ID to cite. */
-  private registerTaskArtifact(projectId: string, agentId: string | undefined, record: unknown): unknown {
+  /**
+   * Snapshots one regular file from a live task's own worktree into the Artifact store and records it. The ID is
+   * derived from task, path, and content, so a corrected or replayed citation of the same file resolves to the same Artifact.
+   */
+  private snapshotTaskArtifact(projectId: string, agent: AgentInspection, packet: TaskPacketFacts, path: string, kind: string): string {
+    this.assertProjectWritable(projectId);
+    const worktree = this.taskWorktree(projectId, packet.workspace!);
+    const target = resolve(worktree, path); const inside = relative(worktree, target).replaceAll("\\", "/");
+    if (!inside || inside.startsWith("..") || isAbsolute(inside) || inside.split("/").includes(".git")) throw new Error(`Artifact citation artifact:${path} must name a relative file inside your worktree, outside .git`);
+    let stat; try { stat = lstatSync(target); } catch { throw new Error(`Artifact citation artifact:${path} names no file in your worktree; cite a file you wrote or read`); }
+    if (!stat.isFile() || stat.nlink !== 1) throw new Error(`Artifact citation artifact:${path} must be a regular, unlinked file`); if (stat.size > 5_000_000) throw new Error(`Artifact citation artifact:${path} exceeds 5 MB`);
+    const mediaType = /\.md$/i.test(inside) ? "text/markdown" : /\.json$/i.test(inside) ? "application/json" : /\.bib$/i.test(inside) ? "application/x-bibtex" : "text/plain";
+    const digest = `sha256:${createHash("sha256").update(readFileSync(target)).digest("hex")}`;
+    return this.recordTaskArtifact(projectId, agent, target, `art_${sha256({ taskId: agent.taskId!, path: inside, digest, kind }).slice(7, 39)}`, kind, mediaType, { type: "agent", agentId: agent.agentId, taskId: agent.taskId!, path: inside });
+  }
+
+  /** The exact code change of a worker's completion (starting..ending commit) as a daemon-produced Artifact, so reviewers judge the change itself. */
+  private snapshotTaskDiff(projectId: string, agent: AgentInspection, worktree: string, startingCommit: string, endingCommit: string): string {
+    const diff = spawnSync("git", ["-C", worktree, "diff", "--no-color", "--no-ext-diff", "--find-renames", startingCommit, endingCommit], { encoding: "utf8", windowsHide: true, maxBuffer: 20_000_000, env: worktreeGitEnvironment(worktree) });
+    if (diff.status !== 0) throw new Error(diff.stderr.trim() || "git diff failed");
+    const limit = 1_000_000; const content = diff.stdout.length > limit ? `${diff.stdout.slice(0, limit)}\n[diff truncated by NOSH at ${limit} characters]\n` : diff.stdout;
+    const directory = mkdtempSync(join(tmpdir(), "nosh-diff-")); const file = join(directory, "change.diff");
     try {
-      this.assertProjectWritable(projectId);
-      const agent = agentId ? this.agents.inspect().find((entry) => entry.agentId === agentId && entry.projectId === projectId) : undefined;
-      if (!agent?.taskId) throw new Error("nosh_artifact_register requires an active daemon-bound task session");
-      const taskId = agent.taskId;
-      const packet = this.research.records(projectId, "task-packet").filter((entry) => entry.taskId === taskId).at(-1) as { workspace?: { worktreeId?: string } } | undefined;
-      if (!packet?.workspace?.worktreeId) throw new Error("This task has no workspace");
-      const input = record as { path?: unknown; kind?: unknown } | null;
-      if (typeof input?.path !== "string" || typeof input.kind !== "string" || !/^artifact_[a-z0-9][a-z0-9.:-]*$/.test(input.kind)) throw new Error("path and kind (artifact_<name>) are required");
-      const project = this.projects().find((entry) => entry.projectId === projectId)!;
-      const worktree = taskWorktreePath(project.repositoryRoot, packet.workspace.worktreeId);
-      const target = resolve(worktree, input.path); const inside = relative(worktree, target).replaceAll("\\", "/");
-      if (!inside || inside.startsWith("..") || isAbsolute(inside) || inside.split("/").includes(".git")) throw new Error("path must be a relative file inside your worktree, outside .git");
-      const stat = lstatSync(target); if (!stat.isFile() || stat.nlink !== 1) throw new Error("path must be a regular, unlinked file"); if (stat.size > 5_000_000) throw new Error("file exceeds 5 MB");
-      const mediaType = /\.md$/i.test(inside) ? "text/markdown" : /\.json$/i.test(inside) ? "application/json" : /\.bib$/i.test(inside) ? "application/x-bibtex" : "text/plain";
-      const artifactId = createId("art"); const artifact = new ArtifactStore(join(project.repositoryRoot, ".nosh", "artifacts")).add({ artifactId, projectId, kind: input.kind, mediaType, sourcePath: target, retentionClass: "accepted_evidence" });
-      const scope = { missionId: agent.missionId, directionId: agent.directionId, autoresearchId: agent.autoresearchId, experimentId: agent.experimentId };
-      const artifactRecord: JsonValue = { $schema: schemaUri("artifact"), schemaVersion: 1, artifactId, projectId, kind: input.kind, mediaType, contentHash: artifact.contentHash, sizeBytes: artifact.sizeBytes, version: artifact.version, producer: { type: "agent", agentId: agent.agentId, taskId, path: inside }, scope, git: null, evaluationContractHash: null, retentionClass: "accepted_evidence", remotePreviewPolicy: "encrypted_allowed", redactionStatus: "checked", createdAt: artifact.createdAt };
-      this.research.submitDaemonRecord(projectId, { projectId, ...scope, runId: null, jobId: null, agentId: agent.agentId }, `artifact:${artifactId}`, artifactRecord, `task-artifact:${artifactId}`);
-      return { accepted: true, artifactId, path: inside, kind: input.kind, contentHash: artifact.contentHash, sizeBytes: artifact.sizeBytes };
-    } catch (error) { return { accepted: false, error: error instanceof Error ? error.message : "nosh_artifact_register failed" }; }
+      writeFileSync(file, content, "utf8");
+      return this.recordTaskArtifact(projectId, agent, file, `art_${sha256({ taskId: agent.taskId!, startingCommit, endingCommit }).slice(7, 39)}`, "artifact_diff", "text/x-diff", { type: "noshd", taskId: agent.taskId!, startingCommit, endingCommit });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }
+
+  private recordTaskArtifact(projectId: string, agent: AgentInspection, sourcePath: string, artifactId: string, kind: string, mediaType: string, producer: JsonValue): string {
+    const project = this.projects().find((entry) => entry.projectId === projectId)!;
+    const artifact = new ArtifactStore(join(project.repositoryRoot, ".nosh", "artifacts")).add({ artifactId, projectId, kind, mediaType, sourcePath, retentionClass: "accepted_evidence" });
+    const scope = { missionId: agent.missionId, directionId: agent.directionId, autoresearchId: agent.autoresearchId, experimentId: agent.experimentId };
+    const artifactRecord: JsonValue = { $schema: schemaUri("artifact"), schemaVersion: 1, artifactId, projectId, kind, mediaType, contentHash: artifact.contentHash, sizeBytes: artifact.sizeBytes, version: artifact.version, producer, scope, git: null, evaluationContractHash: null, retentionClass: "accepted_evidence", remotePreviewPolicy: "encrypted_allowed", redactionStatus: "checked", createdAt: artifact.createdAt };
+    this.research.submitDaemonRecord(projectId, { projectId, ...scope, runId: null, jobId: null, agentId: agent.agentId }, `artifact:${artifactId}`, artifactRecord, `task-artifact:${artifactId}`);
+    return artifactId;
   }
 
   startJob(spec: JobSpec): JobRecord {
@@ -754,6 +854,14 @@ export class NoshDaemon {
     assertJobIdentity(verified, spec, "Job launch verification");
     store.completeOperation(spec.projectId, intent.intentId, verified as unknown as JsonValue);
     return verified;
+  }
+
+  /** What the Project is doing right now, as one tree (Missions, Directions, Autoresearch, workers, Jobs) for visual clients. */
+  researchMap(projectId: string): ResearchMap {
+    if (!this.projects().some((project) => project.projectId === projectId)) throw new Error(`Project ${projectId} is not registered on this host`);
+    const events = this.storeFor(projectId).replay(projectId);
+    const submitted = events.filter((event) => event.type === "record.submitted" && isObject(event.payload)).map((event) => ({ event, record: event.payload as Record<string, unknown> }));
+    return buildResearchMap({ missions: this.research.missions(projectId), directions: this.research.directions(projectId), autoresearch: this.research.autoresearch(projectId), submitted, events, agents: this.agents.inspect().filter((agent) => agent.projectId === projectId), jobs: this.jobs.list().filter((job) => job.projectId === projectId) });
   }
 
   replay(projectId: string, afterSequence: number): EventEnvelope[] {
@@ -917,3 +1025,26 @@ function assertJobIdentity(record: JobRecord, spec: JobSpec, context: string): v
 }
 function chatSelection(selection?: ModelSelection): JsonValue { return selection ? { provider: selection.provider, id: selection.id, thinkingLevel: selection.thinkingLevel ?? null } : null; }
 function deterministicChatAgentId(projectId: string): string { return `agt_${sha256({ projectId, role: "nosh_chat" }).slice(7, 39)}`; }
+
+type TaskPacketFacts = { attempt?: number; permissions?: TaskPermissions; workspace?: TaskWorkspace };
+
+const CITATION = /^artifact:(\S+)$/;
+const KIND_RANK = ["artifact_file", "artifact_source", "artifact_report", "artifact_bibliography"];
+/** Every whole-string "artifact:<path>" (no spaces) with the most specific kind any of its citing fields implies. */
+function collectArtifactCitations(value: JsonValue, schema: string, key: string, kinds: Map<string, string>): void {
+  if (typeof value === "string") { const path = CITATION.exec(value)?.[1]; if (path) { const kind = citationKind(key, schema); if (KIND_RANK.indexOf(kind) > KIND_RANK.indexOf(kinds.get(path) ?? "")) kinds.set(path, kind); } return; }
+  if (Array.isArray(value)) { for (const item of value) collectArtifactCitations(item, schema, key, kinds); return; }
+  if (isObject(value)) for (const [field, item] of Object.entries(value)) collectArtifactCitations(item, schema, field, kinds);
+}
+/** Replaces each citation with the art_ ID of its snapshotted worktree file. */
+function replaceArtifactCitations(value: JsonValue, resolved: Map<string, string>): JsonValue {
+  if (typeof value === "string") { const path = CITATION.exec(value)?.[1]; return path ? resolved.get(path) ?? value : value; }
+  if (Array.isArray(value)) return value.map((item) => replaceArtifactCitations(item, resolved));
+  if (isObject(value)) return Object.fromEntries(Object.entries(value).map(([field, item]) => [field, replaceArtifactCitations(item, resolved)]));
+  return value;
+}
+function citationKind(key: string, schema: string): string {
+  if (key === "bibliographyArtifactId") return "artifact_bibliography";
+  if (key === "reportArtifactId") return "artifact_report";
+  return schema === schemaUri("librarian-completion") ? "artifact_source" : "artifact_file";
+}

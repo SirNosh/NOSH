@@ -56,7 +56,7 @@ describe("Pi event mapping", () => {
     expect(noshSystemPrompt("general_worker")).not.toContain(scope.taskId);
   });
 
-  it("binds typed submissions to daemon-issued session scope with a compact receipt", async () => { const calls: unknown[][] = []; const tools = createSessionTools({ ...scope, role: "general_worker", cwd: ".", packagePath: "." }, (...values) => { calls.push(values); return { accepted: true, veryLargeProjection: "x".repeat(10_000) }; }); const tool = tools.find((candidate) => candidate.name === "nosh_task_acknowledge")!; const result = await tool.execute("call_1", { record: { answer: 1 } }, undefined, undefined, {} as never); expect(calls).toEqual([["nosh_task_acknowledge", scope.projectId, `task:${scope.taskId}`, { answer: 1 }, scope.agentId]]); expect(JSON.stringify(result.content).length).toBeLessThan(4200); });
+  it("binds typed submissions to daemon-issued session scope with a compact receipt", async () => { const calls: unknown[][] = []; const tools = createSessionTools({ ...scope, role: "general_worker", cwd: ".", packagePath: "." }, (...values) => { calls.push(values); return { accepted: true, veryLargeProjection: "x".repeat(10_000) }; }); const tool = tools.find((candidate) => candidate.name === "nosh_blocker_submit")!; const result = await tool.execute("call_1", { record: { answer: 1 } }, undefined, undefined, {} as never); expect(calls).toEqual([["nosh_blocker_submit", scope.projectId, `task:${scope.taskId}`, { answer: 1 }, scope.agentId]]); expect(JSON.stringify(result.content).length).toBeLessThan(4200); });
 
   it("activates only Task Packet-authorized tools in a real Pi session", async () => {
     const directory = mkdtempSync(join(tmpdir(), "nosh-pi-adapter-"));
@@ -66,9 +66,12 @@ describe("Pi event mapping", () => {
     const options = { ...scope, role: "general_worker" as const, cwd: directory, packagePath: resolve(import.meta.dirname, "..", "..", "..", "pi-package"), model: { provider: "provider-a", id: "reasoning-model" }, taskPermissions, taskWorkspace };
     try {
       const started = await adapter.start(options);
-      expect(started.activeToolIds).toEqual(expect.arrayContaining(["nosh_workspace_read", "nosh_git_commit"]));
+      expect(started.activeToolIds).toContain("nosh_workspace_read");
+      // Commit authority is exercised by the daemon; no bookkeeping tool reaches the model.
+      expect(started.activeToolIds).not.toEqual(expect.arrayContaining(["nosh_git_commit"]));
       expect(started.activeToolIds).not.toEqual(expect.arrayContaining(["bash", "read", "edit", "write", "nosh_subprocess"]));
-      expect(sessionToolIds({ taskId: options.taskId, taskPermissions, taskWorkspace })).toEqual(["nosh_artifact_read", "nosh_artifact_register", "nosh_git_commit", "nosh_response_submit", "nosh_workspace_read"]);
+      expect(sessionToolIds({ taskId: options.taskId, taskPermissions, taskWorkspace })).toEqual(["nosh_artifact_read", "nosh_response_submit", "nosh_workspace_read"]);
+      expect(sessionToolIds({ taskId: options.taskId, taskPermissions: { ...taskPermissions, allowedToolIds: [...taskPermissions.allowedToolIds, "tool_nosh.task.acknowledge", "tool_nosh.progress.emit"] }, taskWorkspace })).toEqual(["nosh_artifact_read", "nosh_response_submit", "nosh_workspace_read"]);
       await expect(adapter.start({ ...options, agentId: createId("agt"), taskPermissions: { ...taskPermissions, subprocess: "allowlisted" } })).rejects.toThrow("subprocess authority");
       await expect(adapter.start({ ...options, agentId: createId("agt"), taskPermissions: { ...taskPermissions, gitCommit: false } })).rejects.toThrow("gitCommit authority");
       expect(() => resolveWorkspacePath(options, "src/allowed.ts", true)).not.toThrow();
@@ -93,8 +96,8 @@ describe("Pi event mapping", () => {
   it("offers nosh_run only for allowlisted subprocess authority and delegates execution to the daemon", async () => {
     const taskWorkspace = { worktreeId: "wt_run", branch: "main", startingCommit: "a".repeat(40), writeScopes: ["src/**"], protectedScopes: [".nosh/**"] };
     const taskPermissions = { network: "disabled" as const, subprocess: "allowlisted" as const, gitCommit: false, gitPush: false, delegation: "request_only" as const, networkAllowlist: [], allowedToolIds: ["tool_pi.read", "tool_nosh.run"] };
-    expect(sessionToolIds({ taskId: scope.taskId, taskPermissions, taskWorkspace })).toEqual(["nosh_artifact_read", "nosh_artifact_register", "nosh_run", "nosh_workspace_read"]);
-    expect(sessionToolIds({ taskId: scope.taskId, taskPermissions: { ...taskPermissions, subprocess: "disabled" }, taskWorkspace })).toEqual(["nosh_artifact_read", "nosh_artifact_register", "nosh_workspace_read"]);
+    expect(sessionToolIds({ taskId: scope.taskId, taskPermissions, taskWorkspace })).toEqual(["nosh_artifact_read", "nosh_run", "nosh_workspace_read"]);
+    expect(sessionToolIds({ taskId: scope.taskId, taskPermissions: { ...taskPermissions, subprocess: "disabled" }, taskWorkspace })).toEqual(["nosh_artifact_read", "nosh_workspace_read"]);
     const calls: unknown[][] = [];
     const run = createSessionTools({ ...scope, role: "general_worker", cwd: ".", packagePath: ".", taskPermissions, taskWorkspace }, (...values) => { calls.push(values); return { accepted: true, exitCode: 0 }; }).find((tool) => tool.name === "nosh_run")!;
     await run.execute("call_run", { commandId: "command_test" }, undefined, undefined, {} as never);

@@ -2,11 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { DaemonClient } from './client.js';
 import { safeText, record, text, fields, formatFields, modelName, entityRow, responseRows, boundRows, rawDetail, eventEntries, boundEntries, collapseLines, type ViewRow, type TranscriptEntry, type ActivityState, type PendingAction } from './view-model.js';
+// The research map refreshes on its own while open, but never faster than this.
+const MAP_REFRESH_MS = 2500;
 // Cold Pi session start can exceed the default request timeout; a timeout would
 // report failure for a chat the daemon still accepts.
 const CHAT_TIMEOUT = 120_000;
 export { safeText } from './view-model.js';
-export type { ViewField, ViewRow, TranscriptEntry, ActivityState, PendingAction } from './view-model.js';
+export type { ViewField, ViewRow, TranscriptEntry, ActivityState, PendingAction, MapLine, MapTone } from './view-model.js';
 export interface Project { projectId: string; repositoryRoot: string }
 export interface Model { provider: string; id: string; name: string; thinkingLevels: string[] }
 export interface NoshEvent { eventId: string; sequence: number | null; type: string; payload: Record<string, unknown>; scope: { projectId: string; agentId?: string | null; jobId?: string | null; missionId?: string | null; directionId?: string | null; autoresearchId?: string | null }; correlationId?: string | null; timestamp?: string }
@@ -22,6 +24,7 @@ Keys
   f2                    select model
   ctrl+t                next thinking level
   ctrl+b                toggle research sidebar
+  ctrl+g                research map (what is running, live)
   esc                   back to conversation
   esc esc               clear the draft
   up / down             input history
@@ -40,6 +43,7 @@ Project and model
 
 Research state
   /chat                           return to conversation
+  /map                            research map: missions, directions, autoresearch, workers, jobs
   /status [missions|directions|autoresearch|agents]
   /jobs                           supervised jobs
   /job <id>                       details + resources
@@ -81,6 +85,9 @@ export class Controller {
   error = '';
   busy = false;
   selection: { model: {provider: string; id: string}; thinkingLevel: string } | undefined;
+  /** Latest daemon /research-map tree, shown by the 'map' view. */
+  researchMap: unknown = undefined;
+  private mapRequestedAt = 0;
   private generation = 0;
   private pollingGeneration: number | undefined;
   private bootstrapped = false;
@@ -119,6 +126,7 @@ export class Controller {
       this.reconcileDrafts(page.events.filter(e => e.sequence !== null && e.sequence > priorCursor));
       this.ensureStream(); this.notify();
       void this.refreshAgentMetadata(generation);
+      if (this.view === 'map' && Date.now() - this.mapRequestedAt >= MAP_REFRESH_MS) void this.refreshMap(generation);
     } catch (error) { if (generation === this.generation) this.connection = `reconnecting: ${safeText(error instanceof Error ? error.message : error)}`; }
     finally { if (this.pollingGeneration === generation) this.pollingGeneration = undefined; }
   }
@@ -133,6 +141,11 @@ export class Controller {
       if (generation !== this.generation) return;
       this.agentMetadata = (Array.isArray(data.agents) ? data.agents : []).slice(0,80).map(record); this.notify();
     } catch { /* Metadata is presentation only; the next poll retries. */ }
+  }
+  private async refreshMap(generation: number): Promise<void> {
+    this.mapRequestedAt = Date.now();
+    try { const data = await this.client.request('/research-map'+this.query()); if (generation === this.generation && this.view === 'map') { this.researchMap = data; this.notify(); } }
+    catch { /* The map is presentation only; the next poll retries. */ }
   }
   /** Catalog reads do not navigate or stage an action. Latest request wins. */
   async loadProjects(): Promise<Project[]> {
@@ -153,7 +166,7 @@ export class Controller {
     this.generation++; this.streamClose?.(); this.streamClose = undefined; this.streamProject = '';
     this.projectId = project.projectId; this.events = []; this.cursor = 0; this.bootstrapped = false;
     this.pending = undefined; if (!preserveModel) this.selection = undefined;
-    this.rows = []; this.sections.clear(); this.sectionCursors.clear(); this.agentMetadata = []; this.agentsRequestedAt = 0; this.drafts.clear(); this.liveIds.clear();
+    this.rows = []; this.sections.clear(); this.sectionCursors.clear(); this.agentMetadata = []; this.agentsRequestedAt = 0; this.drafts.clear(); this.liveIds.clear(); this.researchMap = undefined;
     this.view = 'chat'; this.detail = ''; this.error = ''; this.notify();
   }
   pendingAction(): PendingAction | undefined {
@@ -308,6 +321,10 @@ export class Controller {
     switch (command) {
       case '/help': this.view = 'help'; this.detail = HELP; this.rows = []; return;
       case '/chat': this.view = 'chat'; return;
+      case '/map': {
+        const data = await this.client.request('/research-map'+this.query()); if (!current()) return;
+        this.researchMap = data; this.mapRequestedAt = Date.now(); this.view = 'map'; this.rows = []; this.detail = ''; return;
+      }
       case '/projects': {
         await this.loadProjects(); if (!current()) return;
         this.present('projects',this.projects.map(p => ({id:p.projectId,section:'projects',title:p.projectId,fields:[{label:'repository',value:safeText(p.repositoryRoot)}]})),{projects:this.projects}); return;
@@ -410,7 +427,7 @@ export class Controller {
       }
       case '/discard': this.pending = undefined; this.view = 'chat'; return;
       case '/paths': this.requireProject(); this.view = 'paths'; this.rows = []; this.detail = `${this.projects.find(p => p.projectId === this.projectId)?.repositoryRoot}\n\nOpen this repository in your external editor.\nPaper: docs/paper.md\nContract: .nosh/contracts/project.v<N>.json (active version in .nosh/project.json)\nUse /status and /job for daemon-owned artifact references.\nNo shell is embedded. Contract approval remains an explicit intake conversation.`; return;
-      case '/refresh': if (['status','jobs','approvals','projects','models'].includes(this.view)) await this.run('/'+this.view); else await this.poll(); return;
+      case '/refresh': if (['status','jobs','approvals','projects','models','map'].includes(this.view)) await this.run('/'+this.view); else await this.poll(); return;
       default: throw new Error('Unknown command. Use /help.');
     }
   }

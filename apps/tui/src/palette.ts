@@ -20,6 +20,7 @@ export const COMMANDS: readonly CommandItem[] = [
   {id:'models',title:'Select model',category:'Model',description:'Choose provider and model',keywords:'model provider authenticated',command:'/models',mode:'dialog',keybind:'f2'},
   {id:'thinking',title:'Thinking level',category:'Model',description:'Choose a supported level for the selected model',keywords:'reasoning effort variant',command:'/thinking',mode:'dialog',keybind:'ctrl+t'},
   {id:'chat',title:'Conversation',category:'Research',description:'Return to the current conversation',command:'/chat',mode:'execute',keybind:'esc'},
+  {id:'map',title:'Research map',category:'Research',description:'Live tree of missions, directions, autoresearch, workers and jobs',keywords:'graph tree visual overview dashboard progress experiments',command:'/map',mode:'execute',keybind:'ctrl+g'},
   {id:'status',title:'Research status',category:'Research',description:'Missions, directions, autoresearch and agents',command:'/status',mode:'execute'},
   {id:'jobs',title:'Supervised jobs',category:'Research',description:'Inspect jobs and resource use',command:'/jobs',mode:'execute'},
   {id:'approvals',title:'Review approvals',category:'Research',description:'Inspect proposals and the project contract',command:'/approvals',mode:'execute'},

@@ -12,7 +12,7 @@ const context: TerminalContext = { projectId: createId("prj"), agentId: createId
 const records = [{ $schema: schemaUri("general-worker-completion"), schemaVersion: 1 }, { $schema: schemaUri("episode-draft"), schemaVersion: 1 }];
 function host(store: EventStore, validate = vi.fn()) {
   const daemon = Object.create(NoshDaemon.prototype) as NoshDaemon;
-  Object.assign(daemon, { terminalTurns: new Map(), agents: { terminalTurnActive: () => true }, assertProjectWritable: () => {}, storeFor: () => store, validateTerminal: validate });
+  Object.assign(daemon, { terminalTurns: new Map(), agents: { terminalTurnActive: () => true, inspect: () => [] }, assertProjectWritable: () => {}, storeFor: () => store, validateTerminal: validate });
   return daemon;
 }
 

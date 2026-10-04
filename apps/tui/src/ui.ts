@@ -10,7 +10,7 @@ import { createDialogs } from './dialog.js';
 import { slashQuery } from './palette.js';
 import { ComposerRenderable } from './composer.js';
 import { compactLogoText, createMarkdownStyle, keyHints, logoText, splitBorder, theme } from './theme.js';
-import { createTranscript, createInspector, createResearchSidebar, text, type AttentionItem } from './visual.js';
+import { createTranscript, createInspector, createResearchMap, createResearchSidebar, text, type AttentionItem } from './visual.js';
 
 // Empty inspector views explain the state instead of showing the raw response.
 const EMPTY_VIEW: Record<string, string> = {
@@ -71,11 +71,12 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     contentOptions: { width: '100%', flexDirection: 'column' } });
   const transcript = createTranscript(renderer, syntax);
   const inspector = createInspector(renderer);
+  const researchMap = createResearchMap(renderer);
   // The conversation always opens with the NOSH mark, above the first message.
   const banner = new BoxRenderable(renderer, { id: 'session-banner', flexDirection: 'column', flexShrink: 0, height: 8, minHeight: 8, paddingLeft: 1, marginBottom: 1 });
   banner.add(new TextRenderable(renderer, { id: 'session-logo', content: logoText(), height: 6, minHeight: 6, width: 35, flexShrink: 0, wrapMode: 'none', selectable: false }));
   banner.add(new TextRenderable(renderer, { id: 'session-tagline', content: 'autonomous research you can verify', fg: theme.muted, height: 1, marginTop: 1, selectable: false }));
-  scroll.add(banner); scroll.add(transcript.root); scroll.add(inspector.root);
+  scroll.add(banner); scroll.add(transcript.root); scroll.add(inspector.root); scroll.add(researchMap.root);
   const promptHost = new BoxRenderable(renderer, { id: 'prompt-host', width: '100%', alignSelf: 'center',
     flexShrink: 0, flexDirection: 'column', paddingTop: 1 });
   const composer = new BoxRenderable(renderer, { id: 'composer-box', width: '100%', flexShrink: 0,
@@ -115,7 +116,7 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
   const sideScroll = new ScrollBoxRenderable(renderer, { id: 'sidebar-scroll', width: '100%', flexGrow: 1,
     minHeight: 0, scrollX: false, verticalScrollbarOptions: { visible: false } });
   const research = createResearchSidebar(renderer); sideScroll.add(research.root);
-  const sideFooter = text(renderer, 'sidebar-footer', 'ctrl+b hide  /status  /jobs', theme.muted);
+  const sideFooter = text(renderer, 'sidebar-footer', 'ctrl+g map  ctrl+b hide', theme.muted);
   sidebar.add(sideTitle); sidebar.add(sideSubtitle); sidebar.add(sideProject); sidebar.add(sideScroll); sidebar.add(sideFooter);
   body.add(main); body.add(sidebar);
   const footer = new BoxRenderable(renderer, { id: 'footer', height: 1, flexShrink: 0, width: '100%',
@@ -190,7 +191,7 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     const changedView = previousView !== controller.view || previousProject !== controller.projectId;
     sidebar.visible = !home && width >= 80 && showSidebar;
     sidebar.width = width >= 140 ? 38 : width >= 100 ? 32 : 28;
-    sideFooter.content = sidebar.width >= 32 ? 'ctrl+b hide  /status  /jobs' : 'ctrl+b hide  /status';
+    sideFooter.content = sidebar.width >= 38 ? 'ctrl+g map  ctrl+b hide  /jobs' : 'ctrl+g map  ctrl+b hide';
     header.visible = !home; scroll.visible = !home; banner.visible = controller.view === 'chat' && renderer.height >= 20;
     hero.visible = home; topSpace.visible = home; bottomSpace.visible = home; homeTip.visible = home && !compact;
     logo.visible = renderer.height >= 20; wordmark.visible = renderer.height < 20;
@@ -201,7 +202,7 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     input.maxHeight = compact ? 3 : Math.max(3, Math.min(6, Math.floor(renderer.height / 4)));
     const mainWidth = Math.max(12, width - (sidebar.visible ? sidebar.width : 0) - 4);
     const topic = entries.find(entry => entry.kind === 'user')?.text;
-    heading.content = clip(`NOSH  /  ${controller.view === 'chat' ? topic || basename(project?.repositoryRoot || 'Research workspace') : controller.view.toUpperCase()}`, mainWidth);
+    heading.content = clip(`NOSH  /  ${controller.view === 'chat' ? topic || basename(project?.repositoryRoot || 'Research workspace') : controller.view === 'map' ? 'RESEARCH MAP' : controller.view.toUpperCase()}`, mainWidth);
     context.content = clip(`${basename(project?.repositoryRoot || 'No project')}  ·  ${controller.view === 'chat' ? 'Research conversation' : 'Esc conversation'}  ·  ctrl+p commands`, mainWidth);
     const roleName = activity.role || 'Research';
     role.content = roleName.charAt(0).toUpperCase() + roleName.slice(1);
@@ -210,10 +211,10 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     model.content = clip(`· ${modelName || 'Default model'}`, Math.max(12, (home ? 71 : mainWidth) - roleName.length - (level ? level.length + 8 : 6)));
     thinking.content = level ? `· ${level}` : '';
     composer.borderColor = controller.error ? theme.error : controller.busy || activity.working ? theme.secondary : theme.accent;
-    hints.content = controller.view !== 'chat' ? keyHints([['esc', 'conversation'], ['pgup/pgdn', 'scroll'], ['ctrl+p', 'commands']])
+    hints.content = controller.view !== 'chat' ? keyHints([['esc', 'conversation'], ['pgup/pgdn', 'scroll'], ...(controller.view === 'map' ? [] : [['ctrl+g', 'map'] as [string, string]]), ['ctrl+p', 'commands']])
       : !project ? keyHints([['ctrl+o', 'choose project'], ['ctrl+p', 'commands']])
       : mainWidth < 72 ? keyHints([['enter', 'send'], ['⇧enter', 'newline'], ['ctrl+p', 'commands']])
-      : keyHints([['enter', 'send'], ['⇧enter', 'newline'], ['ctrl+p', 'commands'], ['f2', 'model'], ['ctrl+t', 'thinking']]);
+      : keyHints([['enter', 'send'], ['⇧enter', 'newline'], ['ctrl+p', 'commands'], ['ctrl+g', 'map'], ['f2', 'model'], ['ctrl+t', 'thinking']]);
     const working = controller.busy || activity.working;
     const spinner = ['▪▫▫', '▫▪▫', '▫▫▪'][Math.floor(Date.now() / 180) % 3];
     status.fg = controller.error ? theme.error : working ? theme.secondary : theme.muted;
@@ -224,7 +225,7 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
       : entries.at(-1)?.kind === 'receipt' ? `✓ ${clip(entries.at(-1)!.title, mainWidth - 4)}` : '');
     status.visible = !!status.plainText;
     homeTip.content = project
-      ? new StyledText([fg(theme.accent)(' ◆ '), fg(theme.text)(basename(project.repositoryRoot)), fg(theme.muted)('   ask a research question, or try '), fg(theme.accent)('/status'), fg(theme.muted)(' · '), fg(theme.accent)('/help')])
+      ? new StyledText([fg(theme.accent)(' ◆ '), fg(theme.text)(basename(project.repositoryRoot)), fg(theme.muted)('   ask a research question, or try '), fg(theme.accent)('ctrl+g'), fg(theme.muted)(' map · '), fg(theme.accent)('/help')])
       : keyHints([['ctrl+o', 'choose a project'], ['/new', 'create one']]);
     const placeholder = project ? 'Ask NOSH… what should we investigate?' : 'Choose a project first — press ctrl+o';
     if (input.placeholder !== placeholder) input.placeholder = placeholder;
@@ -233,9 +234,10 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     connection.fg = online ? theme.success : theme.warning;
     cwd.content = clip(project?.repositoryRoot || 'No project · ctrl+o to choose', Math.max(8, width - 38));
     sideProject.content = clip(project ? basename(project.repositoryRoot) : 'No project selected', sidebar.width - 4);
-    transcript.root.visible = controller.view === 'chat'; inspector.root.visible = controller.view !== 'chat';
+    transcript.root.visible = controller.view === 'chat'; inspector.root.visible = controller.view !== 'chat' && controller.view !== 'map'; researchMap.root.visible = controller.view === 'map';
+    if (controller.view === 'map') researchMap.update(controller.researchMap, mainWidth);
     transcript.update(entries);
-    if (controller.view !== 'chat') inspector.update(controller.inspectorRows(), controller.view === 'help' ? HELP
+    if (controller.view !== 'chat' && controller.view !== 'map') inspector.update(controller.inspectorRows(), controller.view === 'help' ? HELP
       : controller.view === 'paths' ? controller.detail : EMPTY_VIEW[controller.view] ?? 'Nothing to show.');
     const sideRows = controller.sidebarRows();
     const attention: AttentionItem[] = [];
@@ -284,6 +286,7 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     if (key.name === 'f2') { take(); void dialogs.openModels(); return; }
     if (key.ctrl && key.name === 't') { take(); void cycleThinking(); return; }
     if (key.ctrl && key.name === 'b') { take(); showSidebar = !showSidebar; render(); return; }
+    if (key.ctrl && key.name === 'g') { take(); if (!controller.busy) void controller.execute(controller.view === 'map' ? '/chat' : '/map').catch(() => undefined).finally(render); return; }
     if (key.name === 'escape') {
       take();
       // A single Esc never discards a draft; a second Esc within 1.5s clears it.

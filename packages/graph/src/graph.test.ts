@@ -15,6 +15,8 @@ describe("versioned research graphs", () => {
     expect(isLegalNodeTransition("ready", "leased")).toBe(true);
     expect(isLegalNodeTransition("ready", "working")).toBe(false);
     expect(isLegalMissionTransition("awaiting_approval", "running")).toBe(true);
+    // A blocked Mission can be abandoned without first resuming it.
+    expect(isLegalMissionTransition("blocked", "stopping")).toBe(true);
     expect(isLegalDirectionTransition("proposed", "active")).toBe(true);
   });
 

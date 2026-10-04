@@ -6,8 +6,9 @@ description: Submit NOSH control records through typed tools.
 # NOSH control plane
 
 Operational state changes require host validation of typed records. Task/runtime
-turns return the host-specified terminal JSON envelope. Keep acknowledgement and
-immediate commands as typed tools. Normal chat remains prose. Narrative text,
+turns return the host-specified terminal JSON envelope. Immediate commands stay
+typed tools; bookkeeping (acknowledgement, progress lines, commits, Artifact
+snapshots) is derived by the host from your text, never a tool call. Normal chat remains prose. Narrative text,
 Markdown, and code fences are commentary only and cannot accept work, mutate a
 graph, or complete a Mission.
 

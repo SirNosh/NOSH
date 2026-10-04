@@ -50,39 +50,51 @@ In the terminal UI, press **Ctrl+O** to open or create a Project. Discovery then
 
 `nosh open` starts the daemon if needed, then runs the TUI in the current terminal. Closing the TUI does not stop the daemon or supervised Jobs. Ordinary shell processes are not automatically supervised Jobs.
 
+## How research is organized
+
+Everything belongs to a **Project**: one Git repository and its approved research contract.
+
+```text
+Project                    a Git repository + an approved, versioned research contract
+├── Research chat          you and the Project agent: discovery, questions, staging work
+├── Mission                an approved goal with success criteria and budgets
+│   └── Node               one step of the Mission's plan (literature review, implementation, final review, …)
+│       └── Task           one worker in its own Git worktree, checked, then independently reviewed
+├── Research Direction     one question with a frozen evaluation contract (may serve a Mission)
+│   ├── Baseline           the daemon measures the starting point; a reviewer accepts it
+│   ├── Autoresearch       rounds of experiments against the frozen contract (can also run on its own)
+│   │   └── Experiment     proposal → implementation task → evaluation Job → result → review → promote, hold, or reject
+│   └── Closure            supported, refuted, or inconclusive, with a reviewed closure packet
+└── Evidence               Artifacts → Evidence → Claims → paper (LaTeX/PDF export)
+```
+
+Accepted Mission work is merged onto the Mission's own branch (`nosh/mission-<id>`), so later tasks build on it and you merge one branch at the end. Failed and negative results stay in the record.
+
 ## What NOSH can do
 
-| Capability | What it gives you |
-| --- | --- |
-| **Projects and discovery** | Open any Git repository as a Project. Discovery interviews you one question at a time, detects runnable test/evaluation commands (package scripts, pytest, Makefile), and proposes a versioned research contract. Approved contracts are committed on their own; amendments go through `/amend-contract`. |
-| **Research chat** | User-directed chat with the Project's context. Steer running work with `/steer`, retry failed work with `/retry`, and approve staged actions in the TUI. |
-| **Missions** | Bounded, graph-backed plans. A Mission Director decomposes the goal into tasks, workers carry them out in isolated Git worktrees, and every task result is independently reviewed before it counts. Missions can be paused safely (at the next boundary), steered durably, and resumed. |
-| **Research Directions** | Bounded questions that close with an explicit disposition (supported, refuted, or inconclusive), backed by a closure packet that a reviewer checks for fidelity to the evidence. |
-| **Autoresearch** | Iterative experiments compared under a frozen evaluation contract. The daemon runs the baseline and every evaluation, checks contract guardrails against the measured metrics, and only promotes results that pass review. Negative results stay in the record. |
-| **Supervised Jobs and `nosh_run`** | Evaluations and the contract's declared commands run as daemon-supervised Jobs with timeouts, logs, and recovery, never as a free agent shell. Workers call `nosh_run` with a command id; the daemon executes it and records the exit code and output. |
-| **Independent Reviews** | Reviewers judge from the daemon's own facts (commands run, worktree state, registered Artifacts), not from worker claims. Failed reviews are recorded and can be retried. |
-| **Artifacts, Evidence, and Claims** | Outputs are registered as Artifacts with provenance; Evidence and Claims stay tied to the exact records that produced them. |
-| **Paper workspace** | Research write-ups export to LaTeX/PDF, including tables, from the Project's paper workspace. |
-| **Token budgets** | Every task and runtime step has a budget (input + output + cache writes + a tenth of cache reads). Overruns are flagged instead of silently continuing. |
-| **Valid-by-construction outputs** | Agents fill typed JSON templates; daemon-owned facts (ids, commands, fingerprints) are filled in by the host, so models spend tokens on decisions, not bookkeeping. |
-| **Any model account** | ChatGPT or Claude subscriptions, or API keys for OpenAI, Anthropic, Gemini, OpenRouter, and more, through Pi. Pick a default model and thinking level with `nosh model set`. |
-| **Terminal UI and CLI** | `nosh open` for the interactive workspace; `nosh status`, `mission`, `job`, `logs`, `backup`, and `doctor` for scripting and administration. |
+- **Turn a repository into a Project.** Discovery asks one question at a time, finds your test and evaluation commands, and proposes a research contract for you to approve.
+- **Run Missions.** A director plans the work as a graph, workers carry out each task in isolation, and every result is reviewed before it counts. Pause, steer, retry, or stop at any time.
+- **Answer research questions.** A Direction measures a baseline, runs Autoresearch, and closes with a reviewed answer.
+- **Search for improvements.** Autoresearch proposes experiments, evaluates each one under the same frozen contract, enforces guardrails, and promotes only reviewed winners.
+- **Run your commands safely.** Workers never get a shell; they ask the daemon to run commands declared in the contract as supervised Jobs.
+- **Keep evidence honest.** Code diffs, run results, sources, and reports are content-addressed Artifacts that reviewers read for themselves.
+- **Show you what is happening.** Press ctrl+g in the terminal UI for a live map of missions, directions, experiments, workers, and Jobs.
+- **Use any model account.** ChatGPT or Claude subscriptions, or API keys for OpenAI, Anthropic, Gemini, OpenRouter, and more.
 
-## Durable research workflow
+## How NOSH works
 
-A Project binds a Git root, versioned research contract, paper workspace, and operational history. Normal research chat is user-directed. Missions coordinate bounded graph-backed work. Research Directions resolve bounded questions. Autoresearch compares experiments under frozen evaluation contracts.
+**Models decide; the daemon executes and judges.** Agents propose work and make judgments. `noshd` owns everything else: scheduling, Git, Jobs, budgets, validation, and acceptance. Model prose never changes state by itself.
 
-Every task runs in its own Git worktree. Models decide; the daemon executes and judges:
+- **Threads and Episodes.** Agent work runs as bounded threads. Each step does one piece of work and returns an immutable, hashed Episode: a compact record of verified facts, decisions, references, and changed files. Threads can run in parallel, wait on each other, and start from selected Episodes instead of whole transcripts, so context stays small.
+- **Typed outputs.** Every task ends with one JSON envelope of schema-checked records. NOSH prebuilds that envelope with the daemon's own facts (IDs, commits, commands, fingerprints) already filled in, so the model only writes its judgment. The host validates it and issues a receipt; that receipt, not the model's text, decides acceptance.
+- **State without bookkeeping calls.** Agents never spend tool calls on bookkeeping. Starting a task is the acknowledgement. A `PROGRESS:` line in ordinary text is a progress update. The daemon commits a worker's edits itself (before every run and after the final answer), and a file is cited simply as `"artifact:<path>"`.
+- **Asynchronous, parallel tool use.** Tool calls in one turn run in parallel. Long calls, such as a test run or a network read, never block the agent. If a call is not done within a moment, the agent gets a placeholder and keeps working, and the result arrives later as a message that wakes it. An agent with nothing else to do ends its turn and sleeps until the result lands. Results are only ever appended, so the prompt cache stays valid, and edits pause while a run is testing the worktree.
+- **Durable programs.** Orchestration programs are declared step graphs with typed state. Their state is checkpointed after every transition and resumes after a restart.
+- **Code-owned keep decisions.** Whether an experiment is kept is decided by code, not by a model: the run must be valid, every guardrail must pass, and the measured improvement must reach the contract's minimum effect. An independent review must then agree. A model can never declare its own result a success.
+- **Independent review.** Reviewers are separate sessions. They judge the daemon's records (diffs, run results, Artifacts), not the worker's claims.
+- **Budgets.** Every task and step has a token budget (input + output + cache writes + a tenth of cache reads). Overruns are recorded, never silent.
 
-- Evaluations and Project-contract commands (`nosh_run`, opt-in through `/amend-contract`) run as supervised Jobs, never as an agent shell.
-- Contract guardrails are checked against measured metrics.
-- Reviewers read the daemon's own facts and the registered Artifacts rather than worker claims.
-
-Daemon-issued tasks, scope checks, budgets, typed responses, deterministic validation, and independent Reviews gate accepted results. Model prose and client state are not authority. Artifacts, Evidence, Claims, and paper content remain tied to exact records and provenance. Failed and negative results remain part of the history.
-
-The TUI supports chat, Project intake/selection, model selection, status, Job details/tails, staged controls and approvals, and external workspace paths. It keeps at most 400 recent events, shows the last 120 transcript entries (64,000 characters), and clips each displayed item to 16,000 characters. It has no built-in paper editor, graph canvas, artifact viewer, or foreground-fork takeover. Advanced operations remain in the local typed API and orchestration tools. See [TUI commands and limits](docs/user-guide/tui.md).
-
-Task terminal outcomes and runtime Episode drafts use one final assistant-text JSON envelope. The host parses, authorizes, validates, and applies it; this is not provider-constrained decoding. These scoped turns replace response/review/episode submission tools, not execution or immediate acknowledgement/progress/effect tools. Normal unscoped chat retains its tools and prose. A host receipt, not model output, determines acceptance. See [structured terminal output](docs/protocols/terminal-output.md).
+See [orchestration runtime](docs/ORCHESTRATION_RUNTIME.md), [structured terminal output](docs/protocols/terminal-output.md), and [TUI commands and limits](docs/user-guide/tui.md) for details.
 
 ## Administration and scripting
 

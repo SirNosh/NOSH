@@ -40,16 +40,39 @@ describe("NOSH system prompt contract", () => {
     const prompt = noshSystemPrompt("nosh");
     for (const rule of [
       "noshd owns authorization", "SQLite records", "Pi supplies a replaceable model session",
-      "Task Packet", "nosh_task_acknowledge", "exactly one episode-draft", "host-supplied terminal contract",
+      "Task Packet", "exactly one episode-draft", "host-supplied terminal contract",
       "THREAD_OPEN/THREAD_STEP", "they do not create or approve a Mission or Direction",
       "Do not assume DIRECT_ACTION has a configured handler", "nosh_runtime_instruct", "nosh_delegation_request",
       "stopping a program does not cancel independent threads", "compact, partial context", "tool allowlists intersect",
       "daemon-managed Jobs", "not accepted Evidence", "not independent review or Mission acceptance",
       "same idempotency identity for an exact replay", "inspect authoritative status", "Do not relaunch work",
-      "eligible parent Task Packet and lease", "Commit permission is not push permission",
+      "eligible parent Task Packet and lease", "Commit authority is not push permission",
       "deterministic postflight and independent review", "Link claims to accepted evidence",
       "cancellation request is not verified Job process exit",
     ]) expect(prompt, rule).toContain(rule);
+  });
+
+  it("tells every scoped role that state is host-managed, with only the lines that role can act on", async () => {
+    const { hostStateGuidance } = await import("./index.js");
+    expect(noshSystemPrompt("nosh")).not.toContain("Host-managed state");
+    for (const role of ["mission_director", "research_director", "librarian_researcher", "general_worker", "reviewer"] as const) {
+      const prompt = noshSystemPrompt(role, { projectId: "prj_x", agentId: "agt_y", taskId: "tsk_z" });
+      for (const rule of ["Host-managed state (no bookkeeping tool calls)", "one terminal JSON envelope", "host-filled: copy them unchanged", "There is no acknowledgement step", "PROGRESS: <what is done> -> <what is next>"]) expect(prompt, `${role}: ${rule}`).toContain(rule);
+      expect(prompt).not.toContain("nosh_task_acknowledge");
+      expect(prompt).toContain(hostStateGuidance(role));
+    }
+    expect(hostStateGuidance("general_worker")).toContain("the host commits your worktree edits before every nosh_run and after your final answer");
+    for (const role of ["general_worker", "librarian_researcher"] as const) expect(hostStateGuidance(role)).toContain('"artifact:<relative/path>"');
+    for (const role of ["reviewer", "mission_director", "research_director", "librarian_researcher"] as const) expect(hostStateGuidance(role)).not.toContain("commits your worktree");
+    expect(hostStateGuidance("reviewer")).toContain("Review Request");
+    expect(hostStateGuidance("mission_director")).toContain("cycle record is your only output");
+  });
+
+  it("parses PROGRESS lines from assistant text, bounded", async () => {
+    const { progressNotes } = await import("./index.js");
+    expect(progressNotes("Reading files.\nPROGRESS: tests pass -> write report\n  PROGRESS:   second\nnot PROGRESS: inline")).toEqual(["tests pass -> write report", "second"]);
+    expect(progressNotes(Array.from({ length: 5 }, (_, index) => `PROGRESS: ${index}`).join("\n"))).toHaveLength(3);
+    expect(progressNotes("{\"records\":[]}")).toEqual([]);
   });
 
   it("gives each role its own bounded responsibilities", () => {

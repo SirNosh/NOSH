@@ -31,6 +31,7 @@
 | GET | `/models` | — | Authenticated Pi models and advertised thinking levels. |
 | POST | `/chat` | `projectId`, `message`, `idempotencyKey`; optional `model`, `thinkingLevel` | Send a message to the Project's Nosh agent. |
 | GET | `/agents` | optional `projectId` | Agent inspection. |
+| GET | `/research-map` | `projectId` | One tree of what the Project is doing: Missions and Directions with graph nodes (and the worker holding each lease), Autoresearch executions with experiment states (proposed, implementing, evaluating, promoted, held, rejected, failed) and scores, live workers, and running Jobs. Used by the TUI research map (`/map`, ctrl+g). |
 | POST | `/agents` | Pi session options | Start an agent. |
 | POST | `/agents/:id/{prompt,steer,compact,abort,stop}` | `message` for prompt/steer; optional `instructions` for compact | Agent control. |
 

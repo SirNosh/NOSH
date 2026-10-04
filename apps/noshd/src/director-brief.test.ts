@@ -70,13 +70,16 @@ describe("librarian network authority", () => {
 });
 
 describe("librarian template", () => {
-  it("is invalid until the librarian registers real artifacts, then schema-valid", async () => {
+  it("cites files by path, is invalid until the daemon resolves every citation, then schema-valid", async () => {
     const { librarianInstructions, REGISTER_ARTIFACT } = await import("./task-templates.js");
-    const text = librarianInstructions(createId("tsk"), false);
+    const taskId = createId("tsk"); const text = librarianInstructions(taskId, false);
     const envelope = JSON.parse(text.split("\n").at(-1)!) as { records: Array<Record<string, unknown>> };
     const record = envelope.records[0]!;
     expect(validateRecord(schemaUri("librarian-completion"), record as never).ok).toBe(false);
-    const filled = JSON.parse(JSON.stringify(record).replaceAll(REGISTER_ARTIFACT, createId("art"))) as Record<string, unknown>;
+    // Report and bibliography paths are daemon-known and prefilled; only sources are the librarian's to name.
+    expect(record).toMatchObject({ reportArtifactId: `artifact:research/${taskId}/report.md`, bibliographyArtifactId: `artifact:research/${taskId}/bibliography.bib` });
+    expect(JSON.stringify(record)).toContain(REGISTER_ARTIFACT);
+    const filled = JSON.parse(JSON.stringify(record).replace(/"artifact:[^"]+"/g, () => JSON.stringify(createId("art")))) as Record<string, unknown>;
     expect(validateRecord(schemaUri("librarian-completion"), filled as never)).toMatchObject({ ok: true });
     expect(validateRecord(schemaUri("episode-draft"), envelope.records[1] as never)).toMatchObject({ ok: true });
     expect(text).toContain("network is disabled");
@@ -85,13 +88,8 @@ describe("librarian template", () => {
 
 describe("worker templates", () => {
   it("are schema-valid as issued, so a worker only edits judgment", async () => {
-    const { acknowledgementInstructions, generalWorkerCompletionTemplate } = await import("./task-templates.js");
+    const { generalWorkerCompletionTemplate } = await import("./task-templates.js");
     const packet = { taskId: createId("tsk"), attempt: 1, assignedAgentId: createId("agt"), requiredOutputs: [{ outputId: "output_x" }], acceptanceCriteria: [{ criterionId: "dnode_x", validatorIds: ["validator_direction.postflight"], required: true }], lease: { leaseId: "lease_x" }, workspace: { startingCommit: "a".repeat(40), branch: "nosh/task-x" } };
-    const instructions = acknowledgementInstructions(packet); const progressAt = instructions.indexOf(" Progress updates are optional");
-    const ack = JSON.parse(instructions.slice(instructions.indexOf("{"), progressAt)) as Record<string, unknown>;
-    const progress = JSON.parse(instructions.slice(instructions.indexOf("{", progressAt))) as Record<string, unknown>;
-    expect(validateRecord(schemaUri("progress-update"), progress)).toMatchObject({ ok: true });
-    expect(validateRecord(schemaUri("task-acknowledgement"), ack)).toMatchObject({ ok: true });
     const evaluation = { jobId: createId("job"), state: "completed", exitCode: 0, displayCommand: "node evaluate.mjs", metrics: { score: 0.84 }, metricArtifactId: createId("art"), failure: null };
     for (const template of [generalWorkerCompletionTemplate(packet, null), generalWorkerCompletionTemplate(packet, evaluation)]) expect(validateRecord(schemaUri("general-worker-completion"), template)).toMatchObject({ ok: true });
     const { completionInstructions } = await import("./task-templates.js");
