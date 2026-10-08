@@ -1,47 +1,40 @@
-# Phase 0 Architecture
+# Current architecture
 
-## Purpose
+NOSH is a terminal-first, local research control plane. The CLI and OpenTUI client are thin clients of `noshd`. Pi is the model runtime. There is no browser build, PWA, relay, device pairing, or daemon-managed interactive shell.
 
-Phase 0 proves the riskiest boundaries before product implementation. It is a vertical spike, not a second runtime: Pi remains the sole LLM/provider runtime and `noshd` remains the local authority.
+## Processes
 
-The exit proof is an external iPhone browser observing a live Pi child and detached WSL2 mock job, then issuing one validated semantic status request while both are running.
+- Node runs the per-user daemon and administration CLI.
+- `nosh open` / `nosh tui` starts the daemon if needed and launches the TUI with Bun >=1.3. Bun is required only for OpenTUI. Configuration passes through the child environment, not secret command arguments.
+- `noshd` binds to loopback. Automatic local trust requires a loopback socket and a loopback `Host` header; native clients send no `Origin`, and a present `Origin` must match the loopback host. Cross-origin and DNS-rebinding browser requests are therefore rejected. Other callers use 15-minute bearer sessions issued by `POST /api/session` with the bootstrap capability. Routes are listed in [docs/api.md](docs/api.md).
+- Closing the TUI does not close agents or supervised Jobs. Shell work belongs in the user's terminal, separate from supervised execution.
 
-## Decided boundaries
+## Authority and storage
 
-| Boundary | Decision |
-|---|---|
-| Control plane | `noshd` is a Node/TypeScript, per-user Windows daemon. GUI closure and Pi-turn completion must not stop it. One instance is protected by a named mutex or locked state file. |
-| Agent runtime | Embed Pi through its supported SDK and load Pi package resources through Pi's resource loader. NOSH never calls model providers directly or keeps provider credentials. |
-| Local access | The daemon API is loopback-only. Local clients acquire short-lived tokens through a current-user protected bootstrap channel; it does not listen on LAN/public interfaces. |
-| Job execution | `noshd` owns detached WSL2 process groups. The spike must identify a process independently of the initiating Pi turn, stream bounded output, and recover or mark it interrupted after daemon restart. |
-| Persistence | Each Project has a SQLite operational database outside Git (`%LOCALAPPDATA%/NOSH/projects/<project-id>/nosh.sqlite` or equivalent). SQLite uses WAL and foreign keys; binaries stay in an artifact store. |
-| Durable truth | A durable mutation appends a persistent event and updates its projection in one SQLite transaction. Persistent events receive one monotonically increasing sequence per Project; clients recover from a snapshot plus later events. |
-| Source and artifacts | Git holds code and canonical, reviewable projections; SQLite holds live operational state; artifacts are content-addressed and external to SQLite/Git; Pi retains native session trees. Runtime databases, temporary worktrees, secrets, and large artifacts are excluded from Git. |
-| Wire boundary | All process boundaries use versioned `@nosh/wire` schemas. Persisted control records are strict JSON/JSONL records, never prose. IDs/timestamps/sequences are daemon-issued; JSON is RFC 8785 canonicalized before hashing/signing. |
-| Remote topology | Browser and daemon both connect outbound over WebSockets through a user-owned Cloudflare relay. GitHub Pages serves static PWA files only. The relay is opaque transport/cache, never controller or plaintext processor. |
-| Remote command | Commands are semantic, scoped, expiring, idempotent, and optimistic-concurrency checked by `noshd`; no arbitrary remote shell exists. Phase 0 proves only a status request. |
+The daemon owns Project registration, versioned contracts, graphs, Missions, Directions, Autoresearch, agents, Jobs, Reviews, Evidence, and typed semantic operations. Client presentation and model prose cannot mutate durable state directly.
 
-## Event and recovery contract
+Each Project has a Git repository and an external SQLite database. Events, projections, version checks, receipts, and operation intents carry scope and identity. Git holds research code and paper content. Artifacts are content-addressed and connect evidence and claims to exact outputs and evaluated commits.
 
-- Persistent lifecycle, approval, error, graph, review, artifact, checkpoint, and terminal-job events are retained and never dropped by coalescing.
-- Token deltas, log tails, metrics, GPU samples, and heartbeats are ephemeral: they may be bounded, coalesced, or expire without changing durable state.
-- Every event carries its event ID, Project ID, sequence when persistent, source, timestamp, correlation ID, causation ID, and applicable Mission/Direction/agent/job/run IDs.
-- Restart reconciliation verifies the latest snapshot, active process fingerprints, and Pi cursors; it reattaches valid work and records interrupted work rather than assuming it completed.
-- Filesystem/Git actions that later phases add use a durable intent: record intent, perform the external action, verify it, commit event/projection, then mark the intent complete.
+Mutations validate first and record durable state with idempotency. External filesystem, Git, artifact, and Job actions use operation intents so retries and restart do not silently duplicate effects. Ephemeral live output is not durable authority. Bounded event replay uses a cursor and page limit; internal full replay remains available to recovery and projection code.
 
-## Phase 0 implementation limits
+## Scientific runtime
 
-The spike may use minimal mock panels, mock jobs, and a single status command. It must not invent Mission scheduling, graph authority, provider clients, a remote shell, or a second agent transcript format. The canonical schemas, full event store, service installer, encryption protocol, and production PWA are Phase 1+ work, while retaining the boundaries above.
+Mission and Direction graphs, frozen evaluation contracts, experiment lineage, and evidence/claim graphs remain scientific authorities. Supervisors issue bounded Task Packets, enforce budgets, run deterministic postflight, and require independent Review before terminal acceptance.
 
-## Compatibility baseline
+Logical execution threads survive replaceable Pi sessions. Episodes compact completed steps into typed records. Skills constrain tools and pre/postflight checks. Bounded orchestration programs use explicit state, guards, joins, checkpoints, budgets, and failure branches. Program STOP does not silently cancel independent child work.
 
-- NOSH development and release builds target Node 22 LTS (`>=22.19.0`). The maintained Pi coding-agent package declares this same Node floor, which also avoids an experimental Node runtime API in NOSH.
-- The Phase 0 spike pins `@earendil-works/pi-coding-agent` 0.80.10. Any update requires the same embedding and observable-event contract tests before it can be adopted.
-- The operational database uses `better-sqlite3` rather than Node's built-in SQLite module because the latter is currently experimental. This keeps WAL, transaction, and recovery behavior stable on the supported host runtime.
+The TUI is an initial, smaller control surface. Backend capabilities do not imply complete TUI coverage or parity with deleted browser views. Use its help for supported controls; scripting uses the CLI, local API, and typed orchestration helpers.
 
-## Validation decisions still required before implementation proceeds
+## Jobs, recovery, and backup
 
-- Select the Windows per-user service mechanism and WSL2 process identity/recovery method after proving clean detach, cancellation, and restart behavior.
-- Select the local bootstrap-token transport after confirming current-user ACL behavior on the supported Windows configuration.
-- Finalize the crypto key hierarchy, encrypted-envelope format, rotation/revocation handling, and relay retention limits only after dedicated security review. The Phase 0 topology proof is not a cryptographic release approval.
-- Pin PWA build/release provenance (lockfile, reproducible build, published hashes, strict CSP, and no third-party runtime scripts) before any remote release.
+Jobs run independently of UI lifetime. Native and WSL execution retain process identity, launch intent, logs, lifecycle state, and scoped controls. Mission operations may control only Jobs matching both Project and Mission. Interactive terminal commands are not converted into Jobs automatically.
+
+Restart reconciles durable projections, pending operations, process fingerprints, leases, and runtime state without guessing unknown outcomes. Restore retains active agent/Job/thread/Mission/Direction/Autoresearch safety checks. No managed-shell activity check remains because managed shells no longer exist.
+
+Backups contain the selected Project's database, `.nosh` contracts/events/sessions/artifacts and metadata, paper sources and figures, a Git bundle of all refs (full committed history), integrity metadata, and selected-Project daemon Job records/logs. Backup requires a clean Git working tree and no non-terminal managed work. They exclude unrelated Projects and credential stores. Content can still contain sensitive research data; exclusions are not comprehensive secret redaction. Restore is scheduled for the next daemon start.
+
+## Release boundary
+
+The distribution contains CLI, daemon, TUI, shared packages, Pi resources, install/package helpers, and public docs. Browser/PWA/relay bundles and Playwright wiring are removed. Windows install/uninstall remains per-user. Bun and provider credentials are external prerequisites.
+
+See [release gates](docs/testing/release-gates.md) for validation. Unit tests do not establish clean-machine Windows behavior, physical WSL/GPU correctness, terminal accessibility, real-provider correctness, or independent security approval.

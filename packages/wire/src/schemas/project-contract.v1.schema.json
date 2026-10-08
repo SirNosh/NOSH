@@ -256,6 +256,62 @@
           ],
           "additionalProperties": false
         },
+        "execution": {
+          "type": "object",
+          "properties": {
+            "runner": {
+              "type": "string",
+              "const": "native"
+            },
+            "commands": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "commandId": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                    "maxLength": 128
+                  },
+                  "description": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "argv": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1000
+                    },
+                    "minItems": 1,
+                    "maxItems": 64
+                  },
+                  "timeoutSeconds": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 3600
+                  }
+                },
+                "required": [
+                  "commandId",
+                  "description",
+                  "argv",
+                  "timeoutSeconds"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "maxItems": 32
+            }
+          },
+          "required": [
+            "runner",
+            "commands"
+          ],
+          "additionalProperties": false
+        },
         "canonicalDefaultBranch": {
           "type": "string"
         },
@@ -271,8 +327,15 @@
           "format": "date-time"
         },
         "approvedAt": {
-          "type": "string",
-          "format": "date-time"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [

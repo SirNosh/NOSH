@@ -1,51 +1,27 @@
-# Phase 0 Threat Model
+# Current threat model
 
-## Scope and security objective
+## Scope
 
-NOSH is a single-user, local-first system. The Windows workstation and `noshd` are authoritative; the relay provides opaque delivery only. Phase 0 validates these trust boundaries. It does not claim that the final encryption design is complete or security-reviewed.
+NOSH is a local, single-user research harness. Node runs the daemon and CLI. Bun runs the OpenTUI client. The browser/PWA, relay, remote device protocol, and daemon-managed shell are not supported surfaces.
 
-## Assets and trust boundaries
+The workstation and daemon are trusted. Same-user malware is outside this boundary: it can access local files and origin-less loopback APIs. Model output, repository content, papers, logs, and artifacts are untrusted data, not authority.
 
-| Asset | Required boundary |
-|---|---|
-| Provider, Git, integration, and device private credentials | Pi configuration, OS credential store, or encrypted local vault; never Project files, SQLite, events, logs, artifacts, browser bundle, or relay payloads. |
-| Research source, prompts, code, graphs, and results | Project/daemon authority; remote copies are end-to-end encrypted. The relay must not receive plaintext. |
-| Command authority | `noshd` validates every command after decryption; a GUI, relay, Pi response, Git commit, or artifact cannot mutate operational state directly. |
-| Project isolation | Canonical Project roots, Project IDs, independent database/encryption/branch/worktree scopes, and scoped IDs prevent cross-Project access. |
-| Evidence and history | Append-only persistent events, content hashes, immutable evaluated commits, and retained signed commands support audit and recovery. |
+## Assets and controls
 
-## Threats and required controls
+- **Local API:** binds only to `127.0.0.1` or `::1` (the CLI uses `127.0.0.1`). A request is trusted automatically only when its socket is loopback and its `Host` header is `localhost`, `127.x.x.x`, or `[::1]`. Origin-less native requests then retain local authority; a present `Origin` must equal the loopback `Host` origin. Cross-origin requests and DNS-rebinding pages (non-loopback `Host`) are rejected. Otherwise a 15-minute bearer session from `POST /api/session`, authorized by the bootstrap capability, is required. Trusted callers can start arbitrary Jobs and agents through the API. Request bodies are limited to 3 MB. Do not expose the API through a LAN binding or tunnel.
+- **Credentials:** Pi owns provider authentication. Setup stores the bootstrap capability in per-user state. The TUI launcher passes configuration in its child environment, not command arguments. Diagnostics report credential presence only. Same-user process/environment inspection is still possible.
+- **Scientific authority:** daemon-issued Task Packets, strict typed submissions, role and Project scope, capability checks, budgets, deterministic postflight, and independent Reviews gate state transitions. Chat prose and UI state cannot grant authority.
+- **Network egress:** agents run with network disabled. Librarian tasks get a fixed HTTPS read allowlist (Crossref, OpenAlex, Semantic Scholar, arXiv, NCBI) only when the active Project contract sets `policies.network` to `network_research.allowlisted`. The default `network_user.approved` grants none (fail closed).
+- **Command execution:** agents never get a shell or a generic subprocess tool. `nosh_run` executes only argv commands declared in the user-approved contract, as daemon Jobs in the task worktree. Executed code is whatever the worker wrote and runs natively with the user's privileges, so declaring commands extends trust to agent-written code until WSL2/container isolation is the default.
+- **Project isolation:** canonical roots and IDs, validated worktrees, scoped records, and explicit protected-branch authorization bound filesystem and Git effects. Mission Job controls require both Project and Mission identity.
+- **Durability:** event sequences, hashes, optimistic versions, idempotency receipts, and operation intents support recovery without duplicate external effects. Unknown outcomes must not be reported as successful.
+- **Restore:** non-terminal agent, Job, thread, Mission, Direction, and Autoresearch work (including paused work) blocks backup and restore; backup also requires a clean Git working tree. External interactive shells are not tracked; users must stop modifying repository/data while restore is pending.
+- **Backups:** include selected-Project state, paper/contract content, `.nosh/events` and `.nosh/sessions`, a Git bundle of all refs (full committed history), stored artifacts, and selected Job records/logs. Exclude unrelated Projects and credential stores. These exclusions are not content redaction: research files and logs can still contain secrets.
+- **Terminal output:** untrusted titles, logs, model text, and artifacts must not become terminal control sequences or shell commands. Terminal rendering, escape handling, paste behavior, and subprocess cleanup need platform testing.
+- **Supply chain:** frozen dependencies, notices, SBOM, release hashes, and provenance support review. Bun/OpenTUI add native runtime dependencies. They are not exempt from license or security review. The Windows package remains unsigned unless a separate signing policy is applied.
 
-| Threat | Required control |
-|---|---|
-| Curious or compromised relay | Outbound-only daemon connection; end-to-end encrypted and signed envelopes; relay stores only ciphertext, opaque routing/sequence data, public device keys, and revocation metadata. |
-| Stolen device or browser profile | Per-device signing/key-agreement keys, password-protected local vault, explicit pairing approval, individual revocation, and short-lived pairing capabilities. Password knowledge alone cannot enroll a device. |
-| Replayed, stale, or forged remote command | Validate device signature, revocation state, command/idempotency IDs, expiry, Project/target scope, permission, expected version, and legal transition. Return conflict/rejection; never silently apply stale state. |
-| Malicious PWA delivery or dependency | No third-party runtime scripts, strict CSP, pinned dependencies/lockfile, reproducible builds with published hashes, protected release/CI, and user confirmation before activating an update during an active Mission. |
-| Prompt injection in papers, repos, datasets, logs, or web content | Treat external material as untrusted content, not instructions. Role/tool policy and daemon enforcement—not model text—grant authority. Reviewer checks provenance for high-impact conclusions. |
-| Agent role escalation or unsafe tool use | Typed, scoped daemon tools; role, Project, network, branch, and lifecycle policy checks; workers cannot create workers; no arbitrary remote shell. |
-| Path traversal or Project confusion | Resolve and validate canonical roots before use; derive paths from validated Project/worktree IDs; enforce Project-scoped database, branch, and artifact references. |
-| Secret disclosure through observability | Redact known token formats/configured sensitive fields; exclude `.env` from Git and previews by default; apply redaction and size policy before previews, diagnostics, events, handoffs, or relay transport. |
-| Daemon/GUI/network failure | Per-Project event sequence, snapshots plus replay, durable external-operation intents, process fingerprint reconciliation, idempotent commands, and read-only remote state when the daemon is unavailable. |
-| Unintended Git publication or protected-branch change | Local writes only in owned scopes; protected-branch merge requires explicit approval; pushes require an explicit Mission envelope or direct Normal-mode user action; PR/release/visibility changes require separate authorization. |
+## Required review
 
-## Security invariants
+Independent security review remains open. Prioritize loopback auth/Host/Origin checks, state permissions, child-environment secrecy, terminal escape injection, process-tree controls, Project/path isolation, protected Git operations, backup/restore, package supply chain, and crash boundaries. A high/critical finding, path escape, authorization bypass, or arbitrary control-plane command execution blocks release.
 
-- No plaintext provider secret, project content, source code, graph, result, or artifact reaches the relay.
-- A remote command is not executed until live `noshd` acknowledges it; offline clients may save drafts only.
-- LLM prose, Markdown, and JSON code fences never advance control-plane state. Only typed submissions accepted by `noshd` can do so.
-- Deterministic schema, authorization, hash, version, graph, budget, and transition checks run before semantic LLM review; review cannot override a failed invariant.
-- Telemetry is off by default; any opt-in crash report excludes research content, paths, prompts, artifacts, credentials, repository names, and device keys.
-
-## Phase 0 security tests
-
-- Verify the daemon has no public/LAN listener and both remote endpoints connect outward.
-- Verify the relay sees no plaintext test event or status-command content.
-- Verify a valid status request succeeds once, a duplicate is idempotent, and expired/stale/unauthorized requests are rejected.
-- Verify Pi credentials are absent from daemon persistence, browser assets, event/log output, and relay capture.
-- Verify a mocked job and Pi child remain observable across GUI reconnect, and recovery records their actual post-restart state without duplicate execution.
-- Verify untrusted test text cannot obtain a tool, alter scope, or become a command solely by appearing in agent-visible content.
-
-## Release blockers outside the spike
-
-Before remote control is released, conduct dedicated review of the exact libsodium-based construction (recommended: Ed25519, X25519, XChaCha20-Poly1305, Argon2id where supported), nonce/key lifecycle, pairing, rotation, recovery, revocation, and device-vault storage. Treat any high/critical finding, plaintext relay exposure, missing redaction, replay acceptance, path escape, or protected-branch bypass as a release blocker.
+Removing remote and browser features reduces attack surface; it does not prove the remaining application safe. Real provider, Windows/WSL/GPU, recovery, clean-machine, and accessibility evidence is still required.

@@ -1,1 +1,0 @@
-{"$schema":"https://nosh.dev/schemas/command/v1","commandId":"cmd_00000000000000000000000000000000","expectedVersion":1,"idempotencyKey":"samplexxxxxxxxxx","issuedAt":"2026-07-17T00:00:00.000Z","observedVersions":{"item":1},"payload":null,"projectId":"prj_00000000000000000000000000000000","schemaVersion":1,"targetId":"sample","targetType":"sample","type":"event.valid"}

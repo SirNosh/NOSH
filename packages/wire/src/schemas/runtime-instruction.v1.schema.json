@@ -6,42 +6,6 @@
         {
           "type": "object",
           "properties": {
-            "$schema": {
-              "type": "string",
-              "const": "https://nosh.dev/schemas/runtime-instruction/v1"
-            },
-            "schemaVersion": {
-              "type": "number",
-              "const": 1
-            },
-            "instructionId": {
-              "type": "string",
-              "pattern": "^ins_[0-9a-f]{32}$"
-            },
-            "projectId": {
-              "type": "string",
-              "pattern": "^prj_[0-9a-f]{32}$"
-            },
-            "idempotencyKey": {
-              "type": "string",
-              "minLength": 16,
-              "maxLength": 200
-            },
-            "proposedByAgentId": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "pattern": "^agt_[0-9a-f]{32}$"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "issuedAt": {
-              "type": "string",
-              "format": "date-time"
-            },
             "operation": {
               "type": "string",
               "const": "THREAD_OPEN"
@@ -194,6 +158,121 @@
               },
               "maxItems": 500
             },
+            "taskPermissions": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "network": {
+                      "type": "string",
+                      "enum": [
+                        "disabled",
+                        "allowlisted",
+                        "enabled"
+                      ]
+                    },
+                    "subprocess": {
+                      "type": "string",
+                      "enum": [
+                        "disabled",
+                        "allowlisted",
+                        "enabled"
+                      ]
+                    },
+                    "gitCommit": {
+                      "type": "boolean"
+                    },
+                    "gitPush": {
+                      "type": "boolean"
+                    },
+                    "delegation": {
+                      "type": "string",
+                      "const": "request_only"
+                    },
+                    "networkAllowlist": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+                      },
+                      "maxItems": 32
+                    },
+                    "allowedToolIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                        "maxLength": 128
+                      }
+                    }
+                  },
+                  "required": [
+                    "network",
+                    "subprocess",
+                    "gitCommit",
+                    "gitPush",
+                    "delegation",
+                    "networkAllowlist",
+                    "allowedToolIds"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "taskWorkspace": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "worktreeId": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                      "maxLength": 128
+                    },
+                    "branch": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+                    },
+                    "startingCommit": {
+                      "type": "string",
+                      "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                    },
+                    "writeScopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000
+                      },
+                      "maxItems": 100
+                    },
+                    "protectedScopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000
+                      },
+                      "maxItems": 100
+                    }
+                  },
+                  "required": [
+                    "worktreeId",
+                    "branch",
+                    "startingCommit",
+                    "writeScopes",
+                    "protectedScopes"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "budget": {
               "type": "object",
               "properties": {
@@ -216,35 +295,7 @@
                 "maximumWallClockSeconds"
               ],
               "additionalProperties": false
-            }
-          },
-          "required": [
-            "$schema",
-            "schemaVersion",
-            "instructionId",
-            "projectId",
-            "idempotencyKey",
-            "proposedByAgentId",
-            "issuedAt",
-            "operation",
-            "threadId",
-            "taskId",
-            "initialAgentId",
-            "ownerScope",
-            "role",
-            "purpose",
-            "executionMode",
-            "parentThreadId",
-            "inputRefs",
-            "skillIds",
-            "capabilities",
-            "budget"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
+            },
             "$schema": {
               "type": "string",
               "const": "https://nosh.dev/schemas/runtime-instruction/v1"
@@ -264,7 +315,7 @@
             "idempotencyKey": {
               "type": "string",
               "minLength": 16,
-              "maxLength": 200
+              "maxLength": 256
             },
             "proposedByAgentId": {
               "anyOf": [
@@ -280,7 +331,35 @@
             "issuedAt": {
               "type": "string",
               "format": "date-time"
-            },
+            }
+          },
+          "required": [
+            "operation",
+            "threadId",
+            "taskId",
+            "initialAgentId",
+            "ownerScope",
+            "role",
+            "purpose",
+            "executionMode",
+            "parentThreadId",
+            "inputRefs",
+            "skillIds",
+            "capabilities",
+            "budget",
+            "$schema",
+            "schemaVersion",
+            "instructionId",
+            "projectId",
+            "idempotencyKey",
+            "proposedByAgentId",
+            "issuedAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
             "operation": {
               "type": "string",
               "const": "THREAD_STEP"
@@ -315,28 +394,7 @@
                 "pattern": "^skl_[0-9a-f]{32}$"
               },
               "maxItems": 100
-            }
-          },
-          "required": [
-            "$schema",
-            "schemaVersion",
-            "instructionId",
-            "projectId",
-            "idempotencyKey",
-            "proposedByAgentId",
-            "issuedAt",
-            "operation",
-            "threadId",
-            "objective",
-            "expectedEpisodeType",
-            "inputRefs",
-            "skillIds"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
+            },
             "$schema": {
               "type": "string",
               "const": "https://nosh.dev/schemas/runtime-instruction/v1"
@@ -356,7 +414,7 @@
             "idempotencyKey": {
               "type": "string",
               "minLength": 16,
-              "maxLength": 200
+              "maxLength": 256
             },
             "proposedByAgentId": {
               "anyOf": [
@@ -372,7 +430,28 @@
             "issuedAt": {
               "type": "string",
               "format": "date-time"
-            },
+            }
+          },
+          "required": [
+            "operation",
+            "threadId",
+            "objective",
+            "expectedEpisodeType",
+            "inputRefs",
+            "skillIds",
+            "$schema",
+            "schemaVersion",
+            "instructionId",
+            "projectId",
+            "idempotencyKey",
+            "proposedByAgentId",
+            "issuedAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
             "operation": {
               "type": "string",
               "const": "THREAD_FORK"
@@ -529,6 +608,121 @@
               },
               "maxItems": 500
             },
+            "taskPermissions": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "network": {
+                      "type": "string",
+                      "enum": [
+                        "disabled",
+                        "allowlisted",
+                        "enabled"
+                      ]
+                    },
+                    "subprocess": {
+                      "type": "string",
+                      "enum": [
+                        "disabled",
+                        "allowlisted",
+                        "enabled"
+                      ]
+                    },
+                    "gitCommit": {
+                      "type": "boolean"
+                    },
+                    "gitPush": {
+                      "type": "boolean"
+                    },
+                    "delegation": {
+                      "type": "string",
+                      "const": "request_only"
+                    },
+                    "networkAllowlist": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+                      },
+                      "maxItems": 32
+                    },
+                    "allowedToolIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                        "maxLength": 128
+                      }
+                    }
+                  },
+                  "required": [
+                    "network",
+                    "subprocess",
+                    "gitCommit",
+                    "gitPush",
+                    "delegation",
+                    "networkAllowlist",
+                    "allowedToolIds"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "taskWorkspace": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "worktreeId": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                      "maxLength": 128
+                    },
+                    "branch": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+                    },
+                    "startingCommit": {
+                      "type": "string",
+                      "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                    },
+                    "writeScopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000
+                      },
+                      "maxItems": 100
+                    },
+                    "protectedScopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000
+                      },
+                      "maxItems": 100
+                    }
+                  },
+                  "required": [
+                    "worktreeId",
+                    "branch",
+                    "startingCommit",
+                    "writeScopes",
+                    "protectedScopes"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "budget": {
               "type": "object",
               "properties": {
@@ -551,36 +745,7 @@
                 "maximumWallClockSeconds"
               ],
               "additionalProperties": false
-            }
-          },
-          "required": [
-            "$schema",
-            "schemaVersion",
-            "instructionId",
-            "projectId",
-            "idempotencyKey",
-            "proposedByAgentId",
-            "issuedAt",
-            "operation",
-            "controllingThreadId",
-            "threadId",
-            "taskId",
-            "initialAgentId",
-            "ownerScope",
-            "role",
-            "purpose",
-            "executionMode",
-            "parentThreadId",
-            "inputRefs",
-            "skillIds",
-            "capabilities",
-            "budget"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
+            },
             "$schema": {
               "type": "string",
               "const": "https://nosh.dev/schemas/runtime-instruction/v1"
@@ -600,7 +765,7 @@
             "idempotencyKey": {
               "type": "string",
               "minLength": 16,
-              "maxLength": 200
+              "maxLength": 256
             },
             "proposedByAgentId": {
               "anyOf": [
@@ -616,7 +781,36 @@
             "issuedAt": {
               "type": "string",
               "format": "date-time"
-            },
+            }
+          },
+          "required": [
+            "operation",
+            "controllingThreadId",
+            "threadId",
+            "taskId",
+            "initialAgentId",
+            "ownerScope",
+            "role",
+            "purpose",
+            "executionMode",
+            "parentThreadId",
+            "inputRefs",
+            "skillIds",
+            "capabilities",
+            "budget",
+            "$schema",
+            "schemaVersion",
+            "instructionId",
+            "projectId",
+            "idempotencyKey",
+            "proposedByAgentId",
+            "issuedAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
             "operation": {
               "type": "string",
               "const": "THREAD_AWAIT"
@@ -660,27 +854,7 @@
                   "type": "null"
                 }
               ]
-            }
-          },
-          "required": [
-            "$schema",
-            "schemaVersion",
-            "instructionId",
-            "projectId",
-            "idempotencyKey",
-            "proposedByAgentId",
-            "issuedAt",
-            "operation",
-            "threadIds",
-            "policy",
-            "minimumCount",
-            "deadline"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
+            },
             "$schema": {
               "type": "string",
               "const": "https://nosh.dev/schemas/runtime-instruction/v1"
@@ -700,7 +874,7 @@
             "idempotencyKey": {
               "type": "string",
               "minLength": 16,
-              "maxLength": 200
+              "maxLength": 256
             },
             "proposedByAgentId": {
               "anyOf": [
@@ -716,7 +890,27 @@
             "issuedAt": {
               "type": "string",
               "format": "date-time"
-            },
+            }
+          },
+          "required": [
+            "operation",
+            "threadIds",
+            "policy",
+            "minimumCount",
+            "deadline",
+            "$schema",
+            "schemaVersion",
+            "instructionId",
+            "projectId",
+            "idempotencyKey",
+            "proposedByAgentId",
+            "issuedAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
             "operation": {
               "type": "string",
               "const": "THREAD_COMPOSE"
@@ -733,25 +927,7 @@
               },
               "minItems": 1,
               "maxItems": 500
-            }
-          },
-          "required": [
-            "$schema",
-            "schemaVersion",
-            "instructionId",
-            "projectId",
-            "idempotencyKey",
-            "proposedByAgentId",
-            "issuedAt",
-            "operation",
-            "targetThreadId",
-            "episodeIds"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
+            },
             "$schema": {
               "type": "string",
               "const": "https://nosh.dev/schemas/runtime-instruction/v1"
@@ -771,7 +947,7 @@
             "idempotencyKey": {
               "type": "string",
               "minLength": 16,
-              "maxLength": 200
+              "maxLength": 256
             },
             "proposedByAgentId": {
               "anyOf": [
@@ -787,7 +963,25 @@
             "issuedAt": {
               "type": "string",
               "format": "date-time"
-            },
+            }
+          },
+          "required": [
+            "operation",
+            "targetThreadId",
+            "episodeIds",
+            "$schema",
+            "schemaVersion",
+            "instructionId",
+            "projectId",
+            "idempotencyKey",
+            "proposedByAgentId",
+            "issuedAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
             "operation": {
               "type": "string",
               "const": "THREAD_PAUSE"
@@ -800,25 +994,7 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 20000
-            }
-          },
-          "required": [
-            "$schema",
-            "schemaVersion",
-            "instructionId",
-            "projectId",
-            "idempotencyKey",
-            "proposedByAgentId",
-            "issuedAt",
-            "operation",
-            "threadId",
-            "reason"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
+            },
             "$schema": {
               "type": "string",
               "const": "https://nosh.dev/schemas/runtime-instruction/v1"
@@ -838,7 +1014,7 @@
             "idempotencyKey": {
               "type": "string",
               "minLength": 16,
-              "maxLength": 200
+              "maxLength": 256
             },
             "proposedByAgentId": {
               "anyOf": [
@@ -854,7 +1030,25 @@
             "issuedAt": {
               "type": "string",
               "format": "date-time"
-            },
+            }
+          },
+          "required": [
+            "operation",
+            "threadId",
+            "reason",
+            "$schema",
+            "schemaVersion",
+            "instructionId",
+            "projectId",
+            "idempotencyKey",
+            "proposedByAgentId",
+            "issuedAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
             "operation": {
               "type": "string",
               "const": "THREAD_CANCEL"
@@ -867,25 +1061,7 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 20000
-            }
-          },
-          "required": [
-            "$schema",
-            "schemaVersion",
-            "instructionId",
-            "projectId",
-            "idempotencyKey",
-            "proposedByAgentId",
-            "issuedAt",
-            "operation",
-            "threadId",
-            "reason"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
+            },
             "$schema": {
               "type": "string",
               "const": "https://nosh.dev/schemas/runtime-instruction/v1"
@@ -905,7 +1081,7 @@
             "idempotencyKey": {
               "type": "string",
               "minLength": 16,
-              "maxLength": 200
+              "maxLength": 256
             },
             "proposedByAgentId": {
               "anyOf": [
@@ -921,7 +1097,25 @@
             "issuedAt": {
               "type": "string",
               "format": "date-time"
-            },
+            }
+          },
+          "required": [
+            "operation",
+            "threadId",
+            "reason",
+            "$schema",
+            "schemaVersion",
+            "instructionId",
+            "projectId",
+            "idempotencyKey",
+            "proposedByAgentId",
+            "issuedAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
             "operation": {
               "type": "string",
               "const": "SKILL_APPLY"
@@ -942,26 +1136,7 @@
                 "maxLength": 128
               },
               "maxItems": 500
-            }
-          },
-          "required": [
-            "$schema",
-            "schemaVersion",
-            "instructionId",
-            "projectId",
-            "idempotencyKey",
-            "proposedByAgentId",
-            "issuedAt",
-            "operation",
-            "threadId",
-            "skillId",
-            "inputRefs"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
+            },
             "$schema": {
               "type": "string",
               "const": "https://nosh.dev/schemas/runtime-instruction/v1"
@@ -981,7 +1156,7 @@
             "idempotencyKey": {
               "type": "string",
               "minLength": 16,
-              "maxLength": 200
+              "maxLength": 256
             },
             "proposedByAgentId": {
               "anyOf": [
@@ -997,7 +1172,26 @@
             "issuedAt": {
               "type": "string",
               "format": "date-time"
-            },
+            }
+          },
+          "required": [
+            "operation",
+            "threadId",
+            "skillId",
+            "inputRefs",
+            "$schema",
+            "schemaVersion",
+            "instructionId",
+            "projectId",
+            "idempotencyKey",
+            "proposedByAgentId",
+            "issuedAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
             "operation": {
               "type": "string",
               "const": "DIRECT_ACTION"
@@ -1044,26 +1238,7 @@
                   }
                 ]
               }
-            }
-          },
-          "required": [
-            "$schema",
-            "schemaVersion",
-            "instructionId",
-            "projectId",
-            "idempotencyKey",
-            "proposedByAgentId",
-            "issuedAt",
-            "operation",
-            "threadId",
-            "action",
-            "payload"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
+            },
             "$schema": {
               "type": "string",
               "const": "https://nosh.dev/schemas/runtime-instruction/v1"
@@ -1083,7 +1258,7 @@
             "idempotencyKey": {
               "type": "string",
               "minLength": 16,
-              "maxLength": 200
+              "maxLength": 256
             },
             "proposedByAgentId": {
               "anyOf": [
@@ -1099,7 +1274,26 @@
             "issuedAt": {
               "type": "string",
               "format": "date-time"
-            },
+            }
+          },
+          "required": [
+            "operation",
+            "threadId",
+            "action",
+            "payload",
+            "$schema",
+            "schemaVersion",
+            "instructionId",
+            "projectId",
+            "idempotencyKey",
+            "proposedByAgentId",
+            "issuedAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
             "operation": {
               "type": "string",
               "const": "STOP"
@@ -1130,20 +1324,56 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 20000
+            },
+            "$schema": {
+              "type": "string",
+              "const": "https://nosh.dev/schemas/runtime-instruction/v1"
+            },
+            "schemaVersion": {
+              "type": "number",
+              "const": 1
+            },
+            "instructionId": {
+              "type": "string",
+              "pattern": "^ins_[0-9a-f]{32}$"
+            },
+            "projectId": {
+              "type": "string",
+              "pattern": "^prj_[0-9a-f]{32}$"
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "minLength": 16,
+              "maxLength": 256
+            },
+            "proposedByAgentId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^agt_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "issuedAt": {
+              "type": "string",
+              "format": "date-time"
             }
           },
           "required": [
+            "operation",
+            "threadId",
+            "programId",
+            "reason",
             "$schema",
             "schemaVersion",
             "instructionId",
             "projectId",
             "idempotencyKey",
             "proposedByAgentId",
-            "issuedAt",
-            "operation",
-            "threadId",
-            "programId",
-            "reason"
+            "issuedAt"
           ],
           "additionalProperties": false
         }

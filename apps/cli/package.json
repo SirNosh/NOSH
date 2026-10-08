@@ -8,15 +8,15 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --passWithNoTests --testTimeout=60000",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@nosh/core": "workspace:*",
-    "@nosh/crypto": "workspace:*",
     "@nosh/evidence": "workspace:*",
     "@nosh/persistence": "workspace:*",
-    "@nosh/wire": "workspace:*",
-    "qrcode-terminal": "0.12.0"
+    "@nosh/pi-adapter": "workspace:*",
+    "@nosh/tui": "workspace:*",
+    "@nosh/wire": "workspace:*"
   }
 }

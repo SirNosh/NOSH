@@ -47,13 +47,13 @@
                   "low",
                   "medium",
                   "high"
-                ]
+                ],
+                "default": "medium"
               }
             },
             "required": [
               "statement",
-              "evidenceRefs",
-              "confidence"
+              "evidenceRefs"
             ],
             "additionalProperties": false
           },

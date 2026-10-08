@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NOSH Research</title>
+<meta name="description" content="NOSH is a local-first research harness. Model agents propose and carry out research; the noshd daemon executes, measures, and gates the results.">
+<meta property="og:title" content="NOSH Research">
+<meta property="og:description" content="Autonomous research you can verify. A local-first harness where models decide and the daemon executes and judges.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0a0a'/%3E%3Cpath d='M8 24V8h3l7 10V8h3v16h-3l-7-10v10z' fill='%235fd4c4'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: terminal-native ledger. One 1120px column; sections read like daemon records,
+   each headed by a mono record label, with the TUI's own palette carried over. */
+:root {
+  /* Dark-first: the palette of apps/tui/src/theme.ts, with the teal of its wordmark as accent */
+  --bg: #0a0a0a;
+  --panel: #141414;
+  --element: #1e1e1e;
+  --border: #2a2e2d;
+  --border-strong: #3c3c3c;
+  --text: #eeeeee;
+  --muted: #9a9a9a;
+  --accent: #5fd4c4;
+  --logo-a: #8ee8d8;
+  --logo-b: #1f9e8f;
+  --blue: #5c9cf5;
+  --green: #7fd88f;
+  --red: #e06c75;
+  --amber: #f5a742;
+  --purple: #9d7cd8;
+  /* Fixed in both themes: the terminal stays a terminal, the button stays teal */
+  --term-bg: #0f0f0f;
+  --term-bar: #1a1a1a;
+  --term-text: #e4e4e4;
+  --term-muted: #8a8a8a;
+  --term-accent: #5fd4c4;
+  --term-green: #7fd88f;
+  --term-red: #e06c75;
+  --term-blue: #5c9cf5;
+  --cta-bg: #5fd4c4;
+  --cta-fg: #03201c;
+
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  --step--1: 0.8125rem;
+  --step-0: 1rem;
+  --step-1: 1.1875rem;
+  --step-2: 1.5rem;
+  --step-3: clamp(1.75rem, 1.2rem + 2.2vw, 2.5rem);
+  --step-4: clamp(2.25rem, 1.4rem + 3.6vw, 3.75rem);
+
+  --max: 70rem;
+  --gutter: clamp(1rem, 4vw, 2.5rem);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f3f5f5; --panel: #ffffff; --element: #e6ebea;
+    --border: #d3dbda; --border-strong: #b8c4c2;
+    --text: #121716; --muted: #52605d;
+    --accent: #0c776b; --logo-a: #22b3a1; --logo-b: #0b5f56; --blue: #2b66c4; --green: #2d7f42;
+    --red: #b03a46; --amber: #93590c; --purple: #6a4bb0;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f3f5f5; --panel: #ffffff; --element: #e6ebea;
+  --border: #d3dbda; --border-strong: #b8c4c2;
+  --text: #121716; --muted: #52605d;
+  --accent: #0c776b; --logo-a: #22b3a1; --logo-b: #0b5f56; --blue: #2b66c4; --green: #2d7f42;
+  --red: #b03a46; --amber: #93590c; --purple: #6a4bb0;
+  color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation: none !important; transition: none !important; } }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 var(--step-0)/1.6 var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+code, kbd, pre { font-family: var(--mono); }
+:not(pre) > code { font-size: 0.9em; padding: 0.1em 0.35em; background: var(--element); border-radius: 4px; }
+kbd { font-size: 0.85em; padding: 0.05em 0.4em; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; background: var(--panel); }
+h1, h2, h3 { font-family: var(--display); font-weight: 700; line-height: 1.1; text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+p { margin: 0; }
+
+.wrap { max-width: var(--max); margin-inline: auto; padding-inline: var(--gutter); }
+
+/* ---------- header ---------- */
+.site-header {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.site-header .wrap { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 3.5rem; }
+.brand { display: flex; align-items: center; gap: 0.6rem; color: var(--text); text-decoration: none; font: 600 var(--step-0)/1 var(--mono); letter-spacing: 0.08em; }
+.brand-dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.nav { display: flex; align-items: center; gap: clamp(0.75rem, 2vw, 1.5rem); font-size: var(--step--1); }
+.nav a { color: var(--muted); text-decoration: none; }
+.nav a:hover { color: var(--text); }
+.nav .gh { color: var(--text); border: 1px solid var(--border-strong); padding: 0.35rem 0.7rem; border-radius: 6px; font-family: var(--mono); }
+@media (max-width: 720px) { .nav .opt { display: none; } }
+
+/* ---------- hero ---------- */
+.hero { padding-block: clamp(2.5rem, 7vw, 5.5rem) clamp(3rem, 7vw, 5rem); border-bottom: 1px solid var(--border); }
+.hero .wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: clamp(2rem, 5vw, 4rem); align-items: center; }
+@media (max-width: 920px) { .hero .wrap { grid-template-columns: minmax(0, 1fr); } }
+.hero-copy { display: grid; gap: 1.5rem; min-width: 0; }
+.wordmark {
+  margin: 0; color: var(--accent);
+  background: linear-gradient(90deg, var(--logo-a), var(--logo-b) 34ch);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  font: 600 clamp(6.5px, 1.9vw, 13px)/1.05 var(--mono);
+  white-space: pre; overflow: hidden;
+}
+.wordmark-sub { display: block; margin-top: 0.6em; color: var(--muted); -webkit-text-fill-color: var(--muted); font-weight: 400; }
+.eyebrow { font: 500 var(--step--1)/1.3 var(--mono); color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+.hero h1 { font-size: var(--step-4); }
+.hero h1 em { font-style: normal; color: var(--accent); }
+.lede { font-size: var(--step-1); color: var(--muted); max-width: 34rem; }
+.lede strong { color: var(--text); font-weight: 500; }
+.cta-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.btn {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.7rem 1.1rem; border-radius: 8px; font: 600 var(--step-0)/1 var(--body);
+  text-decoration: none; border: 1px solid transparent;
+}
+.btn-primary { background: var(--cta-bg); color: var(--cta-fg); }
+.btn-primary:hover { filter: brightness(1.06); }
+.btn-ghost { color: var(--text); border-color: var(--border-strong); }
+.btn-ghost:hover { background: var(--element); }
+
+/* install one-liner */
+.cmd {
+  display: flex; align-items: center; gap: 0.5rem; min-width: 0;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 0.35rem 0.35rem 0.35rem 0.9rem; font: 400 var(--step--1)/1.4 var(--mono);
+  max-width: 30rem;
+}
+.cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; background: none; padding: 0; font-size: inherit; }
+.cmd code::before { content: "$ "; color: var(--muted); }
+.copy {
+  flex: none; font: 500 0.75rem/1 var(--mono); color: var(--muted); background: var(--element);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0.45rem 0.6rem; cursor: pointer;
+}
+.copy:hover { color: var(--text); }
+.copy[data-done] { color: var(--green); }
+
+/* terminal */
+.term {
+  min-width: 0; background: var(--term-bg); color: var(--term-text);
+  border: 1px solid #2a2a2a; border-radius: 10px; overflow: hidden;
+  box-shadow: 0 24px 60px -24px rgb(0 0 0 / 0.55);
+}
+.term-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.55rem 0.9rem; background: var(--term-bar); border-bottom: 1px solid #2a2a2a; font: 400 0.75rem/1 var(--mono); color: var(--term-muted); }
+.term-bar span:first-child::before { content: "● ● ●"; letter-spacing: 0.15em; margin-right: 0.8rem; color: #3a3a3a; }
+.term pre { margin: 0; padding: 1.1rem 1.1rem 1.25rem; overflow-x: auto; font-size: clamp(0.7rem, 0.62rem + 0.3vw, 0.8125rem); line-height: 1.75; }
+.t-m { color: var(--term-muted); }
+.t-a { color: var(--term-accent); }
+.t-g { color: var(--term-green); }
+.t-r { color: var(--term-red); }
+.t-b { color: var(--term-blue); }
+.t-line { display: block; animation: type-in 0.35s both; }
+.term pre .t-line:nth-child(2) { animation-delay: 0.1s } .term pre .t-line:nth-child(3) { animation-delay: 0.2s }
+.term pre .t-line:nth-child(n+4) { animation-delay: 0.3s }
+@keyframes type-in { from { opacity: 0.25; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+.term-note { margin: 0; padding: 0.6rem 1.1rem; border-top: 1px solid #222; color: var(--term-muted); font: 400 0.72rem/1.4 var(--mono); }
+
+/* ---------- sections ---------- */
+section { padding-block: clamp(3.5rem, 8vw, 6rem); border-bottom: 1px solid var(--border); }
+.rec { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 1rem; font: 500 var(--step--1)/1 var(--mono); color: var(--muted); }
+.rec b { color: var(--accent); font-weight: 600; }
+.rec::after { content: ""; flex: 1; border-top: 1px dashed var(--border-strong); transform: translateY(-0.2em); }
+.section-head { display: grid; gap: 1rem; max-width: 44rem; margin-bottom: clamp(2rem, 5vw, 3rem); }
+.section-head h2 { font-size: var(--step-3); }
+.section-head p { color: var(--muted); font-size: var(--step-1); }
+
+/* split: agents vs daemon */
+.split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+@media (max-width: 760px) { .split { grid-template-columns: minmax(0, 1fr); } }
+.side { padding: clamp(1.25rem, 3vw, 2rem); display: grid; gap: 1rem; align-content: start; min-width: 0; }
+.side + .side { border-left: 1px solid var(--border); background: var(--panel); }
+@media (max-width: 760px) { .side + .side { border-left: 0; border-top: 1px solid var(--border); } }
+.side h3 { font-size: var(--step-2); display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.side h3 code { font-size: var(--step--1); font-weight: 400; color: var(--muted); background: none; padding: 0; }
+.ticks { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.7rem; }
+.ticks li { display: grid; grid-template-columns: 1.25rem minmax(0, 1fr); gap: 0.5rem; }
+.ticks li::before { content: "→"; font-family: var(--mono); color: var(--muted); }
+.side.daemon .ticks li::before { content: "■"; color: var(--accent); font-size: 0.7em; line-height: 2.3; }
+.aside-line { margin-top: 1.5rem; color: var(--muted); max-width: 44rem; }
+
+/* annotated hierarchy: nested lists drawn as a tree; each node explains its role */
+.hier { --indent: 1.75rem; --elbow: 1.05rem; list-style: none; margin: 0; padding: 0; max-width: 54rem; }
+@media (max-width: 560px) { .hier { --indent: 1.1rem; } }
+.hier ul { list-style: none; margin: 0; padding: 0 0 0 var(--indent); }
+.hier li { position: relative; }
+.hier ul > li { padding-left: var(--indent); }
+.hier ul > li::before { content: ""; position: absolute; left: 0; top: 0; width: calc(var(--indent) - 0.4rem); height: var(--elbow); border-left: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); border-bottom-left-radius: 4px; }
+.hier ul > li:not(:last-child)::after { content: ""; position: absolute; left: 0; top: var(--elbow); bottom: 0; border-left: 1px solid var(--border-strong); }
+.hn { display: grid; gap: 0.3rem; padding-bottom: 1.6rem; min-width: 0; }
+.hn-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.75rem; }
+.hn-name { font: 600 var(--step-1)/1.3 var(--mono); color: var(--text); }
+.hier > li > .hn .hn-name { color: var(--accent); }
+.hn-role { font: 500 var(--step-0)/1.4 var(--body); color: var(--text); }
+.hn-role::before { content: "· "; color: var(--muted); }
+.hn p { color: var(--muted); max-width: 46rem; }
+.hn .types { font: 400 var(--step--1)/1.7 var(--mono); color: var(--muted); }
+.chain { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 0.6rem; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; max-width: 46rem; }
+@media (max-width: 640px) { .chain { grid-template-columns: minmax(0, 1fr); } }
+.chain div { padding: 0.8rem 0.9rem; min-width: 0; font-size: 0.875rem; color: var(--muted); }
+.chain div + div { border-left: 1px solid var(--border); }
+@media (max-width: 640px) { .chain div + div { border-left: 0; border-top: 1px solid var(--border); } }
+.chain b { display: block; margin-bottom: 0.2rem; font: 600 var(--step--1)/1.3 var(--mono); color: var(--text); }
+.chain div:not(:last-child) b::after { content: " →"; color: var(--accent); }
+
+/* experiment lifecycle (a real sequence, so it is numbered) */
+.flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); counter-reset: step; border-top: 2px solid var(--border-strong); }
+@media (max-width: 960px) { .flow { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 1.5rem; } }
+@media (max-width: 560px) { .flow { grid-template-columns: minmax(0, 1fr); border-top: 0; border-left: 2px solid var(--border-strong); row-gap: 0; } }
+.flow li { counter-increment: step; position: relative; padding: 1.25rem 1rem 0 0; min-width: 0; }
+@media (max-width: 560px) { .flow li { padding: 0 0 1.4rem 1.25rem; } }
+.flow li::before {
+  content: counter(step, decimal-leading-zero); display: block; margin-bottom: 0.4rem;
+  font: 600 var(--step--1)/1 var(--mono); color: var(--muted);
+}
+.flow li::after { content: ""; position: absolute; top: -6px; left: 0; width: 10px; height: 10px; border-radius: 50%; background: var(--bg); border: 2px solid var(--border-strong); }
+@media (max-width: 560px) { .flow li::after { top: 0.1rem; left: -6px; } }
+.flow li:last-child::after { background: var(--accent); border-color: var(--accent); }
+.flow h3 { font-size: var(--step-1); margin-bottom: 0.3rem; }
+.flow p { color: var(--muted); font-size: 0.9375rem; }
+.verdicts { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
+.pill { font: 500 0.72rem/1 var(--mono); padding: 0.3rem 0.5rem; border-radius: 999px; border: 1px solid currentColor; }
+.pill.ok { color: var(--green); } .pill.hold { color: var(--amber); } .pill.no { color: var(--red); }
+
+.rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: clamp(2rem, 5vw, 3rem); }
+@media (max-width: 760px) { .rules { grid-template-columns: minmax(0, 1fr); } }
+.rule { min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem 1.4rem; display: grid; gap: 0.75rem; align-content: start; }
+.rule .label { font: 500 var(--step--1)/1 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.rule pre { margin: 0; overflow-x: auto; font-size: 0.875rem; line-height: 1.7; color: var(--text); }
+.rule pre .op { color: var(--accent); }
+.rule pre .c { color: var(--muted); }
+.rule p { color: var(--muted); font-size: 0.9375rem; }
+
+/* capabilities */
+.caps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: clamp(2rem, 5vw, 4rem); margin: 0; }
+@media (max-width: 760px) { .caps { grid-template-columns: minmax(0, 1fr); } }
+.cap { padding-block: 1.25rem; border-top: 1px solid var(--border); display: grid; gap: 0.35rem; min-width: 0; }
+.cap dt { font: 600 var(--step-1)/1.3 var(--display); }
+.cap dd { margin: 0; color: var(--muted); }
+
+/* local security */
+.safety { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: clamp(2rem, 5vw, 4rem); align-items: start; }
+@media (max-width: 860px) { .safety { grid-template-columns: minmax(0, 1fr); } }
+.safety .section-head { margin-bottom: 0; }
+.facts { margin: 0; display: grid; gap: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.fact { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: 1rem; padding: 1rem 1.25rem; min-width: 0; }
+.fact + .fact { border-top: 1px solid var(--border); }
+@media (max-width: 520px) { .fact { grid-template-columns: minmax(0, 1fr); gap: 0.25rem; } }
+.fact dt { font: 500 var(--step--1)/1.5 var(--mono); color: var(--accent); }
+.fact dd { margin: 0; color: var(--muted); font-size: 0.9375rem; }
+.fact dd strong { color: var(--text); font-weight: 500; }
+
+/* install */
+.install { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: clamp(2rem, 5vw, 4rem); align-items: start; }
+@media (max-width: 860px) { .install { grid-template-columns: minmax(0, 1fr); } }
+.install .section-head { margin-bottom: 0; }
+.reqs { list-style: none; margin: 1.5rem 0 0; padding: 0; display: grid; gap: 0.5rem; font-size: 0.9375rem; }
+.reqs li { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: 0.75rem; }
+.reqs li span:first-child { font-family: var(--mono); color: var(--muted); font-size: var(--step--1); padding-top: 0.15em; }
+.steps { display: grid; gap: 1rem; min-width: 0; }
+.codeblock { position: relative; background: var(--term-bg); color: var(--term-text); border: 1px solid #2a2a2a; border-radius: 10px; overflow: hidden; }
+.codeblock .term-bar { padding-right: 0.45rem; }
+.codeblock .copy { background: #222; border-color: #333; color: var(--term-muted); }
+.codeblock .copy:hover { color: var(--term-text); }
+.codeblock .copy[data-done] { color: var(--term-green); }
+.codeblock pre { margin: 0; padding: 1rem 1.1rem; overflow-x: auto; font-size: 0.8125rem; line-height: 1.8; }
+.steps details { border: 1px solid var(--border); border-radius: 10px; padding: 0.9rem 1.1rem; }
+.steps summary { cursor: pointer; font-weight: 500; }
+.steps details[open] summary { margin-bottom: 0.9rem; }
+.steps details p { color: var(--muted); font-size: 0.9375rem; margin-bottom: 0.9rem; }
+.next { color: var(--muted); font-size: 0.9375rem; }
+
+/* footer */
+footer { padding-block: 2.5rem 3rem; color: var(--muted); font-size: var(--step--1); }
+footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1.25rem 2rem; }
+footer nav { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; }
+footer a { color: var(--muted); }
+footer a:hover { color: var(--text); }
+footer .mono { font-family: var(--mono); }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="NOSH home"><span class="brand-dot" aria-hidden="true"></span>NOSH</a>
+    <nav class="nav" aria-label="Primary">
+      <a class="opt" href="#how">How it works</a>
+      <a class="opt" href="#experiments">Experiments</a>
+      <a class="opt" href="#security">Security</a>
+      <a href="#install">Install</a>
+      <a class="gh" href="https://github.com/SirNosh/NOSH">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <div class="hero">
+    <div class="wrap">
+      <div class="hero-copy">
+<pre class="wordmark" aria-label="NOSH">███╗   ██╗ ██████╗ ███████╗██╗  ██╗
+████╗  ██║██╔═══██╗██╔════╝██║  ██║
+██╔██╗ ██║██║   ██║███████╗███████║
+██║╚██╗██║██║   ██║╚════██║██╔══██║
+██║ ╚████║╚██████╔╝███████║██║  ██║
+╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝<span class="wordmark-sub">   networked orchestrated science harness</span></pre>
+        <h1>Autonomous research <em>you can verify.</em></h1>
+        <p class="lede">NOSH is a local-first research harness. <strong>Model agents propose and carry out research.</strong> The <code>noshd</code> daemon runs the commands, measures the results, and decides what counts.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#install">Install NOSH</a>
+          <a class="btn btn-ghost" href="https://github.com/SirNosh/NOSH">View source</a>
+        </div>
+        <div class="cmd">
+          <code id="cmd-hero">npm install -g nosh-harness</code>
+          <button class="copy" type="button" id="copy-hero" data-copy="cmd-hero">Copy</button>
+        </div>
+      </div>
+
+      <figure class="term" aria-label="Example: an Autoresearch round in the NOSH terminal UI" style="margin:0">
+        <div class="term-bar"><span>nosh open</span><span>Direction 3 · Autoresearch</span></div>
+<pre><span class="t-line"><span class="t-m">question</span>  does early exit cut inference cost ≥ 30%</span><span class="t-line">          with accuracy drop ≤ 1% of the split?</span><span class="t-line"><span class="t-m">contract</span>  frozen · guardrail <span class="t-a">acc_drop ≤ 0.010</span></span><span class="t-line">          min effect cost ≥ 0.30</span><span class="t-line"> </span><span class="t-line"><span class="t-b">baseline</span>  cost −0.167                     <span class="t-g">accepted</span></span><span class="t-line"><span class="t-m">exp 3.1</span>   T=0.75  cost 0.375  drop 0.004  <span class="t-g">pass</span></span><span class="t-line"><span class="t-m">exp 3.2</span>   T=0.70  cost 0.455  drop 0.008  <span class="t-g">pass</span></span><span class="t-line"><span class="t-m">exp 3.3</span>   T=0.60  cost 0.695  drop 0.020  <span class="t-r">guardrail fail</span></span><span class="t-line"> </span><span class="t-line"><span class="t-a">review</span>    independent reviewer agrees on 3.2</span><span class="t-line"><span class="t-a">decision</span>  <span class="t-g">promote exp 3.2</span> · reject 3.3</span></pre>
+        <figcaption class="term-note">Illustrative session. Layout simplified from the terminal UI.</figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="rec"><b>01</b> how it works</div>
+      <div class="section-head">
+        <h2>Models decide. The daemon executes and judges.</h2>
+        <p>Agents never get the final word on their own work. Model prose never changes state by itself.</p>
+      </div>
+      <div class="split">
+        <div class="side">
+          <h3>Agents</h3>
+          <ul class="ticks">
+            <li>Propose experiments, plan Missions, and write code in their own Git worktrees.</li>
+            <li>Make judgments, and return them as one schema-checked JSON envelope per task.</li>
+            <li>Ask the daemon to run the commands declared in the research contract. They never get a shell.</li>
+            <li>Run as bounded threads that start from compact, hashed Episodes instead of whole transcripts.</li>
+          </ul>
+        </div>
+        <div class="side daemon">
+          <h3>Daemon <code>noshd</code></h3>
+          <ul class="ticks">
+            <li>Owns scheduling, Git, Jobs, budgets, validation, and acceptance.</li>
+            <li>Fills each task envelope with its own facts (IDs, commits, commands, fingerprints) and issues a receipt. The receipt decides acceptance.</li>
+            <li>Commits a worker's edits itself, before every run and after the final answer.</li>
+            <li>Checkpoints orchestration state after every transition and resumes after a restart.</li>
+          </ul>
+        </div>
+      </div>
+      <p class="aside-line">Pi is the model runtime, Git holds reviewable research content, and SQLite holds operational state. You drive it all from a terminal UI built with OpenTUI.</p>
+    </div>
+  </section>
+
+  <section id="projects">
+    <div class="wrap">
+      <div class="rec"><b>02</b> how research is organized</div>
+      <div class="section-head">
+        <h2>Everything belongs to a Project.</h2>
+        <p>Inside a Project, work comes in two shapes. A Mission pursues a goal. A Research Direction answers one question. Both write into the same evidence record, and that record becomes the paper.</p>
+      </div>
+      <ul class="hier" aria-label="NOSH research hierarchy">
+        <li>
+          <div class="hn">
+            <div class="hn-head"><span class="hn-name">Project</span><span class="hn-role">The unit of research, roughly one paper</span></div>
+            <p>One Git repository plus an approved research contract. The contract sets scope, datasets and licenses, and the test and evaluation commands that workers may run. Each Project has its own database, branches, worktrees, and budgets, and no context leaks between Projects. Change the contract later with <code>/amend-contract</code>.</p>
+          </div>
+          <ul>
+            <li>
+              <div class="hn">
+                <div class="hn-head"><span class="hn-name">Research chat</span><span class="hn-role">Where you work with the Project agent</span></div>
+                <p>Discovery happens here. It asks one question at a time and proposes the contract. Afterwards, this is where you ask questions, plan, stage work, and start Missions and Directions.</p>
+              </div>
+            </li>
+            <li>
+              <div class="hn">
+                <div class="hn-head"><span class="hn-name">Mission</span><span class="hn-role">A goal with a finish line</span></div>
+                <p>An approved objective with success criteria, budgets, and a final review rubric. A Mission Director plans the work as a graph of Nodes and repairs the plan as results come in. Accepted work merges onto the Mission's own branch, <code>nosh/mission-&lt;id&gt;</code>, so you merge one branch at the end.</p>
+              </div>
+              <ul>
+                <li>
+                  <div class="hn">
+                    <div class="hn-head"><span class="hn-name">Node</span><span class="hn-role">One step of the plan</span></div>
+                    <p>Each Node has a type, and it runs only after the Nodes it depends on are accepted. The type decides who does the work: a librarian-researcher for literature, a reviewer for reviews and approvals, and a general worker for everything else.</p>
+                    <span class="types">literature_review · reproduction · implementation · dataset · analysis · research_direction · autoresearch · integration · synthesis · paper_section · claim_review · approval · final_review</span>
+                  </div>
+                  <ul>
+                    <li>
+                      <div class="hn">
+                        <div class="hn-head"><span class="hn-name">Task</span><span class="hn-role">One worker doing one bounded job</span></div>
+                        <p>A single agent session in its own Git worktree, with a token budget. It finishes with one typed JSON envelope. The daemon checks the work, and then a separate reviewer decides whether the Node is accepted.</p>
+                      </div>
+                    </li>
+                  </ul>
+                </li>
+              </ul>
+            </li>
+            <li>
+              <div class="hn">
+                <div class="hn-head"><span class="hn-name">Research Direction</span><span class="hn-role">One question, answered rigorously</span></div>
+                <p>A falsifiable question with a scope, stopping rules, and a frozen evaluation contract, so every result inside it is comparable. A Direction can stand on its own or serve as one Node of a Mission.</p>
+              </div>
+              <ul>
+                <li>
+                  <div class="hn">
+                    <div class="hn-head"><span class="hn-name">Baseline</span><span class="hn-role">The starting point everything is measured against</span></div>
+                    <p>The daemon runs the evaluation on the unchanged code, and a reviewer accepts the numbers. The baseline is the root of the experiment tree.</p>
+                  </div>
+                </li>
+                <li>
+                  <div class="hn">
+                    <div class="hn-head"><span class="hn-name">Autoresearch</span><span class="hn-role">A search loop under fixed rules</span></div>
+                    <p>Runs rounds of experiments against one primary metric. It enforces guardrails, a minimum meaningful effect, and limits on iterations and compute. It can also run on its own, outside a Direction.</p>
+                  </div>
+                  <ul>
+                    <li>
+                      <div class="hn">
+                        <div class="hn-head"><span class="hn-name">Experiment</span><span class="hn-role">One measured variant</span></div>
+                        <p>A change on its own branch with exactly one parent, compared against that parent and the baseline. Once an experiment is evaluated, its code is frozen, and any further change becomes a child experiment. <a href="#experiments">See how an experiment is kept.</a></p>
+                      </div>
+                    </li>
+                  </ul>
+                </li>
+                <li>
+                  <div class="hn">
+                    <div class="hn-head"><span class="hn-name">Closure</span><span class="hn-role">The Direction's answer</span></div>
+                    <p>The Direction closes as supported, refuted, or inconclusive, with a reviewed closure packet. A negative answer still counts as an answer, and it stays in the record.</p>
+                  </div>
+                </li>
+              </ul>
+            </li>
+            <li>
+              <div class="hn">
+                <div class="hn-head"><span class="hn-name">Evidence</span><span class="hn-role">How results become a paper</span></div>
+                <p>Missions and Directions both write here. Reviewers read these records for themselves instead of trusting a worker's summary.</p>
+                <div class="chain">
+                  <div><b>Artifact</b>A content-addressed output: a diff, run result, source, or report.</div>
+                  <div><b>Evidence</b>An Artifact with a meaning, such as a baseline run, an ablation, a citation, or a review verdict.</div>
+                  <div><b>Claim</b>A statement linked to the evidence that supports, contradicts, or qualifies it.</div>
+                  <div><b>Paper</b>Built from reviewed claims, and exported to LaTeX or PDF.</div>
+                </div>
+              </div>
+            </li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="experiments">
+    <div class="wrap">
+      <div class="rec"><b>03</b> how an experiment is kept</div>
+      <div class="section-head">
+        <h2>A model can never declare its own result a success.</h2>
+        <p>Every experiment runs under the same frozen contract. Code decides whether it is kept, and an independent reviewer has to agree.</p>
+      </div>
+      <ol class="flow">
+        <li><h3>Proposal</h3><p>An agent proposes a change and the effect it expects.</p></li>
+        <li><h3>Implementation</h3><p>A worker builds it in its own Git worktree.</p></li>
+        <li><h3>Evaluation Job</h3><p>The daemon runs the contract's evaluation command as a supervised Job.</p></li>
+        <li><h3>Result</h3><p>Metrics and guardrails are checked against the frozen contract.</p></li>
+        <li><h3>Review</h3><p>A separate session reads the diff and the run records, not the worker's claims.</p></li>
+        <li><h3>Decision</h3><p>Only reviewed winners are promoted.</p>
+          <div class="verdicts"><span class="pill ok">promote</span><span class="pill hold">hold</span><span class="pill no">reject</span></div></li>
+      </ol>
+      <div class="rules">
+        <div class="rule">
+          <span class="label">keep rule</span>
+<pre>keep = run.valid
+     <span class="op">∧</span> every guardrail passes
+     <span class="op">∧</span> improvement <span class="op">≥</span> contract.min_effect
+     <span class="op">∧</span> independent review agrees</pre>
+          <p>Decided in code by the daemon. The worker that ran the experiment has no say.</p>
+        </div>
+        <div class="rule">
+          <span class="label">token budget</span>
+<pre>spent = input + output
+      + cache_writes
+      + <span class="op">0.1 ×</span> cache_reads  <span class="c">// per task and step</span></pre>
+          <p>Every task and step has a budget. Overruns are recorded, never silent.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="rec"><b>04</b> what nosh can do</div>
+      <div class="section-head">
+        <h2>From a repository to a reviewed answer.</h2>
+      </div>
+      <dl class="caps">
+        <div class="cap"><dt>Turn a repository into a Project</dt><dd>Discovery proposes a research contract with your test and evaluation commands. On approval, NOSH commits just the contract files.</dd></div>
+        <div class="cap"><dt>Run Missions</dt><dd>Pause, steer, retry, or stop at any time. Every result is reviewed before it counts.</dd></div>
+        <div class="cap"><dt>Answer research questions</dt><dd>A Direction measures a baseline, runs Autoresearch, and closes as supported, refuted, or inconclusive.</dd></div>
+        <div class="cap"><dt>Search for improvements</dt><dd>Autoresearch evaluates each experiment under the same contract, enforces guardrails, and promotes only reviewed winners.</dd></div>
+        <div class="cap"><dt>Keep long calls off the critical path</dt><dd>Tool calls in one turn run in parallel. A slow test run returns a placeholder, and the result wakes the agent when it lands.</dd></div>
+        <div class="cap"><dt>See what is happening</dt><dd>Press <kbd>Ctrl</kbd>+<kbd>G</kbd> in the terminal UI for a live map of Missions, Directions, experiments, workers, and Jobs.</dd></div>
+        <div class="cap"><dt>Use any model account</dt><dd>Sign in with a ChatGPT or Claude subscription, or use an API key from OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Groq, Mistral, xAI, and others.</dd></div>
+        <div class="cap"><dt>Survive restarts</dt><dd>Closing the terminal UI does not stop the daemon or its Jobs. Orchestration resumes from its last checkpoint.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section id="security">
+    <div class="wrap safety">
+      <div class="section-head">
+        <div class="rec"><b>05</b> local security</div>
+        <h2>Runs on your machine. Talks only to your machine.</h2>
+        <p>The daemon, your repository, its runs, and its evidence live on your computer. The control API never leaves loopback.</p>
+      </div>
+      <dl class="facts">
+        <div class="fact"><dt>loopback only</dt><dd>The API binds to loopback. A request is trusted only with a loopback <code>Host</code> header and no foreign <code>Origin</code>, which rejects cross-origin and DNS-rebinding browser requests.</dd></div>
+        <div class="fact"><dt>short sessions</dt><dd>Any other caller needs a <strong>15-minute bearer session</strong>, issued only in exchange for the bootstrap capability in your per-user state directory.</dd></div>
+        <div class="fact"><dt>no worker shell</dt><dd>Workers can only ask the daemon to run commands declared in the contract. Each one runs as a supervised Job.</dd></div>
+        <div class="fact"><dt>credentials</dt><dd>Pi's runtime stores your model credential. NOSH never shows it, and API keys are masked while you type them.</dd></div>
+        <div class="fact"><dt>scope</dt><dd>Do not expose <code>noshd</code> to a LAN or tunnel. It does not protect against malware running as your own user. Read the <a href="https://github.com/SirNosh/NOSH/blob/main/THREAT_MODEL.md">threat model</a>.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap install">
+      <div class="section-head">
+        <div class="rec"><b>06</b> install</div>
+        <h2>Three commands to your first Project.</h2>
+        <p>The npm package bundles its own Bun for the terminal UI. You don't need pnpm or a build step.</p>
+        <ul class="reqs">
+          <li><span>node</span><span>22.19 or newer</span></li>
+          <li><span>git</span><span>any recent version</span></li>
+          <li><span>model</span><span>ChatGPT Plus/Pro or Claude Pro/Max, or an API key</span></li>
+          <li><span>os</span><span>Windows first; WSL and Linux supported</span></li>
+        </ul>
+      </div>
+      <div class="steps">
+        <div class="codeblock">
+          <div class="term-bar"><span>terminal</span><button class="copy" type="button" id="copy-install" data-copy="cmd-install">Copy</button></div>
+<pre id="cmd-install">npm install -g nosh-harness
+nosh setup
+nosh open</pre>
+        </div>
+        <p class="next"><code>nosh setup</code> checks your tools, connects a model account, starts the daemon, and picks a default model. In the terminal UI, press <kbd>Ctrl</kbd>+<kbd>O</kbd> to open a repository as a Project. When a new release comes out, <code>nosh</code> tells you, and <code>nosh update</code> installs it. Read the <a href="https://github.com/SirNosh/NOSH/blob/main/docs/user-guide/quick-start.md">quick start</a> for the full walkthrough.</p>
+        <details>
+          <summary>Run from a source checkout</summary>
+          <p>Building from source needs pnpm 10.28 through Corepack, and Bun 1.3 or newer on your <code>PATH</code> for the terminal UI.</p>
+          <div class="codeblock">
+            <div class="term-bar"><span>terminal</span><button class="copy" type="button" id="copy-source" data-copy="cmd-source">Copy</button></div>
+<pre id="cmd-source">git clone https://github.com/SirNosh/NOSH.git
+cd NOSH
+corepack pnpm install --frozen-lockfile
+corepack pnpm build
+node apps/cli/dist/main.js setup
+node apps/cli/dist/main.js open</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span><span class="mono">NOSH</span> · Networked Orchestrated Science Harness · Apache-2.0</span>
+    <nav aria-label="Footer">
+      <a href="https://github.com/SirNosh/NOSH">GitHub</a>
+      <a href="https://github.com/SirNosh/NOSH/tree/main/docs/user-guide">User guide</a>
+      <a href="https://github.com/SirNosh/NOSH/blob/main/ARCHITECTURE.md">Architecture</a>
+      <a href="https://github.com/SirNosh/NOSH/blob/main/SECURITY.md">Security</a>
+      <a href="https://www.npmjs.com/package/nosh-harness">npm</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll("[data-copy]").forEach(function (button) {
+  button.addEventListener("click", function () {
+    var source = document.getElementById(button.dataset.copy);
+    var text = source.textContent.trim();
+    function done() {
+      button.textContent = "Copied";
+      button.dataset.done = "";
+      setTimeout(function () { button.textContent = "Copy"; delete button.dataset.done; }, 1600);
+    }
+    function selectFallback() {
+      var range = document.createRange();
+      range.selectNodeContents(source);
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      button.textContent = "Press Ctrl+C";
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, selectFallback);
+    } else {
+      selectFallback();
+    }
+  });
+});
+</script>
+</body>
+</html>

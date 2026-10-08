@@ -1,0 +1,25 @@
+{
+  "name": "nosh-harness",
+  "version": "1.0.0",
+  "description": "Networked Orchestrated Science Harness: installs and runs NOSH from its GitHub releases",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "nosh": "nosh.mjs"
+  },
+  "files": [
+    "nosh.mjs",
+    "lib.mjs"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SirNosh/NOSH.git"
+  },
+  "homepage": "https://sirnosh.github.io/NOSH/",
+  "scripts": {
+    "test": "vitest run"
+  }
+}

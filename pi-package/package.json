@@ -8,7 +8,6 @@
   "keywords": ["pi-package", "research", "ml", "reproducibility"],
   "engines": { "node": ">=22.19.0" },
   "pi": {
-    "extensions": ["./extensions/nosh-tools.ts"],
     "skills": ["./skills"],
     "prompts": ["./prompts"]
   },

@@ -2,12 +2,32 @@ import { id, observedVersionsSchema, schemaUri, schemaVersion, sha256Digest, tem
 import { jsonValueSchema } from "./json.js";
 import { z } from "zod";
 
-const ref = z.string().regex(/^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$/).max(128);
+// Validation receipts reach models; say what the format is, not just "Invalid".
+const ref = z.string().regex(/^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$/, "Expected a reference: lowercase prefix, exactly one underscore, then lowercase letters, digits, '.', ':' or '-' (e.g. contribution_method-fixture)").max(128);
 const text = z.string().min(1).max(2000);
+const gitObjectId = z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/);
+const gitBranch = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/).refine((value) => !value.includes("..") && !value.includes("//") && !value.endsWith("/") && !value.endsWith(".") && !value.split("/").some((part) => part === "." || part.startsWith(".") || part.endsWith(".lock")), "must be a safe Git branch name");
 const list = z.array(z.string().min(1).max(1000)).max(100);
 const outcome = z.enum(["completed", "partial", "blocked", "failed", "cancelled"]);
 const scope = z.object({ projectId: id("prj"), missionId: id("mis").nullable(), directionId: id("dir").nullable(), autoresearchId: id("ar").nullable() }).strict();
 const versionRange = z.object({ fromSequence: z.number().int().nonnegative(), toSequence: z.number().int().nonnegative() }).strict();
+
+/** Bibliographic dates are often only a year or a year and month ("2016", "2016-12"); a full date is also accepted. */
+const publicationDate = z.string().regex(/^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?$/, "Use YYYY, YYYY-MM, or YYYY-MM-DD").nullable();
+
+export const taskPermissionsSchema = z.object({
+  network: z.enum(["disabled", "allowlisted", "enabled"]),
+  subprocess: z.enum(["disabled", "allowlisted", "enabled"]),
+  gitCommit: z.boolean(),
+  gitPush: z.boolean(),
+  delegation: z.literal("request_only"),
+  networkAllowlist: z.array(z.string().regex(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i)).max(32),
+  allowedToolIds: z.array(ref),
+}).strict();
+
+export type TaskPermissions = z.infer<typeof taskPermissionsSchema>;
+export const taskWorkspaceSchema = z.object({ worktreeId: ref, branch: gitBranch, startingCommit: gitObjectId, writeScopes: list, protectedScopes: list }).strict();
+export type TaskWorkspace = z.infer<typeof taskWorkspaceSchema>;
 
 export const taskPacketSchema = z
   .object({
@@ -20,8 +40,8 @@ export const taskPacketSchema = z
     inputArtifactIds: z.array(id("art")), inputEvidenceIds: z.array(id("evd")),
     requiredOutputs: z.array(z.object({ outputId: ref, kind: ref, required: z.boolean() }).strict()),
     acceptanceCriteria: z.array(z.object({ criterionId: ref, statement: text, validatorIds: z.array(ref), reviewRubricIds: z.array(ref), required: z.boolean() }).strict()),
-    workspace: z.object({ worktreeId: ref, branch: text, startingCommit: z.string().min(7).max(128), writeScopes: list, protectedScopes: list }).strict(),
-    permissions: z.object({ network: z.enum(["disabled", "allowlisted", "enabled"]), subprocess: z.enum(["disabled", "allowlisted", "enabled"]), gitCommit: z.boolean(), gitPush: z.boolean(), delegation: z.literal("request_only"), allowedToolIds: z.array(ref) }).strict(),
+    workspace: taskWorkspaceSchema,
+    permissions: taskPermissionsSchema,
     budget: z.object({ deadline: timestamp, maximumWallClockSeconds: z.number().int().positive(), maximumModelTokens: z.number().int().positive(), maximumToolCalls: z.number().int().positive(), maximumRepairAttempts: z.number().int().nonnegative() }).strict(),
     progressPolicy: z.object({ milestoneIntervalSeconds: z.number().int().positive(), emitOnFirstDurableDelta: z.boolean(), emitOnBlocker: z.boolean(), emitOnAnomaly: z.boolean(), maximumSilentSeconds: z.number().int().positive() }).strict(),
     responseSchema: z.string().url(), observedVersions: observedVersionsSchema,
@@ -33,9 +53,9 @@ export const taskPacketSchema = z
 export const generalWorkerCompletionSchema = z.object({
   $schema: z.literal(schemaUri("general-worker-completion")), schemaVersion, taskOutcome: outcome,
   workPerformed: z.array(z.object({ action: ref, subject: text, artifactIds: z.array(id("art")) }).strict()),
-  codeChanges: z.object({ startingCommit: z.string(), endingCommit: z.string(), changedPaths: list, diffArtifactId: id("art").nullable(), branch: z.string() }).strict(),
+  codeChanges: z.object({ startingCommit: gitObjectId, endingCommit: gitObjectId, changedPaths: list, diffArtifactId: id("art").nullable(), branch: gitBranch }).strict(),
   commands: z.array(z.object({ commandId: ref, displayCommand: z.string().max(2000), exitCode: z.number().int().nullable(), resultArtifactId: id("art").nullable() }).strict()),
-  criteria: z.array(z.object({ criterionId: ref, workerClaim: z.enum(["satisfied", "unsatisfied", "inconclusive", "not_applicable"]), validatorRunIds: z.array(ref), artifactIds: z.array(id("art")), notes: z.string().max(2000) }).strict()),
+  criteria: z.array(z.object({ criterionId: ref, workerClaim: z.enum(["satisfied", "unsatisfied", "inconclusive", "not_applicable", "deferred_to_review"]), validatorRunIds: z.array(ref), artifactIds: z.array(id("art")), notes: z.string().max(2000) }).strict()),
   scientificImpact: z.object({ claimIds: z.array(id("clm")), evidenceIds: z.array(id("evd")), interpretation: text }).strict(),
   deviations: list, newRisks: list, unresolvedItems: list,
   suggestedNextActions: z.array(z.object({ actionType: ref, targetId: ref, reason: text, priority: z.enum(["low", "normal", "high", "critical"]) }).strict()),
@@ -45,7 +65,7 @@ export const generalWorkerCompletionSchema = z.object({
 export const librarianCompletionSchema = z.object({
   $schema: z.literal(schemaUri("librarian-completion")), schemaVersion, taskOutcome: outcome, researchQuestion: text,
   searchCoverage: z.object({ databases: list, queries: list, dateRange: z.object({ from: z.string().date().nullable(), to: z.string().date().nullable() }).strict(), language: list, inclusionCriteria: list, exclusionCriteria: list }).strict(),
-  sources: z.array(z.object({ sourceId: ref, sourceType: ref, title: text, authors: list, publicationDate: z.string().date().nullable(), canonicalUrl: z.string().url(), persistentId: z.string().max(500).nullable(), version: z.string().max(200), primarySource: z.boolean(), accessedAt: timestamp, artifactId: id("art"), relevance: text }).strict()),
+  sources: z.array(z.object({ sourceId: ref, sourceType: ref, title: text, authors: list, publicationDate: publicationDate, canonicalUrl: z.string().url(), persistentId: z.string().max(500).nullable(), version: z.string().max(200), primarySource: z.boolean(), accessedAt: timestamp, artifactId: id("art"), relevance: text }).strict()),
   findings: z.array(z.object({ findingId: ref, statement: text, support: z.array(z.object({ sourceId: ref, locator: text, artifactId: id("art") }).strict()).min(1), confidence: z.enum(["low", "medium", "high"]), noveltyImplication: z.string().max(2000) }).strict()),
   contradictions: z.array(jsonValueSchema), evaluationDifferences: z.array(jsonValueSchema), knowledgeGaps: list, candidateClaimEffects: z.array(jsonValueSchema),
   bibliographyArtifactId: id("art"), reportArtifactId: id("art"), readyForReview: z.boolean(),
@@ -55,7 +75,7 @@ export const blockerSchema = z.object({
   $schema: z.literal(schemaUri("blocker")), schemaVersion, blockerId: id("blk"), taskId: id("tsk"), scopeType: ref, scopeId: ref,
   category: z.enum(["missing_input", "missing_credential", "approval_required", "resource_unavailable", "external_service", "contract_conflict", "scientific_ambiguity", "safety_policy", "workspace_conflict", "unknown_after_diagnosis"]),
   summary: text, evidenceArtifactIds: z.array(id("art")), workCompletedBeforeBlock: list,
-  safeState: z.object({ branch: z.string(), head: z.string(), activeJobIds: z.array(id("job")), uncommittedChanges: z.boolean() }).strict(),
+  safeState: z.object({ branch: gitBranch, head: gitObjectId, activeJobIds: z.array(id("job")), uncommittedChanges: z.boolean() }).strict(),
   attemptedResolutions: z.array(z.object({ action: text, result: text, attemptFingerprint: sha256Digest }).strict()),
   requiredAuthority: z.enum(["user", "mission_director", "research_director", "daemon_policy"]), requestedAction: text,
   resumePredicate: z.object({ validatorId: ref, parameters: jsonValueSchema }).strict(), fallbackOptions: z.array(jsonValueSchema), reportedAt: timestamp,
@@ -64,7 +84,7 @@ export const blockerSchema = z.object({
 export const taskFailureSchema = z.object({
   $schema: z.literal(schemaUri("task-failure")), schemaVersion, taskId: id("tsk"), attempt: z.number().int().positive(), failureCode: ref, phase: ref,
   summary: text, diagnosticArtifactIds: z.array(id("art")), failedValidatorIds: z.array(ref),
-  workState: z.object({ branch: z.string(), startingCommit: z.string(), endingCommit: z.string(), uncommittedChanges: z.boolean(), activeJobIds: z.array(id("job")) }).strict(),
+  workState: z.object({ branch: gitBranch, startingCommit: gitObjectId, endingCommit: gitObjectId, uncommittedChanges: z.boolean(), activeJobIds: z.array(id("job")) }).strict(),
   attemptedResolutionFingerprints: z.array(sha256Digest), retriable: z.boolean(), sameApproachAllowed: z.boolean(), changedPremiseRequired: z.string().max(2000).nullable(),
   recommendedDisposition: z.enum(["retry_transient", "revise_same_node", "redesign", "reduce_scope", "record_negative_result", "stop"]), artifactIdsWorthRetaining: z.array(id("art")), reportedAt: timestamp,
 }).strict().superRefine((value, context) => {
@@ -102,6 +122,7 @@ export const reviewVerdictSchema = z.object({
   missingRequiredInputs: z.array(ref), scientificIntegrityFlags: list, recommendedGraphAction: ref, recommendedPromotion: z.enum(["promote", "hold", "reject", "not_applicable"]),
   reviewedArtifactIds: z.array(id("art")), reviewedEvidenceIds: z.array(id("evd")), submittedAt: timestamp,
 }).strict().superRefine((value, context) => {
+  if ((value.verdict === "REVISE" || value.verdict === "REDESIGN") && !value.defects.length && value.criteria.every((criterion) => criterion.status === "PASS" || criterion.status === "NOT_APPLICABLE")) context.addIssue({ code: "custom", path: ["verdict"], message: `${value.verdict} needs a failing or inconclusive criterion or a recorded defect; when every criterion passes and no defect is open, the verdict is PASS` });
   if (value.verdict !== "PASS") return;
   if (value.independenceCheck !== "pass") context.addIssue({ code: "custom", path: ["verdict"], message: "PASS requires an independent reviewer" });
   if (value.missingRequiredInputs.length) context.addIssue({ code: "custom", path: ["missingRequiredInputs"], message: "PASS cannot omit required inputs" });
@@ -110,16 +131,16 @@ export const reviewVerdictSchema = z.object({
 });
 
 export const handoffSchema = z.object({
-  $schema: z.literal(schemaUri("handoff")), schemaVersion, templateVersion, handoffId: id("hnd"), logicalOwnerId: ref, fromAgentId: id("agt"), reason: ref, scope,
+  $schema: z.literal(schemaUri("handoff")), schemaVersion, templateVersion, handoffId: id("hnd"), logicalOwnerId: ref, fromAgentId: id("agt"), toAgentId: id("agt"), reason: ref, scope,
   goalStack: z.object({ projectGoalId: ref, missionCriterionIds: z.array(ref), directionQuestionId: ref.nullable(), currentGraphNodeId: ref.nullable() }).strict(), observedVersions: observedVersionsSchema,
   completedNodeIds: z.array(ref), acceptedArtifactIds: z.array(id("art")), acceptedEvidenceIds: z.array(id("evd")),
-  branch: z.object({ name: z.string(), head: z.string(), uncommittedChanges: z.boolean() }).strict(), activeJobs: z.array(jsonValueSchema), openDefects: z.array(jsonValueSchema), openBlockerIds: z.array(id("blk")), failedHypothesisIds: z.array(ref), decisions: z.array(jsonValueSchema), readyNodeIds: z.array(ref),
+  branch: z.object({ name: gitBranch, head: gitObjectId, uncommittedChanges: z.boolean() }).strict(), activeJobs: z.array(jsonValueSchema), openDefects: z.array(jsonValueSchema), openBlockerIds: z.array(id("blk")), failedHypothesisIds: z.array(ref), decisions: z.array(jsonValueSchema), readyNodeIds: z.array(ref),
   recommendedNextAction: z.object({ nodeId: ref, reason: text, requiredInputIds: z.array(ref) }).strict().nullable(), knownRisks: list, contextArtifactIds: z.array(id("art")), oldLeaseReleaseId: ref, createdAt: timestamp,
 }).strict();
 
 export const handoffTeachbackSchema = z.object({
   $schema: z.literal(schemaUri("handoff-teachback")), schemaVersion, handoffId: id("hnd"), toAgentId: id("agt"), logicalOwnerId: ref, decision: z.enum(["accepted", "rejected_conflict", "clarification_required"]),
-  understoodGoalStack: handoffSchema.shape.goalStack, observedVersions: observedVersionsSchema, observedBranchHead: z.string(), acknowledgedDefectIds: z.array(ref), acknowledgedBlockerIds: z.array(id("blk")), selectedNextNodeId: ref.nullable(), plannedFirstAction: text, conflicts: list, submittedAt: timestamp,
+  understoodGoalStack: handoffSchema.shape.goalStack, observedVersions: observedVersionsSchema, observedBranchHead: gitObjectId, acknowledgedDefectIds: z.array(ref), acknowledgedBlockerIds: z.array(id("blk")), selectedNextNodeId: ref.nullable(), plannedFirstAction: text, conflicts: list, submittedAt: timestamp,
 }).strict();
 
 const decision = z.object({ action: ref, targetId: ref, reason: text }).strict();
@@ -141,6 +162,13 @@ export const graphChangeProposalSchema = z.object({
   $schema: z.literal(schemaUri("graph-change-proposal")), schemaVersion, proposalId: ref, scopeType: z.enum(["mission", "direction"]), scopeId: z.union([id("mis"), id("dir")]), baseGraphVersion: z.number().int().positive(), proposerRole: z.enum(["mission_director", "research_director", "user"]), reasonCode: ref, rationale: text, evidenceIds: z.array(id("evd")), operations: z.array(jsonValueSchema).min(1), expectedEffect: text, contractImpact: z.enum(["none", "non_material", "material"]), budgetImpact: z.object({ gpuSecondsDelta: z.number().int(), modelTokensDelta: z.number().int() }).strict(), approvalRequired: z.boolean(), submittedAt: timestamp,
 }).strict();
 
+export function isTaskTerminalRecord(record: unknown): boolean {
+  if (!record || typeof record !== "object" || Array.isArray(record)) return false;
+  const value = record as { $schema?: unknown; status?: unknown };
+  const schema = value.$schema;
+  if ([schemaUri("general-worker-completion"), schemaUri("librarian-completion"), schemaUri("task-failure"), schemaUri("mission-director-cycle"), schemaUri("research-director-cycle"), schemaUri("review-verdict"), schemaUri("experiment-proposal")].includes(schema as string)) return true;
+  return schema === schemaUri("response-envelope") && ["completed", "failed", "cancelled", "superseded"].includes(String(value.status));
+}
 export const submissionRegistry = {
   [schemaUri("task-packet")]: taskPacketSchema,
   [schemaUri("general-worker-completion")]: generalWorkerCompletionSchema,

@@ -70,10 +70,12 @@
           "type": "object",
           "properties": {
             "branch": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
             },
             "head": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
             },
             "activeJobIds": {
               "type": "array",

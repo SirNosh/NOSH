@@ -29,6 +29,10 @@
           "type": "string",
           "pattern": "^agt_[0-9a-f]{32}$"
         },
+        "toAgentId": {
+          "type": "string",
+          "pattern": "^agt_[0-9a-f]{32}$"
+        },
         "reason": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
@@ -172,10 +176,12 @@
           "type": "object",
           "properties": {
             "name": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
             },
             "head": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
             },
             "uncommittedChanges": {
               "type": "boolean"
@@ -361,6 +367,7 @@
         "handoffId",
         "logicalOwnerId",
         "fromAgentId",
+        "toAgentId",
         "reason",
         "scope",
         "goalStack",

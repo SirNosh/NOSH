@@ -266,6 +266,121 @@
           },
           "maxItems": 500
         },
+        "taskPermissions": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "network": {
+                  "type": "string",
+                  "enum": [
+                    "disabled",
+                    "allowlisted",
+                    "enabled"
+                  ]
+                },
+                "subprocess": {
+                  "type": "string",
+                  "enum": [
+                    "disabled",
+                    "allowlisted",
+                    "enabled"
+                  ]
+                },
+                "gitCommit": {
+                  "type": "boolean"
+                },
+                "gitPush": {
+                  "type": "boolean"
+                },
+                "delegation": {
+                  "type": "string",
+                  "const": "request_only"
+                },
+                "networkAllowlist": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+                  },
+                  "maxItems": 32
+                },
+                "allowedToolIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                    "maxLength": 128
+                  }
+                }
+              },
+              "required": [
+                "network",
+                "subprocess",
+                "gitCommit",
+                "gitPush",
+                "delegation",
+                "networkAllowlist",
+                "allowedToolIds"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "taskWorkspace": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "worktreeId": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                },
+                "branch": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+                },
+                "startingCommit": {
+                  "type": "string",
+                  "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+                },
+                "writeScopes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  },
+                  "maxItems": 100
+                },
+                "protectedScopes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  },
+                  "maxItems": 100
+                }
+              },
+              "required": [
+                "worktreeId",
+                "branch",
+                "startingCommit",
+                "writeScopes",
+                "protectedScopes"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "budget": {
           "type": "object",
           "properties": {
@@ -346,6 +461,8 @@
         "inputRefs",
         "activeSkillIds",
         "capabilities",
+        "taskPermissions",
+        "taskWorkspace",
         "budget",
         "usage",
         "nextStepNumber",
