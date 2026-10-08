@@ -16,7 +16,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels, Type, type Api, type Model } from "@earendil-works/pi-ai";
 import { budgetTokens, modelSelectionSchema, schemaDocumentPath, schemaUri, sha256, submissionToolSchemas, type EventDraft, type JsonValue, type ModelSelection, type TaskPermissions, type TaskWorkspace, type ThinkingLevel } from "@nosh/wire";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, parse, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -778,7 +778,8 @@ function assertCommitWorkspaceState(options: PiSessionOptions, workspace: TaskWo
   return `refs/heads/${branch}`;
 }
 function sameWorkspacePath(left: string, right: string): boolean {
-  const normalize = (value: string): string => process.platform === "win32" ? resolve(value).toLowerCase() : resolve(value);
+  // Git reports long paths; the native realpath also expands Windows 8.3 short names (C:\Users\RUNNER~1).
+  const normalize = (value: string): string => { let path = resolve(value); try { path = realpathSync.native(path); } catch { /* compare a missing path as given */ } return process.platform === "win32" ? path.toLowerCase() : path; };
   return normalize(left) === normalize(right);
 }
 function sameGitPathSet(left: string[], right: string[]): boolean {

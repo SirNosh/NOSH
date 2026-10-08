@@ -45,7 +45,8 @@ export function ensureNoshIgnore(repositoryRoot: string): void {
 
 export function initializeResearchProject(input: ProjectInitialization): InitializedProject {
   const requested = resolve(input.path); if (input.createRepository) { mkdirSync(requested, { recursive: true }); const initialized = git(requested, ["init"]); if (!initialized.ok) throw new Error("Git repository initialization failed"); }
-  const root = realpathSync(requested); if (!statSync(root).isDirectory()) throw new Error("Project path must be a directory"); const top = git(root, ["rev-parse", "--show-toplevel"]); if (!top.ok || realpathSync(top.stdout.trim()) !== root) throw new Error("Project path must be the root of a Git repository"); configureGithubRemote(root, input.githubRepositoryUrl);
+  // The native realpath expands Windows 8.3 short names (C:\Users\RUNNER~1), which Git never reports; the JS one keeps them.
+  const root = realpathSync.native(requested); if (!statSync(root).isDirectory()) throw new Error("Project path must be a directory"); const top = git(root, ["rev-parse", "--show-toplevel"]); if (!top.ok || realpathSync.native(top.stdout.trim()) !== root) throw new Error("Project path must be the root of a Git repository"); configureGithubRemote(root, input.githubRepositoryUrl);
   const nosh = join(root, ".nosh"); for (const directory of ["contracts", "events", "artifacts", "sessions", "jobs"]) mkdirSync(join(nosh, directory), { recursive: true });
   ensureNoshIgnore(root);
   const metadataPath = join(nosh, "project.json"); const prior = existsSync(metadataPath) ? JSON.parse(readFileSync(metadataPath, "utf8")) as { projectId?: string } : {}; const projectId = prior.projectId ?? createId("prj"); const now = new Date().toISOString(); const branch = git(root, ["branch", "--show-current"]).stdout.trim() || "main"; const workingTitle = input.workingTitle?.trim() || basename(root);

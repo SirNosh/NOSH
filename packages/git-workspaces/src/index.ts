@@ -12,7 +12,7 @@ export class GitWorkspaceManager {
   private readonly registryPath: string;
 
   constructor(private readonly repositoryRoot: string, private readonly worktreesRoot: string, stateDirectory: string) {
-    this.repositoryRoot = realpathSync(resolve(repositoryRoot));
+    this.repositoryRoot = realpathSync.native(resolve(repositoryRoot));
     this.worktreesRoot = resolve(worktreesRoot);
     mkdirSync(this.worktreesRoot, { recursive: true }); mkdirSync(stateDirectory, { recursive: true });
     this.registryPath = resolve(stateDirectory, "evaluated-experiments.json");
@@ -22,12 +22,12 @@ export class GitWorkspaceManager {
     git(this.repositoryRoot, ["check-ref-format", "--branch", branch]);
     const path = resolve(this.worktreesRoot, worktreeId);
     if (relative(this.worktreesRoot, path).startsWith("..")) throw new Error("Worktree path escapes configured root");
-    if (existsSync(path)) { const worktree = realpathSync(path); if (git(worktree, ["branch", "--show-current"]) !== branch || !succeeds(worktree, ["merge-base", "--is-ancestor", baseCommit, "HEAD"])) throw new Error(`Existing worktree ${path} does not match its durable intent`); return worktree; }
+    if (existsSync(path)) { const worktree = realpathSync.native(path); if (git(worktree, ["branch", "--show-current"]) !== branch || !succeeds(worktree, ["merge-base", "--is-ancestor", baseCommit, "HEAD"])) throw new Error(`Existing worktree ${path} does not match its durable intent`); return worktree; }
     // Check out exact blob bytes: NOSH's hardened Git plumbing ignores user config, so an autocrlf
     // checkout would make every file look modified and break exact-path commits and workspace edits.
     const exact = ["-c", "core.autocrlf=false", "-c", "core.eol=lf"];
     if (succeeds(this.repositoryRoot, ["show-ref", "--verify", `refs/heads/${branch}`])) git(this.repositoryRoot, [...exact, "worktree", "add", path, branch]); else git(this.repositoryRoot, [...exact, "worktree", "add", "-b", branch, path, baseCommit]);
-    return realpathSync(path);
+    return realpathSync.native(path);
   }
 
   commit(worktree: string, paths: string[], message: string): string {
@@ -45,7 +45,7 @@ export class GitWorkspaceManager {
     const records = this.records(); const prior = records.find((record) => record.experimentId === input.experimentId);
     if (prior) { if (prior.evaluatedCommit !== evaluatedCommit || prior.branch !== branch || prior.parentCommit !== input.parentCommit || prior.evaluationContractHash !== input.evaluationContractHash || prior.environmentManifestHash !== sha256(input.environmentManifest) || canonicalJson(prior.runCommand as unknown as JsonValue) !== canonicalJson(input.runCommand as unknown as JsonValue)) throw new Error(`Experiment ${input.experimentId} is already frozen with different provenance`); return prior; }
     const record: FrozenExperiment = {
-      experimentId: input.experimentId, parentExperimentId: input.parentExperimentId, branch, worktree: realpathSync(input.worktree), parentCommit: input.parentCommit,
+      experimentId: input.experimentId, parentExperimentId: input.parentExperimentId, branch, worktree: realpathSync.native(input.worktree), parentCommit: input.parentCommit,
       evaluatedCommit, evaluationContractHash: input.evaluationContractHash, environmentManifestHash: sha256(input.environmentManifest), runCommand: [...input.runCommand], frozenAt: new Date().toISOString(),
     };
     records.push(record); this.save(records); return record;

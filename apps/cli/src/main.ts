@@ -256,7 +256,7 @@ async function jobList(config: Config): Promise<void> { const result = await api
 
 async function backup(config: Config, selector: string): Promise<void> {
   const all = await projects(config);
-  const path = existsSync(resolve(selector)) ? realpathSync(resolve(selector)) : null;
+  const path = existsSync(resolve(selector)) ? realpathSync.native(resolve(selector)) : null;
   const project = all.find((entry) => entry.projectId === selector || (path && entry.repositoryRoot === path));
   if (!project) throw new Error("Project is not registered");
   const created = await healthy(config)
@@ -267,7 +267,7 @@ async function backup(config: Config, selector: string): Promise<void> {
 
 async function backupRestore(config: Config, selector: string, backupId: string): Promise<void> {
   // Match backup's realpath lookup so symlinked or differently cased paths resolve the same Project.
-  const path = existsSync(resolve(selector)) ? realpathSync(resolve(selector)) : null;
+  const path = existsSync(resolve(selector)) ? realpathSync.native(resolve(selector)) : null;
   const project = (await projects(config)).find((entry) => entry.projectId === selector || (path && entry.repositoryRoot === path));
   if (!project) throw new Error("Project is not registered");
   if (await healthy(config)) {

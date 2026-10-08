@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -59,7 +59,7 @@ describe("worktreeGitEnvironment", () => {
       const worktree = new GitWorkspaceManager(repository, join(repository, ".nosh", "worktrees"), join(repository, ".nosh", "git")).create("nosh/task-trust", git(repository, "rev-parse", "HEAD").stdout.trim(), "wt_trust");
       const environment = worktreeGitEnvironment(worktree);
       const values = Object.entries(environment).filter(([key]) => key.startsWith("GIT_CONFIG_VALUE_")).map(([, value]) => String(value).toLowerCase());
-      expect(values).toEqual(expect.arrayContaining([worktree.replaceAll("\\", "/").toLowerCase(), repository.replaceAll("\\", "/").toLowerCase()]));
+      expect(values).toEqual(expect.arrayContaining([worktree.replaceAll("\\", "/").toLowerCase(), realpathSync.native(repository).replaceAll("\\", "/").toLowerCase()]));
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });

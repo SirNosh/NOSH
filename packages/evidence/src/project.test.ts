@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -75,6 +75,17 @@ describe("project contract reads", () => {
       // Runtime state NOSH writes later (Artifacts, Mission files) never dirties the checkout.
       for (const [folder, file] of [["artifacts/ab", "ab12.json"], ["mission", "summary.json"], ["pi", "session.jsonl"]] as const) { mkdirSync(join(repositoryRoot, ".nosh", folder), { recursive: true }); writeFileSync(join(repositoryRoot, ".nosh", folder, file), "{}"); }
       expect(git("status", "--porcelain")).toBe("");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it.skipIf(process.platform !== "win32")("accepts a repository reached through a Windows 8.3 short path", () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-short-path-"));
+    try {
+      const repositoryRoot = join(directory, "Long Folder Name", "repo"); mkdirSync(repositoryRoot, { recursive: true });
+      spawnSync("git", ["-C", repositoryRoot, "init", "-q"], { windowsHide: true });
+      const short = spawnSync("cmd.exe", ["/d", "/c", `for %I in ("${repositoryRoot}") do @echo %~sI`], { encoding: "utf8", windowsHide: true, windowsVerbatimArguments: true }).stdout.trim();
+      expect(short).toContain("~");
+      expect(initializeResearchProject({ path: short, dataDirectory: join(directory, "data"), createRepository: false }).repositoryRoot).toBe(realpathSync.native(repositoryRoot));
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
