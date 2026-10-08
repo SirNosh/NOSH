@@ -2,6 +2,7 @@
  * OpenCode home/session/prompt layout adapted for NOSH's research daemon.
  * Copyright (c) 2025 opencode. MIT license, pinned sources: ../UPSTREAM.md.
  */
+import { writeFileSync } from 'node:fs';
 import { createCliRenderer, BoxRenderable, TextRenderable, ScrollBoxRenderable, StyledText, fg,
   CliRenderEvents, TextAttributes, type CliRenderer, type KeyEvent } from '@opentui/core';
 import { DaemonClient, type TuiConfig } from './client.js';
@@ -204,15 +205,17 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     const topic = entries.find(entry => entry.kind === 'user')?.text;
     heading.content = clip(`NOSH  /  ${controller.view === 'chat' ? topic || basename(project?.repositoryRoot || 'Research workspace') : controller.view === 'map' ? 'RESEARCH MAP' : controller.view.toUpperCase()}`, mainWidth);
     context.content = clip(`${basename(project?.repositoryRoot || 'No project')}  ·  ${controller.view === 'chat' ? 'Research conversation' : 'Esc conversation'}  ·  ctrl+p commands`, mainWidth);
-    const roleName = activity.role || 'Research';
+    const roleName = (activity.role || 'Research').replaceAll('_', ' ');
     role.content = roleName.charAt(0).toUpperCase() + roleName.slice(1);
     const modelName = controller.selection ? controller.selection.model.id : activity.model;
     const level = controller.selection?.thinkingLevel || activity.thinkingLevel;
-    model.content = clip(`· ${modelName || 'Default model'}`, Math.max(12, (home ? 71 : mainWidth) - roleName.length - (level ? level.length + 8 : 6)));
-    thinking.content = level ? `· ${level}` : '';
+    const noModel = controller.modelsChecked && !controller.models.length;
+    model.content = noModel ? '· no model connected — run nosh login in a terminal' : clip(`· ${modelName || 'Default model'}`, Math.max(12, (home ? 71 : mainWidth) - roleName.length - (level ? level.length + 8 : 6)));
+    model.fg = noModel ? theme.warning : theme.text;
+    thinking.content = level && !noModel ? `· ${level}` : '';
     composer.borderColor = controller.error ? theme.error : controller.busy || activity.working ? theme.secondary : theme.accent;
     hints.content = controller.view !== 'chat' ? keyHints([['esc', 'conversation'], ['pgup/pgdn', 'scroll'], ...(controller.view === 'map' ? [] : [['ctrl+g', 'map'] as [string, string]]), ['ctrl+p', 'commands']])
-      : !project ? keyHints([['ctrl+o', 'choose project'], ['ctrl+p', 'commands']])
+      : !project ? keyHints([['ctrl+o', 'choose a project'], ['ctrl+p', 'commands']])
       : mainWidth < 72 ? keyHints([['enter', 'send'], ['⇧enter', 'newline'], ['ctrl+p', 'commands']])
       : keyHints([['enter', 'send'], ['⇧enter', 'newline'], ['ctrl+p', 'commands'], ['ctrl+g', 'map'], ['f2', 'model'], ['ctrl+t', 'thinking']]);
     const working = controller.busy || activity.working;
@@ -224,9 +227,11 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
       : controller.pendingAction() ? '? Action staged · /confirm to review · /discard to dismiss'
       : entries.at(-1)?.kind === 'receipt' ? `✓ ${clip(entries.at(-1)!.title, mainWidth - 4)}` : '');
     status.visible = !!status.plainText;
-    homeTip.content = project
+    homeTip.content = noModel
+      ? new StyledText([fg(theme.warning)(' ! '), fg(theme.text)('No model account connected. '), fg(theme.muted)('Run '), fg(theme.accent)('nosh login'), fg(theme.muted)(' in a terminal, then '), fg(theme.accent)('/refresh'), fg(theme.muted)('.')])
+      : project
       ? new StyledText([fg(theme.accent)(' ◆ '), fg(theme.text)(basename(project.repositoryRoot)), fg(theme.muted)('   ask a research question, or try '), fg(theme.accent)('ctrl+g'), fg(theme.muted)(' map · '), fg(theme.accent)('/help')])
-      : keyHints([['ctrl+o', 'choose a project'], ['/new', 'create one']]);
+      : new StyledText([fg(theme.muted)(' Open a repository you already have, or create a new one: '), fg(theme.accent)('/open'), fg(theme.muted)(' · '), fg(theme.accent)('/new')]);
     const placeholder = project ? 'Ask NOSH… what should we investigate?' : 'Choose a project first — press ctrl+o';
     if (input.placeholder !== placeholder) input.placeholder = placeholder;
     const online = controller.connection === 'connected';
@@ -340,7 +345,9 @@ export async function runTui(config: TuiConfig): Promise<void> {
   let renderer: CliRenderer | undefined;
   let workspace: ReturnType<typeof createWorkspace> | undefined;
   let unsubscribe: (() => void) | undefined;
+  const recordProject = () => { if (config.handoffPath && controller.projectId) try { writeFileSync(config.handoffPath, JSON.stringify({ currentProjectId: controller.projectId })); } catch { /* Best effort: the next open falls back to the configured project. */ } };
   const cleanup = () => {
+    recordProject();
     if (closed) return;
     closed = true; clearTimeout(timer); clearTimeout(frameTimer); unsubscribe?.();
     controller.dispose(); client.close(); workspace?.dispose();

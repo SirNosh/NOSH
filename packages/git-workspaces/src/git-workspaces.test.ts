@@ -22,6 +22,26 @@ describe("GitWorkspaceManager", () => {
       expect(() => manager.assertFrozen("exp_1", base, "sha256:contract")).toThrow("immutable");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
+  it("promotes with the daemon's own identity when the user has none configured", () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-git-")); const repository = join(directory, "repo"); mkdirSync(repository);
+    const saved = { global: process.env.GIT_CONFIG_GLOBAL, nosystem: process.env.GIT_CONFIG_NOSYSTEM };
+    try {
+      run(repository, ["init", "-b", "main"]); run(repository, ["config", "user.email", "nosh@example.invalid"]); run(repository, ["config", "user.name", "NOSH Test"]);
+      writeFileSync(join(repository, "README.md"), "baseline\n"); run(repository, ["add", "README.md"]); run(repository, ["commit", "-m", "baseline"]);
+      const base = run(repository, ["rev-parse", "HEAD"]);
+      const manager = new GitWorkspaceManager(repository, join(directory, "worktrees"), join(directory, "state"));
+      const worktree = manager.create("ar/test/exp1", base, "wt1"); const integration = manager.create("ar/test/frontier", base, "frontier");
+      writeFileSync(join(worktree, "variant.txt"), "variant\n"); manager.commit(worktree, ["variant.txt"], "variant");
+      manager.freeze({ experimentId: "exp_1", parentExperimentId: "exp_base", branch: "ar/test/exp1", worktree, parentCommit: base, evaluationContractHash: "sha256:contract", environmentManifest: {}, runCommand: ["node", "-v"] });
+      run(repository, ["config", "--unset", "user.email"]); run(repository, ["config", "--unset", "user.name"]);
+      writeFileSync(join(directory, "empty.gitconfig"), ""); process.env.GIT_CONFIG_GLOBAL = join(directory, "empty.gitconfig"); process.env.GIT_CONFIG_NOSYSTEM = "1";
+      const merged = manager.promote("exp_1", integration, "PASS", true);
+      expect(run(integration, ["log", "-1", "--format=%an <%ae>", merged])).toBe("NOSH <noshd@nosh.invalid>");
+    } finally {
+      for (const [key, value] of [["GIT_CONFIG_GLOBAL", saved.global], ["GIT_CONFIG_NOSYSTEM", saved.nosystem]] as const) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 function run(cwd: string, args: string[]): string {

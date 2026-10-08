@@ -210,7 +210,10 @@ export function createResearchMap(renderer: CliRenderer) {
     const generatedAt = typeof (map as { generatedAt?: unknown } | undefined)?.generatedAt === 'string' ? String((map as { generatedAt: string }).generatedAt).slice(11, 19) : '';
     const summary = text(renderer, 'map-summary', `live · refreshes every few seconds${generatedAt ? ` · updated ${generatedAt} UTC` : ''}`, theme.muted); summary.marginBottom = 1;
     root.add(summary);
-    if (!lines.length) { root.add(text(renderer, 'map-empty', EMPTY_MAP, theme.muted)); return; }
+    const roots = Array.isArray((map as { roots?: unknown } | undefined)?.roots) ? (map as { roots: unknown[] }).roots.length : 0;
+    // Workers alone (the chat agent) are not research; say how research starts.
+    if (!roots) { const empty = text(renderer, 'map-empty', EMPTY_MAP, theme.muted); empty.marginBottom = 1; root.add(empty); }
+    if (!lines.length) return;
     for (const [index, line] of lines.entries()) {
       const tone = MAP_TONES[line.tone];
       const head = `${line.prefix}${line.glyph ? `${line.glyph} ` : ''}`;

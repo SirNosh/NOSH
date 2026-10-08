@@ -11,7 +11,7 @@ import type { Model, Project } from './controller.js';
 import { COMMANDS, filterPalette, moveSelection, dialogText, projectFormCommand, validateProjectForm, actionFingerprint, type PaletteItem, type CommandItem, type ProjectFormValues } from './palette.js';
 
 export interface DialogTheme { bg:string; panel:string; text:string; muted:string; accent:string; border:string; selected:string; error:string }
-const defaultTheme: DialogTheme = {bg:'#141414',panel:'#1e1e1e',text:'#eeeeee',muted:'#9a9a9a',accent:'#fab283',border:'#3c3c3c',selected:'#262626',error:'#e06c75'};
+const defaultTheme: DialogTheme = {bg:'#141414',panel:'#1e1e1e',text:'#eeeeee',muted:'#9a9a9a',accent:'#5fd4c4',border:'#3c3c3c',selected:'#262626',error:'#e06c75'};
 export interface DialogPendingAction {
   path: string;
   body: Record<string, unknown>;

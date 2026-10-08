@@ -50,7 +50,8 @@ function shortDigest(value: string): string {
 export function formatFields(items: ViewField[]): string { return items.map(f => `${f.label}: ${f.value}`).join('\n'); }
 export function modelName(value: unknown): string {
   const m = record(value);
-  return [text(m.provider ?? m.modelProvider), text(m.id ?? m.modelId)].filter(Boolean).join('/');
+  // Pi reports a session without a usable model as "unknown"; that is not a model to show.
+  return [text(m.provider ?? m.modelProvider), text(m.id ?? m.modelId)].filter(value => value && value !== 'unknown').join('/');
 }
 export function entityRow(section: string, value: unknown, index = 0): ViewRow {
   const stored = record(value), v = Object.keys(record(stored.value)).length ? record(stored.value) : stored;
@@ -118,7 +119,7 @@ function assistantText(value: unknown): string {
   // Terminal envelopes are protocol output, not conversational prose or approval.
   if (typeof value === 'string' && value.length <= 131072 && value.trim().startsWith('{')) {
     try {
-      const envelope = record(JSON.parse(value));
+      const envelope = record(parseLeadingObject(value));
       if (envelope.$schema === 'https://nosh.dev/schemas/terminal-output/v1' && Array.isArray(envelope.records)) {
         return envelope.records.slice(0,8).map(item => {
           const r = record(item);
@@ -128,6 +129,17 @@ function assistantText(value: unknown): string {
     } catch { /* Ordinary assistant text. */ }
   }
   return plain;
+}
+/** The first complete JSON object, tolerating what the daemon's terminal parser strips after it (stray closers, chat-template tokens). */
+function parseLeadingObject(value: string): unknown {
+  const source = value.trim(); let depth = 0, inString = false, escaped = false, end = -1;
+  for (let index = 0; index < source.length && end < 0; index += 1) {
+    const char = source[index];
+    if (inString) { if (escaped) escaped = false; else if (char === '\\') escaped = true; else if (char === '"') inString = false; continue; }
+    if (char === '"') inString = true; else if (char === '{' || char === '[') depth += 1; else if ((char === '}' || char === ']') && --depth === 0) end = index + 1;
+  }
+  if (end < 0 || !/^[\s\]}]*(<\/?\|[a-z_]+\|>\s*)*$/i.test(source.slice(end))) throw new Error('not a terminal envelope');
+  return JSON.parse(source.slice(0, end));
 }
 /** One-line target of a tool call (command, path, pattern…) for its transcript title. */
 function toolSummary(args: unknown): string {

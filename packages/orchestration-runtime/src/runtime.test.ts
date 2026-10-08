@@ -84,7 +84,10 @@ describe("typed orchestration runtime", () => {
 
   test("gates successful completion on typed output and persists loud agent failures as failed episodes", async () => {
     const missing = setup(); const first = open(missing.projectId, "missing output"); await missing.runtime.execute(first); missing.sessions.omitDraft = true; await expect(missing.runtime.execute(step(missing.projectId, first.threadId, "must be typed"))).rejects.toThrow("required typed episode-draft"); expect(missing.runtime.episodes(missing.projectId)).toHaveLength(0); missing.store.close();
-    const failed = setup(); const second = open(failed.projectId, "agent failure"); await failed.runtime.execute(second); failed.sessions.failMessage = "model transport failed"; await expect(failed.runtime.execute(step(failed.projectId, second.threadId, "fail loudly"))).rejects.toThrow("model transport failed"); expect(failed.runtime.episodes(failed.projectId)[0]!.value.status).toBe("failed"); expect(failed.runtime.thread(failed.projectId, second.threadId).state).toBe("failed"); failed.store.close();
+    const failed = setup(); const second = open(failed.projectId, "agent failure"); await failed.runtime.execute(second); failed.sessions.failMessage = "model transport failed"; await expect(failed.runtime.execute(step(failed.projectId, second.threadId, "fail loudly"))).rejects.toThrow("model transport failed"); expect(failed.runtime.episodes(failed.projectId)[0]!.value.status).toBe("failed"); expect(failed.runtime.thread(failed.projectId, second.threadId).state).toBe("failed");
+    // A failed thread releases its session; a leaked live agent would block its owner's scheduling forever.
+    expect([...failed.sessions.active.keys()]).toEqual([]);
+    await expect(failed.runtime.execute(base(failed.projectId, { operation: "STOP", threadId: second.threadId, programId: null, reason: "boundary" }))).resolves.toBeDefined(); failed.store.close();
   });
 
   test("rejects malformed programs, duplicate execution, skill policy widening, and budget overruns", async () => {

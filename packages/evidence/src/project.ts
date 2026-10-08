@@ -31,10 +31,23 @@ export function detectRunnableCommands(repositoryRoot: string): RunnableCommand[
   return found.filter((command, index) => found.findIndex((other) => other.commandId === command.commandId) === index).slice(0, 10);
 }
 
+/**
+ * NOSH's runtime state (Artifacts, Mission/Autoresearch files, Pi sessions, exports, worktrees) lives under .nosh but is
+ * not research content: ignore all of it except the control files that belong in Git. Without this the user's checkout
+ * turns dirty as soon as work produces an Artifact, and every later task fails its clean-tree preflight.
+ */
+export const NOSH_GITIGNORE = "# NOSH runtime state (rewritten by NOSH; ignores itself). Only the Project's control files are tracked.\n/*\n!/project.json\n!/schema-lock.json\n!/contracts/\n";
+export function ensureNoshIgnore(repositoryRoot: string): void {
+  const path = join(repositoryRoot, ".nosh", ".gitignore");
+  if (!existsSync(join(repositoryRoot, ".nosh"))) return;
+  if (!existsSync(path) || readFileSync(path, "utf8") !== NOSH_GITIGNORE) writeFileSync(path, NOSH_GITIGNORE, "utf8");
+}
+
 export function initializeResearchProject(input: ProjectInitialization): InitializedProject {
   const requested = resolve(input.path); if (input.createRepository) { mkdirSync(requested, { recursive: true }); const initialized = git(requested, ["init"]); if (!initialized.ok) throw new Error("Git repository initialization failed"); }
   const root = realpathSync(requested); if (!statSync(root).isDirectory()) throw new Error("Project path must be a directory"); const top = git(root, ["rev-parse", "--show-toplevel"]); if (!top.ok || realpathSync(top.stdout.trim()) !== root) throw new Error("Project path must be the root of a Git repository"); configureGithubRemote(root, input.githubRepositoryUrl);
   const nosh = join(root, ".nosh"); for (const directory of ["contracts", "events", "artifacts", "sessions", "jobs"]) mkdirSync(join(nosh, directory), { recursive: true });
+  ensureNoshIgnore(root);
   const metadataPath = join(nosh, "project.json"); const prior = existsSync(metadataPath) ? JSON.parse(readFileSync(metadataPath, "utf8")) as { projectId?: string } : {}; const projectId = prior.projectId ?? createId("prj"); const now = new Date().toISOString(); const branch = git(root, ["branch", "--show-current"]).stdout.trim() || "main"; const workingTitle = input.workingTitle?.trim() || basename(root);
   initializePaperWorkspace(root, workingTitle);
   const contract = projectContractSchema.parse({ $schema: schemaUri("project-contract"), schemaVersion: 1, templateVersion: "1.0.0", projectId, contractVersion: 1, workingTitle, domainTags: [], northStar: { goalId: "goal_project", question: "Pending collaborative Project discovery", contributionType: "contribution_pending", decisionUse: "Pending collaborative Project discovery" }, scope: { included: [], excluded: [] }, datasets: [], licensingConstraints: [], computeEnvelope: { maximumGpuHours: 0, maximumDiskBytes: 0, allowedHardwareClasses: ["local"] }, reproducibilityStandard: { minimumSeeds: 1, environmentLockRequired: true, immutableEvaluatedCommitRequired: true, rawLogsRetained: true }, paper: { intendedVenue: null, requiredSections: ["Abstract", "Introduction", "Related work", "Method", "Experiments", "Limitations", "Conclusion"], claimPolicy: "evidence_link_required" }, policies: { network: "network_user.approved", privacy: "privacy_local.first", publication: "publication_user.approved", protectedPaths: [".git", ".nosh"] }, canonicalDefaultBranch: branch, createdBy: "user", createdAt: now, approvedAt: null });
@@ -74,9 +87,14 @@ function projectIssueSummary(issues: Array<{ path: Array<string | number>; messa
  * preflight sees a clean checkout right after approval or amendment. Best effort: a failure is reported, not thrown.
  */
 export function commitProjectContract(repositoryRoot: string): { committed: boolean; detail: string } {
-  const contract = readProjectContract(repositoryRoot); const paths = [".nosh/project.json", `.nosh/contracts/project.v${contract.contractVersion}.json`];
+  const contract = readProjectContract(repositoryRoot);
   const git = (args: string[]) => spawnSync("git", ["-C", repositoryRoot, "-c", `safe.directory=${repositoryRoot.replaceAll("\\", "/")}`, ...args], { encoding: "utf8", windowsHide: true, timeout: 20_000 });
   if (git(["rev-parse", "--is-inside-work-tree"]).status !== 0) return { committed: false, detail: "not a Git repository" };
+  // Everything NOSH scaffolded must be committed too, or the checkout stays dirty and every Mission fails its clean-tree
+  // preflight: all contract versions, the schema lock, and the paper workspace while still untracked (never a user's edits).
+  const contracts = existsSync(join(repositoryRoot, ".nosh", "contracts")) ? readdirSync(join(repositoryRoot, ".nosh", "contracts")).filter((name) => /^project\.v\d+\.json$/.test(name)).map((name) => `.nosh/contracts/${name}`) : [];
+  const untracked = (path: string) => existsSync(join(repositoryRoot, path)) && git(["ls-files", "--error-unmatch", "--", path]).status !== 0;
+  const paths = [...new Set([".nosh/project.json", `.nosh/contracts/project.v${contract.contractVersion}.json`, ...contracts, ...[".nosh/schema-lock.json", "docs/paper.md", "docs/paper.bib"].filter((path) => path.startsWith(".nosh/") ? existsSync(join(repositoryRoot, path)) : untracked(path))])];
   if (git(["add", "--", ...paths]).status !== 0) return { committed: false, detail: "the contract files are ignored or unreadable by Git" };
   if (!git(["status", "--porcelain", "--", ...paths]).stdout.trim()) return { committed: false, detail: "already committed" };
   const identity = git(["config", "user.email"]).status === 0 ? [] : ["-c", "user.name=NOSH", "-c", "user.email=nosh@localhost.invalid"];

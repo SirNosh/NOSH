@@ -46,7 +46,7 @@ describe("project contract reads", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
-  it("commits exactly the approved contract files and leaves other staged work alone", () => {
+  it("commits the approved contract with NOSH's scaffolding and leaves other staged work alone", () => {
     const directory = mkdtempSync(join(tmpdir(), "nosh-contract-commit-"));
     try {
       const { repositoryRoot } = initializeResearchProject({ path: join(directory, "repo"), dataDirectory: join(directory, "data"), createRepository: true });
@@ -55,9 +55,26 @@ describe("project contract reads", () => {
       approveProjectContract(repositoryRoot, { ...readProjectContract(repositoryRoot), contractVersion: 2 });
       const first = commitProjectContract(repositoryRoot);
       expect(first.committed).toBe(true);
-      expect(git("show", "--name-only", "--format=", "HEAD").split(/\s+/).sort()).toEqual([".nosh/contracts/project.v2.json", ".nosh/project.json"]);
+      expect(git("show", "--name-only", "--format=", "HEAD").split(/\s+/).sort()).toEqual([".nosh/contracts/project.v1.json", ".nosh/contracts/project.v2.json", ".nosh/project.json", ".nosh/schema-lock.json", "docs/paper.bib", "docs/paper.md"]);
       expect(git("diff", "--cached", "--name-only")).toBe("notes.txt");
       expect(commitProjectContract(repositoryRoot)).toEqual({ committed: false, detail: "already committed" });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("commits NOSH's scaffolding when an existing repository is approved, leaving a clean tree for Missions", () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-contract-existing-"));
+    try {
+      const repositoryRoot = join(directory, "repo"); mkdirSync(repositoryRoot);
+      const git = (...args: string[]) => spawnSync("git", ["-C", repositoryRoot, "-c", "user.name=T", "-c", "user.email=t@example.invalid", ...args], { encoding: "utf8", windowsHide: true }).stdout.trim();
+      git("init", "-b", "main"); writeFileSync(join(repositoryRoot, "README.md"), "# existing\n"); git("add", "README.md"); git("commit", "-m", "existing work");
+      initializeResearchProject({ path: repositoryRoot, dataDirectory: join(directory, "data"), createRepository: false });
+      approveProjectContract(repositoryRoot, { ...readProjectContract(repositoryRoot), contractVersion: 2 });
+      expect(commitProjectContract(repositoryRoot).committed).toBe(true);
+      expect(git("show", "--name-only", "--format=", "HEAD").split(/\s+/).sort()).toEqual([".nosh/contracts/project.v1.json", ".nosh/contracts/project.v2.json", ".nosh/project.json", ".nosh/schema-lock.json", "docs/paper.bib", "docs/paper.md"]);
+      expect(git("status", "--porcelain")).toBe("");
+      // Runtime state NOSH writes later (Artifacts, Mission files) never dirties the checkout.
+      for (const [folder, file] of [["artifacts/ab", "ab12.json"], ["mission", "summary.json"], ["pi", "session.jsonl"]] as const) { mkdirSync(join(repositoryRoot, ".nosh", folder), { recursive: true }); writeFileSync(join(repositoryRoot, ".nosh", folder, file), "{}"); }
+      expect(git("status", "--porcelain")).toBe("");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 

@@ -11,6 +11,11 @@
         "src/**/*.ts"
       ]
     },
+    "apps/launcher": {
+      "project": [
+        "*.mjs"
+      ]
+    },
     "apps/noshd": {
       "project": [
         "src/**/*.ts"

@@ -2,7 +2,7 @@ import tseslint from "@typescript-eslint/eslint-plugin";
 import parser from "@typescript-eslint/parser";
 
 export default [{
-  files: ["apps/{cli,noshd,tui}/src/**/*.ts", "apps/{cli,noshd,tui}/src/**/*.tsx", "packages/*/src/**/*.ts", "scripts/**/*.mjs"],
+  files: ["apps/{cli,noshd,tui}/src/**/*.ts", "apps/{cli,noshd,tui}/src/**/*.tsx", "packages/*/src/**/*.ts", "apps/launcher/*.mjs", "scripts/**/*.mjs"],
   ignores: ["**/dist/**", "**/dist-types/**", "release/**"],
   languageOptions: { parser, parserOptions: { ecmaVersion: "latest", sourceType: "module" } },
   plugins: { "@typescript-eslint": tseslint },

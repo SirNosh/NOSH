@@ -57,6 +57,24 @@ describe("EventStore", () => {
       expect(() => store.replayPage(projectId, 10, 3, true)).toThrow("initial zero cursor");
     } finally { store.close(); }
   });
+  it("replays from a parse-once cache that sees new appends, cursors, and never a rolled-back row", () => {
+    const store = new EventStore(":memory:"); const projectId = createId("prj");
+    try {
+      store.append(persistentDraft(projectId)); store.append(persistentDraft(projectId));
+      const first = store.replay(projectId);
+      expect(Object.isFrozen(first[0]!.payload)).toBe(true);
+      expect(() => { (first[0]!.payload as { marker: string }).marker = "changed"; }).toThrow();
+      first.pop();
+      store.append(persistentDraft(projectId, "agent.completed"));
+      expect(store.replay(projectId).map((event) => event.type)).toEqual(["agent.started", "agent.started", "agent.completed"]);
+      expect(store.replay(projectId, 2).map((event) => event.sequence)).toEqual([3]);
+      expect(store.replay(projectId, 3)).toEqual([]);
+      expect(() => store.database.transaction(() => { store.append(persistentDraft(projectId, "agent.failed")); expect(store.replay(projectId)).toHaveLength(4); throw new Error("roll back"); })()).toThrow("roll back");
+      expect(store.replay(projectId).map((event) => event.type)).toEqual(["agent.started", "agent.started", "agent.completed"]);
+      store.append(persistentDraft(projectId, "agent.failed"));
+      expect(store.replay(projectId).map((event) => event.sequence)).toEqual([1, 2, 3, 4]);
+    } finally { store.close(); }
+  });
   it("pages durable events with stable cursors and bounded validation", () => {
     const store = new EventStore(":memory:");
     const projectId = createId("prj");

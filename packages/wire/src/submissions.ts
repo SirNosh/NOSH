@@ -12,6 +12,9 @@ const outcome = z.enum(["completed", "partial", "blocked", "failed", "cancelled"
 const scope = z.object({ projectId: id("prj"), missionId: id("mis").nullable(), directionId: id("dir").nullable(), autoresearchId: id("ar").nullable() }).strict();
 const versionRange = z.object({ fromSequence: z.number().int().nonnegative(), toSequence: z.number().int().nonnegative() }).strict();
 
+/** Bibliographic dates are often only a year or a year and month ("2016", "2016-12"); a full date is also accepted. */
+const publicationDate = z.string().regex(/^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?$/, "Use YYYY, YYYY-MM, or YYYY-MM-DD").nullable();
+
 export const taskPermissionsSchema = z.object({
   network: z.enum(["disabled", "allowlisted", "enabled"]),
   subprocess: z.enum(["disabled", "allowlisted", "enabled"]),
@@ -62,7 +65,7 @@ export const generalWorkerCompletionSchema = z.object({
 export const librarianCompletionSchema = z.object({
   $schema: z.literal(schemaUri("librarian-completion")), schemaVersion, taskOutcome: outcome, researchQuestion: text,
   searchCoverage: z.object({ databases: list, queries: list, dateRange: z.object({ from: z.string().date().nullable(), to: z.string().date().nullable() }).strict(), language: list, inclusionCriteria: list, exclusionCriteria: list }).strict(),
-  sources: z.array(z.object({ sourceId: ref, sourceType: ref, title: text, authors: list, publicationDate: z.string().date().nullable(), canonicalUrl: z.string().url(), persistentId: z.string().max(500).nullable(), version: z.string().max(200), primarySource: z.boolean(), accessedAt: timestamp, artifactId: id("art"), relevance: text }).strict()),
+  sources: z.array(z.object({ sourceId: ref, sourceType: ref, title: text, authors: list, publicationDate: publicationDate, canonicalUrl: z.string().url(), persistentId: z.string().max(500).nullable(), version: z.string().max(200), primarySource: z.boolean(), accessedAt: timestamp, artifactId: id("art"), relevance: text }).strict()),
   findings: z.array(z.object({ findingId: ref, statement: text, support: z.array(z.object({ sourceId: ref, locator: text, artifactId: id("art") }).strict()).min(1), confidence: z.enum(["low", "medium", "high"]), noveltyImplication: z.string().max(2000) }).strict()),
   contradictions: z.array(jsonValueSchema), evaluationDifferences: z.array(jsonValueSchema), knowledgeGaps: list, candidateClaimEffects: z.array(jsonValueSchema),
   bibliographyArtifactId: id("art"), reportArtifactId: id("art"), readyForReview: z.boolean(),
@@ -119,6 +122,7 @@ export const reviewVerdictSchema = z.object({
   missingRequiredInputs: z.array(ref), scientificIntegrityFlags: list, recommendedGraphAction: ref, recommendedPromotion: z.enum(["promote", "hold", "reject", "not_applicable"]),
   reviewedArtifactIds: z.array(id("art")), reviewedEvidenceIds: z.array(id("evd")), submittedAt: timestamp,
 }).strict().superRefine((value, context) => {
+  if ((value.verdict === "REVISE" || value.verdict === "REDESIGN") && !value.defects.length && value.criteria.every((criterion) => criterion.status === "PASS" || criterion.status === "NOT_APPLICABLE")) context.addIssue({ code: "custom", path: ["verdict"], message: `${value.verdict} needs a failing or inconclusive criterion or a recorded defect; when every criterion passes and no defect is open, the verdict is PASS` });
   if (value.verdict !== "PASS") return;
   if (value.independenceCheck !== "pass") context.addIssue({ code: "custom", path: ["verdict"], message: "PASS requires an independent reviewer" });
   if (value.missingRequiredInputs.length) context.addIssue({ code: "custom", path: ["missingRequiredInputs"], message: "PASS cannot omit required inputs" });

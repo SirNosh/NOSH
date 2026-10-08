@@ -63,7 +63,8 @@ export class GitWorkspaceManager {
     const record = this.records().find((candidate) => candidate.experimentId === experimentId);
     if (!record) throw new Error(`Experiment ${experimentId} is not frozen`);
     if (reviewVerdict !== "PASS" || !guardrailsPass) throw new Error("Promotion requires a passing independent review and guardrails");
-    if (!succeeds(integrationWorktree, ["merge-base", "--is-ancestor", record.evaluatedCommit, "HEAD"])) git(integrationWorktree, ["merge", "--no-ff", "--no-edit", record.evaluatedCommit]);
+    // The daemon authors this merge (as it does Mission integration), so it never depends on a user Git identity.
+    if (!succeeds(integrationWorktree, ["merge-base", "--is-ancestor", record.evaluatedCommit, "HEAD"])) git(integrationWorktree, ["merge", "--no-ff", "--no-edit", record.evaluatedCommit], DAEMON_IDENTITY);
     return git(integrationWorktree, ["rev-parse", "HEAD"]);
   }
 
@@ -82,8 +83,9 @@ export class GitWorkspaceManager {
   }
 }
 
-function git(cwd: string, args: string[]): string {
-  const result = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8", windowsHide: true, env: worktreeGitEnvironment(cwd) });
+const DAEMON_IDENTITY = { GIT_AUTHOR_NAME: "NOSH", GIT_AUTHOR_EMAIL: "noshd@nosh.invalid", GIT_COMMITTER_NAME: "NOSH", GIT_COMMITTER_EMAIL: "noshd@nosh.invalid" };
+function git(cwd: string, args: string[], identity?: NodeJS.ProcessEnv): string {
+  const result = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8", windowsHide: true, env: { ...worktreeGitEnvironment(cwd), ...identity } });
   if (result.status !== 0) throw new Error(result.stderr.trim() || `git ${args[0]} failed`);
   return result.stdout.trim();
 }

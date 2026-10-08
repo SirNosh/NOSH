@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { PiAdapter, commitWorkspaceFiles, createSessionTools, mapPiEvent, noshPromptCacheKey, noshSystemPrompt, projectAvailableModel, readAllowedUrl, resolveWorkspacePath, sessionToolIds } from "./index.js";
+import { NO_MODEL_ACCOUNT, PiAdapter, answerText, commitWorkspaceFiles, userFacingPiError, createSessionTools, mapPiEvent, noshPromptCacheKey, noshSystemPrompt, projectAvailableModel, readAllowedUrl, resolveWorkspacePath, sessionToolIds } from "./index.js";
 
 const scope = { projectId: createId("prj"), missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, taskId: createId("tsk"), agentId: createId("agt") };
 
@@ -40,6 +40,19 @@ describe("Pi event mapping", () => {
 
   it("records retryable provider failures as activity before the successful result", () => { const retry = mapPiEvent(scope, { type: "agent_end", willRetry: true, messages: [{ role: "assistant", stopReason: "error", errorMessage: "Temporary provider rejection", content: [{ type: "thinking", thinking: "hidden" }], usage: { totalTokens: 12 } }] as never }); const success = mapPiEvent(scope, { type: "agent_end", willRetry: false, messages: [{ role: "assistant", stopReason: "stop", content: [{ type: "text", text: "recovered result" }], usage: { totalTokens: 30 } }] as never }, 12); expect(retry).toMatchObject({ type: "agent.retrying", payload: { reason: "provider_error", willRetry: true, modelTokens: 12 } }); expect(retry).not.toMatchObject({ type: "agent.failed" }); expect(success).toMatchObject({ type: "agent.completed", payload: { message: "recovered result", modelTokens: 18 } }); expect(JSON.stringify(retry)).not.toContain("Temporary provider rejection"); expect(JSON.stringify(retry)).not.toContain("hidden"); });
 
+  it("shows only the final answer when a model also sends a commentary message", () => {
+    const block = (text: string, phase?: string) => ({ type: "text", text, ...(phase ? { textSignature: JSON.stringify({ v: 1, id: `msg_${text}`, phase }) } : {}) });
+    expect(answerText([block("thinking aloud", "commentary"), { type: "toolCall" }, block("the answer", "final_answer")])).toBe("the answer");
+    expect(answerText([block("one"), block("two")])).toBe("one" + String.fromCharCode(10) + "two");
+    expect(answerText([block("only commentary", "commentary")])).toBe("only commentary");
+    expect(answerText(undefined)).toBe("");
+  });
+  it("tells the user to run nosh login when credentials are missing or rejected, never Pi CLI commands", () => {
+    for (const errorMessage of ["401 Incorrect API key provided: sk-nosh-***", "Unauthorized", "invalid_api_key"]) expect(mapPiEvent(scope, { type: "agent_end", willRetry: false, messages: [{ role: "assistant", stopReason: "error", errorMessage, content: [] }] as never })).toMatchObject({ type: "agent.failed", payload: { reason: "provider_auth", message: expect.stringContaining("nosh login") } });
+    const missing = userFacingPiError(new Error("No API key found for the selected model.\n\nUse /login to log into a provider via OAuth or API key. See:\n  C:\\node_modules\\providers.md")) as Error;
+    expect(missing.message).toBe(NO_MODEL_ACCOUNT); expect(missing.message).not.toContain("/login");
+    const other = new Error("Workspace path escapes the assigned root"); expect(userFacingPiError(other)).toBe(other);
+  });
   it("maps provider credit failures to safe actionable failures with usage", () => { const mapped = mapPiEvent(scope, { type: "agent_end", willRetry: false, messages: [{ role: "assistant", stopReason: "error", errorMessage: "CreditsError: Insufficient balance", content: [{ type: "thinking", thinking: "hidden" }], usage: { totalTokens: 42, input: 20, output: 10, cacheRead: 8, cacheWrite: 4 } }] as never }); expect(mapped).toMatchObject({ type: "agent.failed", payload: { reason: "provider_credits", message: "Provider credits are unavailable. Check the provider account balance or choose another model/provider, then retry.", modelTokens: 35, providerTotalTokens: 42, inputTokens: 20, outputTokens: 10, cacheReadTokens: 8, cacheWriteTokens: 4, willRetry: false } }); expect(JSON.stringify(mapped)).not.toContain("CreditsError"); expect(JSON.stringify(mapped)).not.toContain("hidden"); });
 
   it("maps aborted Pi turns to distinguishable cancellation failures", () => { const mapped = mapPiEvent(scope, { type: "agent_end", willRetry: false, messages: [{ role: "assistant", stopReason: "aborted", errorMessage: "Request aborted by user", content: [], usage: { totalTokens: 7 } }] as never }); expect(mapped).toMatchObject({ type: "agent.failed", payload: { reason: "cancelled", message: "This Pi turn was cancelled. Send the message again when ready.", modelTokens: 7, willRetry: false } }); expect(JSON.stringify(mapped)).not.toContain("Request aborted by user"); });

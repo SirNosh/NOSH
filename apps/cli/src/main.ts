@@ -4,6 +4,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, realpathSync,
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { initializeResearchProject } from "@nosh/evidence";
 import { createProjectBackup, HostRegistry, scheduleProjectRestore, type RegisteredProject } from "@nosh/persistence";
@@ -12,6 +13,14 @@ import { canonicalJson, parseModelSelection, schemaUris, type JsonValue } from "
 import { gitDoctorChecks } from "./backup-doctor.js";
 import { connectModelProvider, connectedProviders } from "./login.js";
 
+const WORDMARK = [
+  "███╗   ██╗ ██████╗ ███████╗██╗  ██╗",
+  "████╗  ██║██╔═══██╗██╔════╝██║  ██║",
+  "██╔██╗ ██║██║   ██║███████╗███████║",
+  "██║╚██╗██║██║   ██║╚════██║██╔══██║",
+  "██║ ╚████║╚██████╔╝███████║██║  ██║",
+  "╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝",
+].join("\n");
 type Config = { dataDirectory: string; port: number; bootstrapToken: string; currentProjectId: string | null; defaultModel?: string };
 // Models NOSH is tested with, preferred as the default when the account offers them (low effort keeps research turns cheap).
 const RECOMMENDED_MODELS = ["gpt-6-luna"];
@@ -26,6 +35,8 @@ async function route(args: string[]): Promise<void> {
   if (command === "setup") return setup();
   if (command === "login") return loginCommand(subcommand);
   if (command === "logout" && subcommand) return logoutCommand(subcommand);
+  if (command === "update") return update();
+  if (command === "stop" && flags.has("--if-idle") && !existsSync(configPath)) { process.exitCode = 3; return void process.stdout.write("noshd is not running\n"); }
   const config = loadConfig();
   if (command === "model") return model(config, subcommand, argument);
   if (command === "start") return start(config);
@@ -49,7 +60,7 @@ async function setup(): Promise<void> {
   mkdirSync(stateRoot, { recursive: true }); const dataDirectory = join(stateRoot, "data"); mkdirSync(dataDirectory, { recursive: true });
   if (!existsSync(configPath)) saveConfig({ dataDirectory, port: 4321, bootstrapToken: randomBytes(32).toString("base64url"), currentProjectId: null });
   if (process.platform === "win32" && process.env.USERNAME) spawnSync("icacls.exe", [stateRoot, "/inheritance:r", "/grant:r", `${process.env.USERNAME}:(OI)(CI)F`], { windowsHide: true });
-  process.stdout.write(`NOSH state: ${stateRoot}\n\nChecking prerequisites\n`);
+  process.stdout.write(`${WORDMARK}\n   autonomous research you can verify\n\nWelcome to NOSH. Setup checks your tools, connects a model account, and starts the local daemon.\nState lives in ${stateRoot}\n\nChecking prerequisites\n`);
   const [major, minor] = process.versions.node.split(".").map(Number) as [number, number];
   const git = run("git", ["--version"]); const bun = bunVersion();
   const checks: Array<[string, boolean, string]> = [
@@ -72,7 +83,7 @@ async function setup(): Promise<void> {
   if (newlyConnected && await healthy(config)) await stop(config);
   await start(config);
   if (connected.length) config = await chooseDefaultModel(config);
-  else process.stdout.write("\nNo model account connected yet. Run `nosh login` (ChatGPT/Claude subscription or API key), then `nosh model set <provider/id:level>`.\n");
+  if (!connected.length) { process.stdout.write("\nSetup is not finished: no model account is connected, so research sessions cannot run yet.\nNext:\n  nosh login       connect a ChatGPT/Claude subscription or an API key\n  nosh open        then open the terminal UI (press ctrl+o to open or create a project)\n"); return; }
   process.stdout.write(`\nReady. Next:\n  nosh open        open the terminal UI (press ctrl+o to open or create a project)\n  nosh doctor      re-run these checks any time\n  nosh model       show or change the default model${config.defaultModel ? ` (now ${config.defaultModel})` : ""}\n`);
 }
 
@@ -85,7 +96,7 @@ async function loginCommand(argument?: string): Promise<void> {
   if (!process.stdin.isTTY) throw new Error("nosh login needs an interactive terminal");
   if (await connectModelProvider()) {
     const config = existsSync(configPath) ? loadConfig() : null;
-    process.stdout.write(config && await healthy(config) ? "Restart the daemon to use the new account: nosh stop, then nosh start (interrupts running tasks).\n" : "Next: nosh setup (or nosh model set <provider/id:level>)\n");
+    process.stdout.write(config && await healthy(config) ? "The running daemon picks it up on its next session; in the terminal UI, /refresh. Choose a default with nosh model set <provider/id:level>.\n" : "Next: nosh setup (or nosh model set <provider/id:level>)\n");
   }
 }
 
@@ -112,8 +123,10 @@ async function chooseDefaultModel(config: Config): Promise<Config> {
       providers.forEach((name, index) => process.stdout.write(`  ${String(index + 1).padStart(2)}. ${name}\n`));
       provider = providers[Math.min(providers.length, Math.max(1, Number((await prompt.question(`Account [1-${providers.length}, default 1]: `)).trim() || "1"))) - 1] ?? provider;
     }
-    const choices = models.filter((entry) => entry.provider === provider);
-    const recommended = Math.max(0, choices.findIndex((entry) => RECOMMENDED_MODELS.includes(entry.id)));
+    // The recommended model is listed first, so the default is visible without scrolling a long catalog.
+    const offered = models.filter((entry) => entry.provider === provider); const preferred = offered.find((entry) => RECOMMENDED_MODELS.includes(entry.id));
+    const choices = preferred ? [preferred, ...offered.filter((entry) => entry !== preferred)] : offered;
+    const recommended = 0;
     process.stdout.write(`\nDefault model for NOSH sessions (${provider}):\n`);
     choices.forEach((entry, index) => process.stdout.write(`  ${String(index + 1).padStart(2)}. ${entry.id}${entry.name && entry.name !== entry.id ? `  (${entry.name})` : ""}${index === recommended ? "  ← recommended" : ""}\n`));
     const picked = choices[Math.min(choices.length, Math.max(1, Number((await prompt.question(`Model [1-${choices.length}, default ${recommended + 1}]: `)).trim() || String(recommended + 1)))) - 1] ?? choices[recommended]!;
@@ -137,14 +150,15 @@ async function applyDefaultModel(config: Config, text: string, restart: boolean)
   const selection = parseModelSelection(text);
   const models = await availableModels(config);
   const match = models.find((entry) => entry.provider === selection.provider && entry.id === selection.id);
-  if (models.length && !match) throw new Error(`${selection.provider}/${selection.id} is not an authenticated Pi model; run \`nosh model list\``);
+  if (models.length && !match) throw new Error(`${selection.provider}/${selection.id} is not offered by your connected model accounts; run \`nosh model list\`, or \`nosh login\` to connect one`);
   if (match && selection.thinkingLevel && match.thinkingLevels?.length && !match.thinkingLevels.includes(selection.thinkingLevel)) throw new Error(`${selection.provider}/${selection.id} supports thinking levels ${match.thinkingLevels.join(", ")}`);
   const next = { ...config, defaultModel: `${selection.provider}/${selection.id}${selection.thinkingLevel ? `:${selection.thinkingLevel}` : ""}` };
   saveConfig(next);
   process.stdout.write(`Default model set to ${next.defaultModel}\n`);
   if (await healthy(config)) {
     if (restart) { await stop(next); await start(next); }
-    else process.stdout.write("The running daemon keeps its current default until restarted (nosh stop, then nosh start); restarting interrupts running tasks.\n");
+    // The running daemon adopts it at once; sessions already running keep their model.
+    else { await api(next, "/default-model", { method: "PUT", body: { model: next.defaultModel } }); process.stdout.write("The running daemon uses it for every new session.\n"); }
   }
   return next;
 }
@@ -161,8 +175,18 @@ async function model(config: Config, action = "show", value?: string): Promise<v
   throw new Error("Use nosh model [show|list|set <provider/id[:thinkingLevel]> [--restart]]");
 }
 
+/** Bun for the terminal UI: NOSH_BUN, else the `bun` dependency an installed NOSH package ships, else bun on PATH. */
+function bunExecutable(): string {
+  if (process.env.NOSH_BUN) return process.env.NOSH_BUN;
+  try {
+    const manifest = createRequire(import.meta.url).resolve("bun/package.json");
+    const bin = (JSON.parse(readFileSync(manifest, "utf8")) as { bin?: { bun?: string } }).bin?.bun;
+    if (bin && existsSync(join(dirname(manifest), bin))) return join(dirname(manifest), bin);
+  } catch { /* A source checkout uses bun on PATH. */ }
+  return "bun";
+}
 function bunVersion(): { ok: boolean; version: string } {
-  const bun = run(process.env.NOSH_BUN || "bun", ["--version"]); const version = /^(\d+)\.(\d+)\./.exec(bun.stdout.trim());
+  const bun = run(bunExecutable(), ["--version"]); const version = /^(\d+)\.(\d+)\./.exec(bun.stdout.trim());
   return { ok: bun.ok && Boolean(version) && (Number(version![1]) > 1 || (Number(version![1]) === 1 && Number(version![2]) >= 3)), version: bun.stdout.trim() };
 }
 
@@ -186,26 +210,37 @@ async function start(config: Config): Promise<void> {
   throw new Error(`noshd did not become healthy within 90 seconds; inspect ${join(config.dataDirectory, "logs", "noshd.log")}`);
 }
 
+/** `--if-idle` (used by the npm launcher's `nosh update`) exits 2 without stopping while any Project has active work, and 3 when no daemon runs. */
 async function stop(config: Config): Promise<void> {
-  if (!await healthy(config)) return void process.stdout.write("noshd is not running\n");
+  if (!await healthy(config)) { if (flags.has("--if-idle")) process.exitCode = 3; return void process.stdout.write("noshd is not running\n"); }
+  if (flags.has("--if-idle")) {
+    const { active } = await api(config, "/activity") as { active: Array<{ projectId: string; active: string[] }> };
+    if (active.length) { process.stderr.write(`noshd has active work; finish or stop it first:\n${active.map((entry) => `  ${entry.projectId}: ${entry.active.join(", ")}`).join("\n")}\n`); process.exitCode = 2; return; }
+  }
   await api(config, "/shutdown", { method: "POST", body: {} }); for (let attempt = 0; attempt < 30; attempt += 1) { await delay(200); if (!await healthy(config)) return void process.stdout.write("noshd stopped cleanly\n"); }
   throw new Error(`noshd did not stop cleanly; inspect ${join(config.dataDirectory, "logs", "noshd.log")}`);
 }
+
+/** Installs from the npm launcher handle `nosh update` themselves; this copy runs straight from its files. */
+function update(): void { process.stdout.write(`This NOSH runs from ${fileURLToPath(new URL("../../..", import.meta.url))}.\nSource checkout: git pull && corepack pnpm install --frozen-lockfile && corepack pnpm build, then nosh stop and nosh start.\nnpm install: npm install -g nosh-harness@latest, then nosh update.\n`); }
 
 async function status(config: Config): Promise<void> { process.stdout.write(await healthy(config) ? `running ${url(config)}\n` : "stopped\n"); }
 
 async function openTerminal(config: Config): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error("nosh tui requires an interactive terminal; use nosh help for scripting commands");
-  const executable = process.env.NOSH_BUN || "bun";
+  const executable = bunExecutable();
   if (!bunVersion().ok) throw new Error("nosh tui requires Bun >=1.3 on PATH; install Bun from https://bun.sh (daemon and scripting commands use Node)");
   const script = fileURLToPath(new URL("../../tui/dist/main.js", import.meta.url));
   if (!existsSync(script)) throw new Error("TUI build is missing; install a NOSH distribution or run the repository build");
   await start(config);
+  const handoffPath = join(stateRoot, "tui-session.json");
   const code = await new Promise<number>((resolve, reject) => {
-    const child = spawn(executable, [script], { stdio: "inherit", env: { ...process.env, NOSH_TUI_CONFIG: JSON.stringify({ baseUrl: url(config), bootstrapToken: config.bootstrapToken, currentProjectId: config.currentProjectId }) } });
+    const child = spawn(executable, [script], { stdio: "inherit", env: { ...process.env, NOSH_TUI_CONFIG: JSON.stringify({ baseUrl: url(config), bootstrapToken: config.bootstrapToken, currentProjectId: config.currentProjectId, handoffPath }) } });
     child.once("error", reject);
     child.once("exit", (code, signal) => resolve(code ?? (signal ? 1 : 0)));
   });
+  // The next `nosh open` (and project-scoped commands) continue in the project the TUI ended on.
+  try { const ended = (JSON.parse(readFileSync(handoffPath, "utf8")) as { currentProjectId?: unknown }).currentProjectId; if (typeof ended === "string" && ended !== loadConfig().currentProjectId) saveConfig({ ...loadConfig(), currentProjectId: ended }); } catch { /* No handoff: keep the configured project. */ }
   if (code !== 0) process.exitCode = code;
 }
 
@@ -270,8 +305,8 @@ async function api(config: Config, path: string, options: { method?: string; bod
 // A busy machine (test suites, model sessions) can delay /health; a false "not running" makes stop skip a live daemon.
 async function healthy(config: Config): Promise<boolean> { try { return (await fetch(`${url(config)}/health`, { signal: AbortSignal.timeout(3_000) })).ok; } catch { return false; } }
 function saveConfig(config: Config): void { mkdirSync(dirname(configPath), { recursive: true }); writeAtomic(configPath, config, 0o600); }
-function loadConfig(): Config { if (!existsSync(configPath)) throw new Error("NOSH is not initialized; run `nosh setup`"); return JSON.parse(readFileSync(configPath, "utf8")) as Config; }
-function help(): void { process.stdout.write("nosh setup [--model=provider/id:level] [--yes]\nnosh login [--list]   connect a ChatGPT/Claude subscription or an API key\nnosh logout <provider>\nnosh start|stop|status|open|tui|doctor\nnosh model [show|list|set <provider/id[:level]> [--restart]]\nnosh project list|open <path>\nnosh mission list|status <id>\nnosh job list\nnosh backup <project>\nnosh backup restore <project> <backup-id>\nnosh logs\n"); }
+function loadConfig(): Config { if (!existsSync(configPath)) throw new Error("NOSH is not initialized; run `nosh setup`"); return JSON.parse(readFileSync(configPath, "utf8").replace(/^﻿/, "")) as Config; } // Windows editors may add a BOM
+function help(): void { process.stdout.write("nosh setup [--model=provider/id:level] [--yes]\nnosh login [--list]   connect a ChatGPT/Claude subscription or an API key\nnosh logout <provider>\nnosh start|stop [--if-idle]|status|open|tui|doctor\nnosh update\nnosh model [show|list|set <provider/id[:level]> [--restart]]\nnosh project list|open <path>\nnosh mission list|status <id>\nnosh job list\nnosh backup <project>\nnosh backup restore <project> <backup-id>\nnosh logs\n"); }
 function writeAtomic(path: string, value: unknown, mode = 0o644): void { mkdirSync(dirname(path), { recursive: true }); const temporary = `${path}.tmp`; writeFileSync(temporary, `${canonicalJson(value as JsonValue)}\n`, { encoding: "utf8", mode }); renameSync(temporary, path); }
 function run(command: string, args: string[]): { ok: boolean; stdout: string } { const result = spawnSync(command, args, { encoding: "utf8", windowsHide: true, timeout: 10_000 }); return { ok: result.status === 0, stdout: result.stdout ?? "" }; }
 function clean(value: string): string { return value.replace(/[\u0000-\u001f]+/g, " ").trim().slice(0, 200); }

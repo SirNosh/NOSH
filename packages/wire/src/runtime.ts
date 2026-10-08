@@ -13,7 +13,7 @@ const role = z.enum(["nosh", "mission_director", "research_director", "librarian
 const ownerScope = z.object({ missionId: id("mis").nullable(), directionId: id("dir").nullable(), autoresearchId: id("ar").nullable(), experimentId: id("exp").nullable(), graphNodeId: ref.nullable() }).strict();
 const budget = z.object({ maximumToolCalls: z.number().int().positive(), maximumModelTokens: z.number().int().positive(), maximumWallClockSeconds: z.number().int().positive() }).strict();
 const usage = z.object({ toolCalls: z.number().int().nonnegative(), modelTokens: z.number().int().nonnegative(), wallClockSeconds: z.number().int().nonnegative() }).strict();
-const fact = z.object({ statement: text, evidenceRefs: refs, confidence: z.enum(["low", "medium", "high"]) }).strict();
+const fact = z.object({ statement: text, evidenceRefs: refs, confidence: z.enum(["low", "medium", "high"]).default("medium") }).strict(); // An omitted confidence means "medium"; it never voids an otherwise valid Episode.
 const decision = z.object({ statement: text, rationale: text, evidenceRefs: refs }).strict();
 const nextAction = z.object({ operation: z.enum(["THREAD_OPEN", "THREAD_STEP", "THREAD_FORK", "THREAD_AWAIT", "THREAD_COMPOSE", "THREAD_PAUSE", "THREAD_CANCEL", "SKILL_APPLY", "DIRECT_ACTION", "STOP"]), objective: text }).strict();
 

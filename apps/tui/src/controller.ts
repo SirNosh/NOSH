@@ -54,7 +54,9 @@ Research state
 
 Staged actions (nothing is applied until /confirm)
   /cancel <job-id>                /checkpoint <job-id>
+  /export-paper                   render docs/paper.md and paper.bib into .nosh/paper-export
   /approve <proposalId> <version>
+  /start <missions|directions|autoresearch> <id> <version>   approve and start a new one (one confirmation)
   /transition <missions|directions|autoresearch> <id> <version> <state>
   /retry <missions|directions> <id> <version> <nodeId>   return a blocked/failed node to ready
   /control <missionId> <version> <pause|resume|stop> [safe|checkpoint|immediate]
@@ -85,6 +87,10 @@ export class Controller {
   error = '';
   busy = false;
   selection: { model: {provider: string; id: string}; thinkingLevel: string } | undefined;
+  /** True once the model catalog was read; with an empty catalog no model account is connected. */
+  modelsChecked = false;
+  /** The daemon's default for sessions without an explicit selection ("provider/id"), with its thinking level. */
+  defaultModel: { name: string; thinkingLevel: string } | undefined;
   /** Latest daemon /research-map tree, shown by the 'map' view. */
   researchMap: unknown = undefined;
   private mapRequestedAt = 0;
@@ -111,6 +117,8 @@ export class Controller {
     if (this.projectId && !this.projects.some(p => p.projectId === this.projectId)) throw new Error('Selected project is not registered');
     this.projectId ||= this.projects[0]?.projectId ?? '';
     this.connection = 'connected'; this.liveEnabled = true;
+    // A first-run user may have skipped sign-in; knowing it lets the workspace say so before a turn fails.
+    try { await this.loadModels(); this.modelsChecked = true; } catch { /* The model picker retries on demand. */ }
   }
   async poll(): Promise<void> {
     // A switched project polls immediately; the stale request is discarded by generation.
@@ -129,6 +137,17 @@ export class Controller {
       if (this.view === 'map' && Date.now() - this.mapRequestedAt >= MAP_REFRESH_MS) void this.refreshMap(generation);
     } catch (error) { if (generation === this.generation) this.connection = `reconnecting: ${safeText(error instanceof Error ? error.message : error)}`; }
     finally { if (this.pollingGeneration === generation) this.pollingGeneration = undefined; }
+  }
+  private sectionsLoadedFor = '';
+  /** The sidebar lists every Mission, Direction and Autoresearch, not only those seen in the recent event window (loaded once per project on first render). */
+  private async loadSections(generation: number): Promise<void> {
+    const q = this.query(), cursor = this.cursor;
+    try {
+      const loaded = await Promise.all(['missions','directions','autoresearch'].map(async family => ({family,data:await this.client.request('/'+family+q)})));
+      if (generation !== this.generation) return;
+      for (const {family,data} of loaded) { this.sections.set(family,responseRows(family,data).slice(0,80)); this.sectionCursors.set(family,cursor); }
+      this.notify();
+    } catch { /* Live events still fill the sidebar; /status retries. */ }
   }
   /** Agent events carry no role/model; load them once per unknown agent (throttled). */
   private async refreshAgentMetadata(generation: number): Promise<void> {
@@ -156,8 +175,11 @@ export class Controller {
   }
   async loadModels(): Promise<Model[]> {
     const token = ++this.catalogGeneration.models;
-    const result = await this.client.request<{models: Model[]}>('/models');
-    if (token === this.catalogGeneration.models) this.models = result.models.slice(0,1000);
+    const result = await this.client.request<{models: Model[]; defaultModel?: {provider?: string; id?: string; thinkingLevel?: string} | null}>('/models');
+    if (token === this.catalogGeneration.models) {
+      this.models = result.models.slice(0,1000); this.modelsChecked = true;
+      const preset = result.defaultModel; this.defaultModel = preset?.provider && preset.id ? { name: `${preset.provider}/${preset.id}`, thinkingLevel: preset.thinkingLevel ?? '' } : undefined;
+    }
     return this.models.map(m => ({...m,thinkingLevels:[...m.thinkingLevels]}));
   }
   selectProject(projectId: string, preserveModel = false): void {
@@ -176,6 +198,7 @@ export class Controller {
   }
   inspectorRows(): ViewRow[] { return boundRows(this.rows); }
   sidebarRows(): ViewRow[] {
+    if (this.projectId && this.bootstrapped && this.sectionsLoadedFor !== this.projectId) { this.sectionsLoadedFor = this.projectId; void this.loadSections(this.generation); }
     const rows = new Map<string,ViewRow>();
     for (const entries of this.sections.values()) for (const row of entries) rows.set(`${row.section}:${row.id}`,row);
     // Durable job and proposal updates fill the sidebar without fetching every panel.
@@ -185,7 +208,7 @@ export class Controller {
       const family = e.type.split('.')[0], section = family === 'mission' ? 'missions' : family === 'direction' ? 'directions' : family === 'autoresearch' ? 'autoresearch' : '';
       if (section && p.entityId && p.state && (e.sequence ?? 0) > (this.sectionCursors.get(section) ?? 0)) {
         const id = text(p.entityId), prior = rows.get(`${section}:${id}`);
-        rows.set(`${section}:${id}`,{id,section,title:prior?.title ?? id,state:text(p.state),fields:fields(p)});
+        rows.set(`${section}:${id}`,{id,section,title:prior?.title ?? (text(p.title) || id),state:text(p.state),fields:fields(p)});
       }
       if (e.type === 'job.state_changed' && (e.sequence ?? 0) > (this.sectionCursors.get('jobs') ?? 0)) {
         const row = entityRow('jobs',{...p,jobId:p.jobId ?? e.scope.jobId}); rows.set(`jobs:${row.id}`,row);
@@ -198,25 +221,26 @@ export class Controller {
     return boundRows([...rows.values()].slice(-40),40);
   }
   activity(): ActivityState {
-    const active = new Map<string,string>(), selections = new Map<string,Record<string,unknown>>(); let latestAgent = ''; 
+    const active = new Map<string,string>(), selections = new Map<string,Record<string,unknown>>(); let latestAgent = '', latestChat = ''; 
     for (const e of this.events) {
       if (e.scope.projectId !== this.projectId) continue;
       const p = record(e.payload), agent = text(e.scope.agentId ?? p.agentId);
       if (!agent || !e.type.startsWith('agent.') && e.type !== 'chat.user_message') continue;
       latestAgent = agent;
       if (e.type === 'chat.user_message') {
-        selections.set(agent,record(p.selection));
+        selections.set(agent,record(p.selection)); latestChat = agent;
       }
       if (['chat.user_message','agent.started','agent.turn_started','agent.retrying','agent.tool_started'].includes(e.type)) active.set(agent,e.type === 'agent.tool_started' ? `Running ${text(p.toolName) || 'tool'}` : e.type === 'agent.retrying' ? 'Retrying provider turn' : 'Working');
       if (e.type === 'agent.completed' || e.type === 'agent.failed' || e.type === 'agent.terminal_receipt' && p.retryAllowed !== true) active.delete(agent);
     }
     for (const draft of this.drafts.values()) if (draft.agentId) active.set(draft.agentId,'Writing');
-    const agentId = [...active.keys()].at(-1) ?? latestAgent;
+    // Idle, the composer names who the user is talking to (the chat agent), not the last background task agent.
+    const agentId = [...active.keys()].at(-1) ?? (latestChat || latestAgent);
     const inspection = this.agentMetadata.find(a => a.agentId === agentId);
     const explicitModel = this.selection ? modelName(this.selection.model) : '', durableSelection = selections.get(agentId);
     const observedModel = (inspection ? modelName(inspection) : '') || modelName(durableSelection?.model);
-    const model = (active.size ? observedModel : explicitModel || observedModel) || 'Default model';
-    const thinkingLevel = text(active.size ? inspection?.thinkingLevel ?? durableSelection?.thinkingLevel : this.selection?.thinkingLevel ?? inspection?.thinkingLevel ?? durableSelection?.thinkingLevel);
+    const model = (active.size ? observedModel : explicitModel || observedModel) || this.defaultModel?.name || 'Default model';
+    const thinkingLevel = text(active.size ? inspection?.thinkingLevel ?? durableSelection?.thinkingLevel : this.selection?.thinkingLevel ?? inspection?.thinkingLevel ?? durableSelection?.thinkingLevel ?? this.defaultModel?.thinkingLevel);
     const role = text(inspection?.role) || (selections.has(agentId) ? 'nosh' : agentId ? 'agent' : '');
     return {working:active.size > 0,label:active.get(agentId) ?? (this.busy ? 'Sending command' : 'Ready'),model,thinkingLevel,role,...(agentId ? {agentId} : {})};
   }
@@ -379,6 +403,7 @@ export class Controller {
         if (!current()) return;
         this.present('detail',responseRows('jobs',data),data); return;
       }
+      case '/export-paper': this.requireProject(); this.stage('/paper/export',{}); return;
       case '/cancel': case '/checkpoint': this.requireProject(); if (!rest || args.length !== 1) throw new Error('Job ID required'); this.stage(`/jobs/${encodeURIComponent(rest)}/${command.slice(1)}`,{}); return;
       case '/approvals': {
         const q = this.query(), project = this.projectId;
@@ -391,6 +416,10 @@ export class Controller {
       case '/transition': {
         this.requireProject(); if (args.length !== 4 || !['missions','directions','autoresearch'].includes(args[0]!)) throw new Error('Use /transition <family> <id> <inspected-version> <state>');
         this.stage(`/${args[0]}/${encodeURIComponent(args[1]!)}/transition`,{expectedVersion:version(args[2]),next:args[3]}); return;
+      }
+      case '/start': {
+        this.requireProject(); if (args.length !== 3 || !['missions','directions','autoresearch'].includes(args[0]!)) throw new Error('Use /start <missions|directions|autoresearch> <id> <inspected-version>');
+        this.stage(`/${args[0]}/${encodeURIComponent(args[1]!)}/start`,{expectedVersion:version(args[2])}); return;
       }
       case '/retry': {
         this.requireProject(); if (args.length !== 4 || !['missions','directions'].includes(args[0]!)) throw new Error('Use /retry <missions|directions> <id> <inspected-version> <nodeId>');
@@ -427,7 +456,7 @@ export class Controller {
       }
       case '/discard': this.pending = undefined; this.view = 'chat'; return;
       case '/paths': this.requireProject(); this.view = 'paths'; this.rows = []; this.detail = `${this.projects.find(p => p.projectId === this.projectId)?.repositoryRoot}\n\nOpen this repository in your external editor.\nPaper: docs/paper.md\nContract: .nosh/contracts/project.v<N>.json (active version in .nosh/project.json)\nUse /status and /job for daemon-owned artifact references.\nNo shell is embedded. Contract approval remains an explicit intake conversation.`; return;
-      case '/refresh': if (['status','jobs','approvals','projects','models','map'].includes(this.view)) await this.run('/'+this.view); else await this.poll(); return;
+      case '/refresh': if (['status','jobs','approvals','projects','models','map'].includes(this.view)) await this.run('/'+this.view); else { await this.poll(); await this.loadModels().catch(() => undefined); } return;
       default: throw new Error('Unknown command. Use /help.');
     }
   }

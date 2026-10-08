@@ -72,6 +72,8 @@ export function taskCommandRuns(research: ResearchControl): (projectId: string) 
 export const librarianResearchHosts = ["api.crossref.org", "api.openalex.org", "api.semanticscholar.org", "arxiv.org", "export.arxiv.org", "eutils.ncbi.nlm.nih.gov", "pubmed.ncbi.nlm.nih.gov"] as const;
 
 export class ResearchControl {
+  /** Evidence frozen for an open Review but not yet recorded (it is published with the Review's disposition). */
+  private readonly candidates = new Map<string, JsonValue>();
   constructor(private readonly store: (projectId: string) => EventStore, private readonly project: (projectId: string) => RegisteredProject, private readonly publish: (event: EventEnvelope) => void, private readonly assertWritable: (projectId: string) => void = () => {}) {}
 
   missions(projectId: string): Array<Stored<MissionProjection>> { return this.store(projectId).projections(projectId, "mission") as Array<Stored<MissionProjection>>; }
@@ -116,13 +118,40 @@ export class ResearchControl {
     if (since < 1 || expectedVersion < since || expectedVersion > mission.version) throw new Error("Mission version conflict: its state changed after the inspected version");
     return mission;
   }
+  /**
+   * One explicit user approval that walks a newly created entity to its working state (a Mission: draft → planning →
+   * awaiting_approval → running; a Direction: draft → proposed → active; Autoresearch: draft → running). Each step keeps
+   * its own idempotency key, so a retried start resumes where it stopped.
+   */
+  private assertSingleActiveMission(projectId: string, missionId: string): void {
+    if (this.missions(projectId).some((mission) => mission.entityId !== missionId && ["running", "pausing", "paused", "reviewing", "blocked", "stopping"].includes(mission.state))) throw new Error("Version 1 allows one active Mission per Project");
+  }
+  start(projectId: string, family: "missions" | "directions" | "autoresearch", entityId: string, expectedVersion: number, idempotencyKey: string): Stored<MissionProjection> | Stored<DirectionProjection> | Stored<AutoresearchProjection> {
+    const chains = { missions: ["draft", "planning", "awaiting_approval", "running"], directions: ["draft", "proposed", "active"], autoresearch: ["draft", "running"] } as const;
+    const chain: readonly string[] = chains[family];
+    const read = () => family === "missions" ? this.mission(projectId, entityId) : family === "directions" ? this.direction(projectId, entityId) : this.autoresearchExecution(projectId, entityId);
+    let current: Stored<MissionProjection> | Stored<DirectionProjection> | Stored<AutoresearchProjection> = read();
+    if (current.version !== expectedVersion) throw new Error(`Stale ${family} version ${expectedVersion}; current is ${current.version}`);
+    const from = chain.indexOf(current.state);
+    if (from < 0) throw new Error(`Cannot start from state ${current.state}`);
+    // Check the last step's precondition first, so a refused start leaves the entity where it was.
+    if (family === "missions") this.assertSingleActiveMission(projectId, entityId);
+    for (let index = from + 1; index < chain.length; index += 1) {
+      const next = chain[index]!; const key = `${idempotencyKey}:${next}`;
+      current = family === "missions" ? this.transitionMission(projectId, entityId, current.version, next as MissionState, key)
+        : family === "directions" ? this.transitionDirection(projectId, entityId, current.version, next as DirectionState, key)
+        : this.transitionAutoresearch(projectId, entityId, current.version, next as AutoresearchProjection["state"], key);
+    }
+    return current;
+  }
+
   transitionMission(projectId: string, missionId: string, expectedVersion: number, next: MissionState, idempotencyKey: string): Stored<MissionProjection> {
     const intent = { command: "mission.transition", missionId, expectedVersion, next };
     const replay = projectionIntentReplay<MissionProjection>(this.store(projectId), projectId, idempotencyKey, "mission", missionId, intent);
     if (replay) return replay;
     const current = this.mission(projectId, missionId);
     if (!isLegalMissionTransition(current.value.state, next)) throw new Error(`Illegal Mission transition ${current.value.state} -> ${next}`);
-    if (next === "running" && this.missions(projectId).some((mission) => mission.entityId !== missionId && ["running", "pausing", "paused", "reviewing", "blocked", "stopping"].includes(mission.state))) throw new Error("Version 1 allows one active Mission per Project");
+    if (next === "running") this.assertSingleActiveMission(projectId, missionId);
     if (next === "completed") {
       const packet = currentMissionCompletionPacket(this.records(projectId), missionId, current.version, current.value.graphVersion);
       const basis = this.missionCompletionBasis(projectId, missionId);
@@ -482,6 +511,9 @@ export class ResearchControl {
   }
   /** Durable Project events after a cursor; director briefs build their digest from this. */
   eventsAfter(projectId: string, afterSequence: number): EventEnvelope[] { return this.store(projectId).replay(projectId, afterSequence); }
+  offerCandidateEvidence(projectId: string, evidence: JsonValue & { evidenceId: string }): void { this.candidates.set(`${projectId}:${evidence.evidenceId}`, evidence); }
+  withdrawCandidateEvidence(projectId: string, evidenceId: string): void { this.candidates.delete(`${projectId}:${evidenceId}`); }
+  candidateEvidence(projectId: string, evidenceId: string): JsonValue | undefined { return this.candidates.get(`${projectId}:${evidenceId}`); }
   records(projectId: string, schemaName?: string): UnknownRecord[] { return this.submitted(projectId).map((entry) => entry.record).filter((record) => !schemaName || record.$schema === schemaUri(schemaName)); }
   reviews(projectId: string): JsonValue[] {
     const records = this.records(projectId);
@@ -1090,7 +1122,8 @@ export class ResearchControl {
       scope,
       correlationId: entityId,
       causationId: null,
-      payload: { entityId, state: value.state, graphVersion, ...details },
+      // The human title rides along so clients can label the entity from the event stream alone.
+      payload: { entityId, state: value.state, graphVersion, ...entityTitle(value), ...details },
     }, {
       entityType,
       entityId,
@@ -1110,7 +1143,7 @@ export class ResearchControl {
 
 function node(id: string, type: string, title: string, criterionIds: string[], dependencies: string[], createdAt: string): GraphNode { return { id, type, title, required: true, criterionIds, hardDependencies: dependencies, softDependencies: [], state: "pending", attempt: 0, maximumAttempts: 3, priority: 5, criticalWeight: 1, createdAt, lease: null }; }
 function missionCriteria(mission: MissionProjection): Array<{ criterionId: string; statement: string }> { return mission.successCriteria.map((statement, index) => ({ criterionId: `criterion_${index + 1}`, statement })); }
-function defaultMissionNodes(createdAt: string, criterionIds: string[]): GraphNode[] { const plan = `mnode_${crypto.randomUUID().replaceAll("-", "")}`; const evidence = `mnode_${crypto.randomUUID().replaceAll("-", "")}`; const review = `mnode_${crypto.randomUUID().replaceAll("-", "")}`; return [node(plan, "implementation", "Produce the bounded deliverable", criterionIds, [], createdAt), node(evidence, "literature_review", "Resolve evidence and citations", [], [], createdAt), node(review, "final_review", "Independent final review", [], [plan, evidence], createdAt)]; }
+function defaultMissionNodes(createdAt: string, criterionIds: string[]): GraphNode[] { const plan = `mnode_${crypto.randomUUID().replaceAll("-", "")}`; const evidence = `mnode_${crypto.randomUUID().replaceAll("-", "")}`; const review = `mnode_${crypto.randomUUID().replaceAll("-", "")}`; return [node(plan, "implementation", "Produce the bounded deliverable", criterionIds, [], createdAt), node(evidence, "literature_review", "Collect and cite the sources the Mission relies on (repository files and, where relevant, literature); establishing implementation results is the implementation node's job", [], [], createdAt), node(review, "final_review", "Independent final review", [], [plan, evidence], createdAt)]; }
 function missionNodeRecord(mission: MissionProjection, graphNode: GraphNode, rationale: string): JsonValue {
   return { $schema: schemaUri("mission-node"), schemaVersion: 1, missionId: mission.missionId, graphVersion: mission.graphVersion, nodeId: graphNode.id, nodeType: graphNode.type, title: graphNode.title, rationale, criterionIds: graphNode.criterionIds, hardDependencyNodeIds: graphNode.hardDependencies, softDependencyNodeIds: graphNode.softDependencies, inputArtifactIds: [], expectedOutputKinds: [], assignedRole: graphNode.type === "literature_review" ? "librarian_researcher" : ["claim_review", "final_review", "approval"].includes(graphNode.type) ? "reviewer" : "general_worker", preconditionValidatorIds: [], postconditionValidatorIds: ["validator_task.postflight"], reviewRubricIds: ["rubric_scientific.correctness"], budget: { maximumAttempts: graphNode.maximumAttempts, priority: graphNode.priority, criticalWeight: graphNode.criticalWeight }, workspacePolicy: {}, state: graphNode.state, attempt: graphNode.attempt, lease: graphNode.lease, createdAt: graphNode.createdAt };
 }
@@ -1521,4 +1554,10 @@ function domainEffectKey(record: Record<string, JsonValue>): string | null {
   if (record.$schema === schemaUri("handoff") && typeof record.handoffId === "string") return `domain-handoff:${record.handoffId}`;
   if (record.$schema === schemaUri("handoff-teachback") && typeof record.handoffId === "string") return `domain-handoff-decision:${record.handoffId}`;
   return null;
+}
+
+function entityTitle(value: unknown): { title: string } | Record<string, never> {
+  const record = value as { title?: unknown; question?: unknown; decisionQuestion?: unknown } | null;
+  const title = record?.title ?? record?.question ?? record?.decisionQuestion;
+  return typeof title === "string" && title ? { title: title.slice(0, 200) } : {};
 }

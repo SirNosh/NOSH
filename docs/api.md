@@ -23,6 +23,7 @@
 |---|---|---|---|
 | GET | `/health` | — | Liveness. |
 | POST | `/session` | bootstrap bearer | Issue a 15-minute session token. |
+| GET | `/activity` | — | Projects with non-terminal agents, Jobs, threads, Missions, Directions, or Autoresearch; empty when the daemon can stop without interrupting work (`nosh stop --if-idle`). |
 | POST | `/shutdown` | — | Stop the daemon (refused while a backup runs). |
 | GET | `/projects` | — | Registered Projects. |
 | POST | `/projects` | registration record | Register an initialized Project (used by `nosh project open`). |
@@ -31,6 +32,7 @@
 | GET | `/models` | — | Authenticated Pi models and advertised thinking levels. |
 | POST | `/chat` | `projectId`, `message`, `idempotencyKey`; optional `model`, `thinkingLevel` | Send a message to the Project's Nosh agent. |
 | GET | `/agents` | optional `projectId` | Agent inspection. |
+| PUT | `/default-model` | `model` (`provider/id[:level]`) | Set the default model for new sessions without restarting (used by `nosh model set`). |
 | GET | `/research-map` | `projectId` | One tree of what the Project is doing: Missions and Directions with graph nodes (and the worker holding each lease), Autoresearch executions with experiment states (proposed, implementing, evaluating, promoted, held, rejected, failed) and scores, live workers, and running Jobs. Used by the TUI research map (`/map`, ctrl+g). |
 | POST | `/agents` | Pi session options | Start an agent. |
 | POST | `/agents/:id/{prompt,steer,compact,abort,stop}` | `message` for prompt/steer; optional `instructions` for compact | Agent control. |

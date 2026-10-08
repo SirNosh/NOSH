@@ -7,6 +7,8 @@ export interface TuiConfig {
   bootstrapToken?: string;
   sessionToken?: string;
   currentProjectId?: string;
+  /** Where the TUI records the project it ends on, so `nosh open` reopens it. */
+  handoffPath?: string;
 }
 
 /** Tokens stay in memory. Redirects are forbidden so credentials cannot leak. */

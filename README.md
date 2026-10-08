@@ -19,10 +19,22 @@ NOSH (Networked Orchestrated Science Harness) is a local-first research harness:
 
 ## Get started
 
-You need Node >=22.19, Git, Bun >=1.3 (for the terminal UI), and a model account:
+You need Node >=22.19, Git, and a model account:
 
 - a **ChatGPT** (Plus/Pro) or **Claude** (Pro/Max) subscription, or
 - an **API key** from OpenAI, Anthropic, Google Gemini, OpenRouter, DeepSeek, Groq, Mistral, xAI, and others.
+
+Install the packaged CLI. It needs no pnpm, no build step, and no separate Bun install, because the package brings its own Bun for the terminal UI:
+
+```sh
+npm install -g nosh-harness
+nosh setup
+nosh open
+```
+
+The npm package is a small launcher. On first run it downloads NOSH from the latest [GitHub release](https://github.com/SirNosh/NOSH/releases), checks its SHA-256, and installs it under `%LOCALAPPDATA%\NOSH\harness` (or `~/.nosh/NOSH/harness`). Once a day `nosh` tells you when a newer release exists; `nosh update` installs it, and it waits while Missions, Directions, Autoresearch, Jobs, or agents are active. `nosh update --check` only reports versions, and `nosh --version` shows what is installed. Updates move forward only.
+
+Or run from a source checkout (this needs Bun >=1.3 on PATH for the terminal UI):
 
 ```sh
 corepack pnpm install --frozen-lockfile
@@ -43,7 +55,7 @@ In the terminal UI, press **Ctrl+O** to open or create a Project. Discovery then
 ## Requirements
 
 - Node >=22.19.0 for the daemon, CLI, and build; pnpm 10.28.0 (pinned in `package.json`).
-- Bun >=1.3 on PATH for the OpenTUI client only (the Windows installer does not install Bun).
+- Bun >=1.3 for the OpenTUI client only: the npm package ships it; a source checkout needs it on PATH (the Windows installer does not install Bun).
 - Git.
 - A model account, connected with `nosh setup` or `nosh login`. The `pi` CLI is optional.
 - WSL and NVIDIA tooling only for workloads that use them.
@@ -136,7 +148,7 @@ corepack pnpm release:check
 
 `release:check` includes native OpenTUI rendering and an isolated Windows installer/uninstaller smoke test. Run it with native Windows Node and Bun. For package/native-renderer checks only on Linux or macOS, run `node scripts/release-smoke.mjs --package-only`; this does not validate the Windows installer.
 
-`pnpm package:windows` clears declared compiler output directories, rebuilds, and creates an ignored release directory with CLI, daemon, TUI, packages, the Pi package, install/package helper scripts, workspace configuration, `BUILD-METADATA.json`, and public docs (including `docs/archive/` historical documents). Do not run it alongside other builds or tests. It excludes stale compiled files, private state, dependencies, and tests. It does not bundle Bun, a browser build, or relay. Repository quality/tests/schema generation are development gates; use the checkout for these, not the stripped distribution.
+`pnpm package:npm` builds `release/npm/nosh-runtime-<version>.tgz`, an npm package with the CLI, daemon, and TUI. Releases ship it as a GitHub release asset, which the `nosh-harness` launcher (`apps/launcher`) installs. To release, run `npm version patch` (it bumps the version, commits, and tags), then `git push --follow-tags`; the release workflow tests, packages, and publishes the GitHub release. The launcher itself is published to npm once and does not change between releases. Internal packages ship inside it, and third-party dependencies (including Bun) install from npm. `pnpm package:windows` clears declared compiler output directories, rebuilds, and creates an ignored release directory with CLI, daemon, TUI, packages, the Pi package, install/package helper scripts, workspace configuration, `BUILD-METADATA.json`, and public docs (including `docs/archive/` historical documents). Do not run it alongside other builds or tests. It excludes stale compiled files, private state, dependencies, and tests. It does not bundle Bun, a browser build, or relay. Repository quality/tests/schema generation are development gates; use the checkout for these, not the stripped distribution.
 
 A green unit suite does not prove real-provider behavior, Windows/WSL/GPU recovery, terminal compatibility, accessibility, backup restore on a clean machine, or independent security review.
 

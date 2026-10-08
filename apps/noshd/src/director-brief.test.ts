@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { NoshDaemon } from "./daemon.js";
 import { librarianNetworkAllowed } from "./research-control.js";
 import { directionBrief, missionBrief } from "./director-brief.js";
+import { acceptedClosureAnswer } from "./direction-supervisor.js";
 
 describe("director briefs", () => {
   it("give the Research Director its scope state and daemon-allocated cycle identity", () => {
@@ -107,5 +108,24 @@ describe("worker templates", () => {
     const decided = JSON.parse(JSON.stringify(review.records[0]).replaceAll(UNDECIDED_VERDICT, "PASS").replaceAll(UNDECIDED_STATUS, "PASS")) as Record<string, unknown>;
     expect(validateRecord(schemaUri("review-verdict"), decided)).toMatchObject({ ok: true });
     expect(validateRecord(schemaUri("episode-draft"), review.records[1])).toMatchObject({ ok: true });
+  });
+});
+
+describe("accepted-work digest in a review prompt", () => {
+  it("fits the runtime step objective limit, shrinking only the digest", async () => {
+    const { DIGEST_SLOT, fitDigest } = await import("./mission-supervisor.js");
+    const prompt = `${"p".repeat(12_000)} ${DIGEST_SLOT} tail`;
+    const fitted = fitDigest(prompt, "d".repeat(14_000));
+    expect(fitted.length).toBeLessThanOrEqual(20_000);
+    expect(fitted).toContain("digest truncated to fit"); expect(fitted.endsWith(" tail")).toBe(true);
+    expect(fitDigest(`short ${DIGEST_SLOT}`, "small digest")).toBe("short small digest");
+    expect(fitDigest("no slot here", "ignored")).toBe("no slot here");
+  });
+});
+
+describe("acceptedClosureAnswer", () => {
+  it("states the selected result, its improvement, and that selection is not a held-out evaluation", () => {
+    const answer = acceptedClosureAnswer(["exp_1"], [{ experimentId: "exp_1", promotionDecision: "held" }, { experimentId: "exp_1", promotionDecision: "promoted", metrics: [{ threshold: 0.7, cost_reduction: 0.455 }], comparison: { parentScore: -0.1667, improvement: 0.6217 } }]);
+    expect(answer).toBe(`Reviewed experiment exp_1 is the accepted frontier: daemon-measured {"threshold":0.7,"cost_reduction":0.455}, primary-metric improvement 0.6217 over its parent (-0.1667), guardrails passing. This selects a configuration on the frozen contract's evaluation data; it is not a held-out evaluation.`);
   });
 });

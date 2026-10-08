@@ -57,7 +57,9 @@ function withoutStrayClosers(text: string): string {
     if (inString) { if (escaped) escaped = false; else if (character === "\\") escaped = true; else if (character === "\"") inString = false; continue; }
     if (character === "\"") inString = true;
     else if (character === "{" || character === "[") depth += 1;
-    else if (character === "}" || character === "]") { depth -= 1; if (depth === 0) { const rest = text.slice(index + 1); return /^[\s\]}]*$/.test(rest) ? text.slice(0, index + 1) : text; } }
+    // After the complete object, only stray closers and leaked chat-template control tokens (<|im_end|>, </|im_end|>,
+    // <|endoftext|>, <|eot_id|>) may follow: they are provider artifacts, never content.
+    else if (character === "}" || character === "]") { depth -= 1; if (depth === 0) { const rest = text.slice(index + 1).replace(/<\/?\|[a-z_]+\|>/gi, ""); return /^[\s\]}]*$/.test(rest) ? text.slice(0, index + 1) : text; } }
   }
   return text;
 }

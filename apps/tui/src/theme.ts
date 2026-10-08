@@ -8,8 +8,9 @@ import { SyntaxStyle, StyledText, fg, type TextChunk } from '@opentui/core';
 export const theme = {
   background: '#0a0a0a', panel: '#141414', element: '#1e1e1e',
   border: '#3c3c3c', text: '#eeeeee', muted: '#909090',
-  accent: '#fab283', secondary: '#5c9cf5', purple: '#9d7cd8',
+  accent: '#5fd4c4', secondary: '#5c9cf5', purple: '#9d7cd8',
   success: '#7fd88f', warning: '#f5a742', error: '#e06c75', cyan: '#56b6c2',
+  logoStart: '#8ee8d8', logoEnd: '#1f9e8f',
 } as const;
 
 // OpenCode ui/border.ts SplitBorder: one uninterrupted accent, not a boxed form.
@@ -60,7 +61,7 @@ function mix(from: string, to: string, amount: number): string {
   const a = hex(from), b = hex(to);
   return '#' + a.map((channel, index) => Math.round(channel + (b[index]! - channel) * amount).toString(16).padStart(2, '0')).join('');
 }
-/** Left-to-right peach-to-violet gradient; outline strokes take a dimmer shade of the same hue. */
+/** Left-to-right light-to-deep teal gradient; outline strokes take a dimmer shade of the same hue. */
 function gradientText(lines: string[]): StyledText {
   const width = Math.max(...lines.map((line) => line.length));
   const chunks: TextChunk[] = [];
@@ -69,7 +70,7 @@ function gradientText(lines: string[]): StyledText {
     const flush = () => { if (run) chunks.push(fg(runColor)(run)); run = ''; };
     for (let column = 0; column < line.length; column++) {
       const char = line[column]!;
-      const base = mix(theme.accent, theme.purple, column / Math.max(1, width - 1));
+      const base = mix(theme.logoStart, theme.logoEnd, column / Math.max(1, width - 1));
       const color = char === ' ' ? theme.background : char === '█' || /[A-Z]/.test(char) ? base : mix(base, theme.background, 0.55);
       if (color !== runColor) { flush(); runColor = color; }
       run += char;

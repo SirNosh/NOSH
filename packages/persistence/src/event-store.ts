@@ -22,6 +22,7 @@ export type TerminalTurnReceipt = { generations?: number; failures: number; clos
 
 export class EventStore {
   readonly database: Database.Database;
+  private readonly parsed = new Map<string, EventEnvelope[]>();
 
   constructor(databasePath: string) {
     this.database = openDatabase(databasePath);
@@ -82,10 +83,25 @@ export class EventStore {
   }
 
   replay(projectId: string, afterSequence = 0): EventEnvelope[] {
-    return (this.database
+    const { events, start } = this.cachedFrom(projectId, afterSequence);
+    return events.slice(start);
+  }
+
+  /** The parsed log and the index of its first event after afterSequence. */
+  private cachedFrom(projectId: string, afterSequence: number): { events: EventEnvelope[]; start: number } {
+    // Events are append-only and immutable: parse each row once, then read only rows newer than the cache.
+    const cached = this.parsed.get(projectId) ?? [];
+    const tail = (this.database
       .prepare("SELECT event_json FROM events WHERE project_id = ? AND sequence > ? ORDER BY sequence")
-      .all(projectId, afterSequence) as Array<{ event_json: string }>)
-      .map(({ event_json }) => eventEnvelopeSchema.parse(JSON.parse(event_json)));
+      .all(projectId, cached.at(-1)?.sequence ?? 0) as Array<{ event_json: string }>)
+      .map(({ event_json }) => deepFreeze(eventEnvelopeSchema.parse(JSON.parse(event_json))));
+    let events = cached;
+    // Rows read inside an open transaction may still roll back, so they never enter the cache.
+    if (tail.length && this.database.inTransaction) events = [...cached, ...tail];
+    else if (tail.length) { for (const event of tail) cached.push(event); this.parsed.set(projectId, cached); }
+    let low = 0, high = events.length;
+    while (low < high) { const middle = (low + high) >> 1; if ((events[middle]!.sequence ?? 0) > afterSequence) high = middle; else low = middle + 1; }
+    return { events, start: low };
   }
 
   /** Bounded transport replay. Internal projections may still use replay(). */
@@ -93,14 +109,13 @@ export class EventStore {
     if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) throw new Error("Invalid replay cursor");
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) throw new Error("Replay limit must be between 1 and 1000");
     if (recent && afterSequence !== 0) throw new Error("Recent replay requires an initial zero cursor");
+    const { events: all, start } = this.cachedFrom(projectId, afterSequence);
     if (recent) {
-      const rows = this.database.prepare("SELECT event_json FROM events WHERE project_id = ? ORDER BY sequence DESC LIMIT ?").all(projectId, limit) as Array<{ event_json: string }>;
-      const events = rows.reverse().map(({ event_json }) => eventEnvelopeSchema.parse(JSON.parse(event_json)));
+      const events = all.slice(Math.max(start, all.length - limit));
       return { events, nextCursor: events.at(-1)?.sequence ?? 0, hasMore: false };
     }
-    const rows = this.database.prepare("SELECT event_json FROM events WHERE project_id = ? AND sequence > ? ORDER BY sequence LIMIT ?").all(projectId, afterSequence, limit + 1) as Array<{ event_json: string }>;
-    const events = rows.slice(0, limit).map(({ event_json }) => eventEnvelopeSchema.parse(JSON.parse(event_json)));
-    return { events, nextCursor: events.at(-1)?.sequence ?? afterSequence, hasMore: rows.length > limit };
+    const events = all.slice(start, start + limit);
+    return { events, nextCursor: events.at(-1)?.sequence ?? afterSequence, hasMore: all.length - start > limit };
   }
 
   currentSequence(projectId: string): number {
@@ -271,4 +286,9 @@ type OperationRow = { intent_id: string; project_id: string; operation_type: str
 function operationIntent(row: OperationRow): OperationIntent { return { intentId: row.intent_id, projectId: row.project_id, operationType: row.operation_type, idempotencyKey: row.idempotency_key, state: row.state, request: JSON.parse(row.request_json) as JsonValue, result: row.result_json ? JSON.parse(row.result_json) as JsonValue : null, error: row.error, createdAt: row.created_at, updatedAt: row.updated_at }; }
 function sameDraft(event: EventEnvelope, draft: EventDraft): boolean {
   return canonicalJson({ $schema: event.$schema, schemaVersion: event.schemaVersion, retention: event.retention, type: event.type, source: event.source, scope: event.scope, correlationId: event.correlationId, causationId: event.causationId, payload: event.payload }) === canonicalJson(draft);
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) { Object.freeze(value); for (const child of Object.values(value)) deepFreeze(child); }
+  return value;
 }

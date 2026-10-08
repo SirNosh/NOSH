@@ -16,8 +16,8 @@ describe("terminal JSON transport", () => {
     expect(parseTerminalOutput(text, context).records).toEqual([record]);
   });
   it("accepts a complete envelope followed only by stray closing brackets, nothing else", () => {
-    for (const trailing of ["]}", "}]}\n", " ] } "]) expect(parseTerminalOutput(text + trailing, context).records).toEqual([record]);
-    for (const trailing of [" done", "]} ok", text, "{}", "[1]"]) expect(() => parseTerminalOutput(text + trailing, context)).toThrow();
+    for (const trailing of ["]}", "}]}\n", " ] } ", "</|im_end|>", "<|im_end|>\n", "]}<|endoftext|>"]) expect(parseTerminalOutput(text + trailing, context).records).toEqual([record]);
+    for (const trailing of [" done", "]} ok", text, "{}", "[1]", "<|im_end|> more text"]) expect(() => parseTerminalOutput(text + trailing, context)).toThrow();
   });
   it("never submits apparent JSON from cancelled/error/truncated turns", async () => {
     for (const stopReason of ["error", "aborted", "length", "toolUse"]) {

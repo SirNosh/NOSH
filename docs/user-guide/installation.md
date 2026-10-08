@@ -1,5 +1,9 @@
 # Installation
 
+## From npm
+
+`npm install -g nosh-harness` installs a small launcher. Its first run downloads the latest NOSH release from GitHub into `%LOCALAPPDATA%\NOSH\harness`, verifies its SHA-256, and runs it; it needs only Node >=22.19.0 and Git. Update with `nosh update`, which waits while any Project has active work. The rest of this page covers running from a source checkout.
+
 ## Prerequisites
 
 Install Node >=22.19.0, the pinned pnpm version, and Git. You also need a model account: a ChatGPT (Plus/Pro) or Claude (Pro/Max) subscription, or an API key from a supported provider (OpenAI, Anthropic, Google Gemini, OpenRouter, DeepSeek, and others). `nosh setup` connects it; installing the `pi` CLI is optional. Install Bun >=1.3 on PATH for `nosh open` and `nosh tui`; Node continues to run the daemon and administration commands. The Windows installer does not install Bun.

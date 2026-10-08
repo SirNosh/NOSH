@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createId } from "@nosh/core";
 import { describe, expect, it } from "vitest";
 import { eventBudgetTokens, parseModelSelection, canonicalJson, eventEnvelopeSchema, missionNodeSchema, runtimeInstructionSchema, runtimeInstructionTemplateSchema, schemaUri, sha256, taskWorkspaceSchema, validateRecord } from "./index.js";
@@ -129,9 +131,21 @@ describe("model selection setting", () => {
 
 describe("validation messages", () => {
   it("name the expected shape of a missing field so one correction can fix it", () => {
-    const result = validateRecord(schemaUri("episode-draft"), { $schema: schemaUri("episode-draft"), schemaVersion: 1, episodeType: "episode_general-worker", summary: "s", facts: [{ statement: "x", evidenceRefs: [] }], decisions: [], artifactIds: [], evidenceIds: [], changedFiles: [], unresolvedQuestions: [], recommendedNextActions: [] });
+    const result = validateRecord(schemaUri("episode-draft"), { $schema: schemaUri("episode-draft"), schemaVersion: 1, episodeType: "episode_general-worker", summary: "s", facts: [{ evidenceRefs: [], confidence: "high" }], decisions: [], artifactIds: [], evidenceIds: [], changedFiles: [], unresolvedQuestions: [], recommendedNextActions: [] });
     expect(result.ok).toBe(false);
-    expect(JSON.stringify(result)).toContain("missing; expected 'low' | 'medium' | 'high'");
+    expect(JSON.stringify(result)).toContain("missing; expected string");
+  });
+  it("defaults an omitted fact confidence to medium instead of voiding the Episode", () => {
+    const defaulted = validateRecord(schemaUri("episode-draft"), { $schema: schemaUri("episode-draft"), schemaVersion: 1, episodeType: "episode_general-worker", summary: "s", facts: [{ statement: "x", evidenceRefs: [] }], decisions: [], artifactIds: [], evidenceIds: [], changedFiles: [], unresolvedQuestions: [], recommendedNextActions: [] });
+    expect(defaulted).toMatchObject({ ok: true, value: { facts: [{ statement: "x", confidence: "medium" }] } });
+  });
+  it("rejects a REVISE whose criteria all pass with no defect, and keeps a grounded one", () => {
+    const passing = JSON.parse(readFileSync(join(import.meta.dirname, "..", "..", "..", "fixtures", "schemas", "review-verdict", "minimal.valid.json"), "utf8")) as Record<string, unknown> & { criteria: Array<Record<string, unknown>> };
+    const ungrounded = validateRecord(schemaUri("review-verdict"), { ...passing, verdict: "REVISE" });
+    expect(ungrounded.ok).toBe(false);
+    expect(JSON.stringify(ungrounded)).toContain("the verdict is PASS");
+    expect(validateRecord(schemaUri("review-verdict"), { ...passing, verdict: "REVISE", criteria: passing.criteria.map((criterion) => ({ ...criterion, status: "INCONCLUSIVE" })) }).ok).toBe(true);
+    expect(validateRecord(schemaUri("review-verdict"), { ...passing, verdict: "BLOCKED" }).ok).toBe(true);
   });
 });
 
@@ -141,5 +155,15 @@ describe("budget tokens", () => {
     expect(eventBudgetTokens({ modelTokens: 46, providerTotalTokens: 100, inputTokens: 20, outputTokens: 10, cacheReadTokens: 60, cacheWriteTokens: 10 })).toBe(46);
     expect(eventBudgetTokens({ modelTokens: 42 })).toBe(42);
     expect(eventBudgetTokens(null)).toBe(0);
+  });
+});
+
+describe("bibliographic dates", () => {
+  it("accept a year, a year and month, or a full date, and reject anything else", async () => {
+    const { readFileSync } = await import("node:fs");
+    const full = JSON.parse(readFileSync(new URL("../../../fixtures/schemas/librarian-completion/full.valid.json", import.meta.url), "utf8")) as { sources: Array<Record<string, unknown>> };
+    const withDate = (publicationDate: string | null) => ({ ...full, sources: [{ ...full.sources[0], publicationDate }] });
+    for (const date of ["2016", "2016-12", "2016-12-05", null]) expect(validateRecord(schemaUri("librarian-completion"), withDate(date) as never).ok, String(date)).toBe(true);
+    for (const date of ["2016-13", "Dec 2016", "16", "2016-12-32"]) expect(validateRecord(schemaUri("librarian-completion"), withDate(date) as never).ok, date).toBe(false);
   });
 });

@@ -20,6 +20,7 @@
     "notices": "node scripts/generate-notices.mjs",
     "sbom": "node scripts/generate-sbom.mjs",
     "package:windows": "node scripts/package-release.mjs",
+    "package:npm": "node scripts/package-npm.mjs",
     "quality": "node scripts/quality-check.mjs",
     "release:smoke": "node scripts/release-smoke.mjs",
     "delegate": "node scripts/delegate.mjs",

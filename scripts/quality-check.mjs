@@ -4,8 +4,10 @@ import { spawnSync } from "node:child_process";
 
 const tsc = join("node_modules", "typescript", "bin", "tsc");
 const projects = [...["apps", "packages"].flatMap((root) => findConfigs(root))];
+// Workspace imports resolve to each package's dist/*.d.ts, so a fresh checkout needs the project references built first.
+run(process.execPath, [tsc, "-b"]);
 for (const config of projects) run(process.execPath, [tsc, "-p", config, "--noEmit", "--pretty", "false", "--noUnusedLocals", "--noUnusedParameters"]);
-run(process.execPath, [join("node_modules", "eslint", "bin", "eslint.js"), "apps/cli/src", "apps/noshd/src", "apps/tui/src", "packages", "scripts"]);
+run(process.execPath, [join("node_modules", "eslint", "bin", "eslint.js"), "apps/cli/src", "apps/noshd/src", "apps/tui/src", "apps/launcher", "packages", "scripts"]);
 run(process.execPath, [join("node_modules", "knip", "bin", "knip.js"), "--no-progress", "--include", "exports"]);
 process.stdout.write(`quality: ESLint, TypeScript unused-symbol checks (${projects.length} projects), and Knip dead-export analysis passed.\n`);
 

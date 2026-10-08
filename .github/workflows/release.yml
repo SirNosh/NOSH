@@ -20,6 +20,11 @@ jobs:
         with: { node-version-file: .nvmrc, cache: pnpm }
       - uses: oven-sh/setup-bun@v2
         with: { bun-version: "1.4.2" }
+      - name: Tag matches package version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          if ("$env:GITHUB_REF_NAME" -ne "v$version") { throw "Tag $env:GITHUB_REF_NAME does not match package.json version $version" }
       - run: pnpm install --frozen-lockfile
       - run: pnpm quality
       - run: pnpm test
@@ -32,12 +37,30 @@ jobs:
           $version = (Get-Content package.json | ConvertFrom-Json).version
           Compress-Archive -Path "release/NOSH-Research-$version/*" -DestinationPath "release/NOSH-Research-$version-windows.zip"
           (Get-FileHash "release/NOSH-Research-$version-windows.zip" -Algorithm SHA256).Hash.ToLower() + "  NOSH-Research-$version-windows.zip" | Set-Content "release/NOSH-Research-$version-windows.zip.sha256"
+      # The npm launcher (apps/launcher) installs this runtime package from the GitHub release.
+      - run: node scripts/package-npm.mjs --name nosh-runtime
+      - name: Install the runtime package and run it
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $tgz = "release/npm/nosh-runtime-$version.tgz"
+          $prefix = Join-Path $env:RUNNER_TEMP "nosh-runtime"
+          npm install --prefix $prefix (Resolve-Path $tgz) --omit=dev --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw "npm install of $tgz failed" }
+          $help = node (Join-Path $prefix "node_modules/nosh-runtime/apps/cli/dist/main.js") help
+          if (-not ($help -match "nosh setup")) { throw "nosh-runtime $version did not start" }
+          (Get-FileHash $tgz -Algorithm SHA256).Hash.ToLower() + "  nosh-runtime-$version.tgz" | Set-Content "$tgz.sha256"
       - uses: actions/attest-build-provenance@v2
-        with: { subject-path: "release/NOSH-Research-*-windows.zip" }
+        with:
+          subject-path: |
+            release/NOSH-Research-*-windows.zip
+            release/npm/nosh-runtime-*.tgz
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             release/NOSH-Research-*-windows.zip
             release/NOSH-Research-*-windows.zip.sha256
+            release/npm/nosh-runtime-*.tgz
+            release/npm/nosh-runtime-*.tgz.sha256
             release/nosh.cdx.json
             THIRD_PARTY_NOTICES.md

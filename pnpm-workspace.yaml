@@ -1,5 +1,6 @@
 packages:
   - apps/cli
+  - apps/launcher
   - apps/noshd
   - apps/tui
   - packages/*

@@ -112,6 +112,15 @@ describe("AutoresearchSupervisor", () => {
     }
   }, 90_000);
 
+  it("records negative Evidence as reviewed when the experiment Review confirms the measured failure", async () => {
+    const run = await runAutoresearchFixture({ primaryMetric: { name: "score", objective: "minimize", minimumEffect: 1 }, baselineMetrics: { score: 4 }, guardrails: [{ name: "guardrail_pass", direction: "maximize", threshold: 1 }], roundWidths: [1], execution: { runner: "native", command: [process.execPath, "-e", "require('fs').writeFileSync('metrics.json','{\"score\":2,\"guardrail_pass\":false}')"], resultPath: "metrics.json", timeoutSeconds: 30, usesGpu: false } });
+    try {
+      const review = run.records.find((record) => record.$schema === schemaUri("review-verdict") && record.reviewType === "experiment") as { reviewId: string };
+      expect(run.records.find((record) => record.$schema === schemaUri("evidence"))).toMatchObject({ evidenceType: "evidence_negative.result", quality: { status: "reviewed", reviewId: review.reviewId } });
+      expect(run.records.find((record) => record.$schema === schemaUri("experiment-result"))).toMatchObject({ promotionRecommendation: "reject", promotionDecision: "rejected" });
+    } finally { run.cleanup(); }
+  }, 90_000);
+
   it("stops after a reviewed winner reaches the frozen target", async () => {
     const run = await runAutoresearchFixture({ primaryMetric: { name: "score", objective: "minimize", minimumEffect: 1 }, baselineMetrics: { score: 4 }, stopConditions: { target: 2 }, roundWidths: [1], execution: { runner: "native", command: [process.execPath, "-e", "require('fs').writeFileSync('metrics.json','{\"score\":2}')"], resultPath: "metrics.json", timeoutSeconds: 30, usesGpu: false } });
     try {
@@ -170,6 +179,28 @@ describe("AutoresearchSupervisor", () => {
     } finally { run.cleanup(); }
   }, 90_000);
 
+  it("says when an experiment met the keep rule but its experiment Review stopped it", async () => {
+    const run = await runAutoresearchFixture(targetContract({ target: 2, maximumNoProgressRounds: 1 }), { transformReview: (record) => record.reviewType === "experiment" ? { ...record, verdict: "REVISE", recommendedPromotion: "reject", criteria: (record.criteria as Array<Record<string, JsonValue>>).map((criterion) => ({ ...criterion, status: "INCONCLUSIVE" })) } : record });
+    try {
+      expect(run.execution.state).toBe("completed");
+      const packet = run.records.find((record) => record.$schema === schemaUri("autoresearch-completion-packet")) as { bestExperimentId: string | null; decisionAnswer: string };
+      expect(packet.bestExperimentId).toBeNull();
+      expect(packet.decisionAnswer).toMatch(/^Experiments exp_[0-9a-f]+ \(experiment Review REVISE\).* met the keep rule on daemon-measured metrics, but their experiment Review did not pass/);
+    } finally { run.cleanup(); }
+  }, 90_000);
+
+  it("finishes a round interrupted after its experiments (e.g. a failed promotion) when the run is resumed", async () => {
+    let interrupted = false;
+    const run = await runAutoresearchFixture(targetContract(), { resumes: 1, transformReview: (record) => { if (record.reviewType === "experiment_round" && !interrupted) { interrupted = true; throw new Error("round interrupted"); } return record; } });
+    try {
+      expect(interrupted).toBe(true);
+      expect(run.execution.state).toBe("completed");
+      const round = run.records.find((record) => record.$schema === schemaUri("autoresearch-round") && record.round === 1) as { promotedExperimentIds: string[] } | undefined;
+      expect(round?.promotedExperimentIds).toHaveLength(1);
+      expect(run.execution.value.acceptedFrontierExperimentIds).toEqual(round?.promotedExperimentIds);
+    } finally { run.cleanup(); }
+  }, 90_000);
+
   it.each(["a stale target version", "a non-PASS verdict"])("blocks closure with %s", async (failure) => {
     const run = await runAutoresearchFixture(targetContract(), { transformReview: (record) => {
       if (record.reviewType !== "autoresearch_closure") return record;
@@ -223,7 +254,7 @@ function expectReviewedEvidenceAuthority(records: unknown[]): void {
   }
 }
 
-async function runAutoresearchFixture(evaluationContract: JsonValue, options: { transformReview?: (record: Record<string, JsonValue>) => Record<string, JsonValue>; deferCompletion?: boolean; failProposals?: number } = {}) {
+async function runAutoresearchFixture(evaluationContract: JsonValue, options: { transformReview?: (record: Record<string, JsonValue>) => Record<string, JsonValue>; deferCompletion?: boolean; failProposals?: number; resumes?: number } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "nosh-autoresearch-terminal-"));
   const repositoryRoot = join(directory, "repository");
   mkdirSync(repositoryRoot);
@@ -246,7 +277,12 @@ async function runAutoresearchFixture(evaluationContract: JsonValue, options: { 
     if (args[3] === "completed" && ++completionAttempts === 1 && options.deferCompletion) return research.autoresearchExecution(args[0], args[1]);
     return transition(...args);
   });
-  for (let cycle = 0; cycle < 80 && research.autoresearchExecution(projectId, execution.entityId).state === "running"; cycle += 1) {
+  let resumes = options.resumes ?? 0;
+  for (let cycle = 0; cycle < 80; cycle += 1) {
+    // A researcher resumes a blocked run (TUI /transition autoresearch <id> <version> running).
+    const current = research.autoresearchExecution(projectId, execution.entityId);
+    if (current.state === "blocked" && resumes > 0) { resumes -= 1; research.transitionAutoresearch(projectId, current.entityId, current.version, "running", `fixture-resume-${cycle}`); }
+    else if (current.state !== "running") break;
     // Reconstruct the supervisor to exercise its durable recovery path on every cycle.
     const supervisor = new AutoresearchSupervisor(research, agents as unknown as PiAdapter, jobs, (spec) => { const intent = store.beginOperation(projectId, "job.launch", `job-launch:${spec.jobId}`, spec as unknown as JsonValue); const job = jobs.start(spec); store.completeOperation(projectId, intent.intentId, job as unknown as JsonValue); return job; }, () => [project], join(directory, "pi-package"), (draft) => { appendFixtureEvent(store, draft); });
     await supervisor.tick();

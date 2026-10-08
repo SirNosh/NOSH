@@ -57,7 +57,7 @@ function leaf(kind: MapNode["kind"], id: string, title: string, state: string, d
 function workerNode(agent: AgentInspection): MapNode {
   const model = agent.modelId ? `${agent.modelId}${agent.thinkingLevel ? `:${agent.thinkingLevel}` : ""}` : "";
   const context = agent.contextPercent === null ? "" : `ctx ${Math.round(agent.contextPercent)}%`;
-  return leaf("worker", agent.agentId, agent.role.replaceAll("_", " "), agent.currentTool ? `running ${agent.currentTool}` : agent.status, [model, context].filter(Boolean).join(" · "));
+  return leaf("worker", agent.agentId, agent.role === "nosh" ? "project agent (chat)" : agent.role.replaceAll("_", " "), agent.currentTool ? `running ${agent.currentTool}` : agent.status, [model, context].filter(Boolean).join(" · "));
 }
 
 /** Experiment states from durable records: proposed → implementing → evaluating → promoted / held / rejected, or failed. */

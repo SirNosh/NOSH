@@ -67,6 +67,15 @@ describe('thin controller', () => {
     await controller.execute('/help'); expect(controller.inspectorRows()).toEqual([]);
     await controller.execute('/paths'); expect(controller.inspectorRows()).toEqual([]);
   });
+  it('summarizes a terminal envelope the daemon accepted even with stray trailing closers', () => {
+    const envelope = JSON.stringify({$schema:'https://nosh.dev/schemas/terminal-output/v1',schemaVersion:1,records:[{$schema:'https://nosh.dev/schemas/review-verdict/v1',summary:'PASS all criteria'}]});
+    for (const message of [envelope, envelope + ']}', envelope + '</|im_end|>']) {
+      const entries = eventEntries([{eventId:'c1',sequence:1,type:'agent.completed',payload:{message},scope:{projectId:'p',agentId:'r'}}]);
+      expect(entries[0]?.text).toBe('PASS all criteria\nAwait the host receipt for validation.');
+    }
+    const prose = eventEntries([{eventId:'c2',sequence:2,type:'agent.completed',payload:{message:'{not json} and prose'},scope:{projectId:'p',agentId:'r'}}]);
+    expect(prose[0]?.text).toBe('{not json} and prose');
+  });
   it('titles tools by their target and collapses long output', () => {
     const scope = {projectId:'p',agentId:'a'};
     const entries = eventEntries([
@@ -235,6 +244,11 @@ describe('workspace presentation', () => {
     expect(controller.activity()).toMatchObject({working:true,agentId:'a',model:'current/active',thinkingLevel:'low'});
     controller.events.push(agentEvent(5,'agent.failed',{message:'failed'})); expect(controller.activity()).toMatchObject({working:false,model:'next/future'});
   });
+  it('names the chat agent in the idle composer, not the last background task agent', () => {
+    const {controller} = setup();
+    controller.events = [agentEvent(1,'chat.user_message',{message:'hello',selection:{}}),agentEvent(2,'agent.completed',{message:'hi'}),agentEvent(3,'agent.started',{},'reviewer'),agentEvent(4,'agent.completed',{message:'PASS'},'reviewer')];
+    expect(controller.activity()).toMatchObject({working:false,agentId:'a',role:'nosh'});
+  });
   it('uses read-only catalog loads and detached pending snapshots', async () => {
     const {controller,request} = setup(); controller.view = 'help'; controller.detail = 'unchanged';
     request.mockResolvedValueOnce({projects:[{projectId:'p',repositoryRoot:'/p'}]}).mockResolvedValueOnce({models:[{provider:'x',id:'m',name:'Model',thinkingLevels:['off']} ]});
@@ -242,6 +256,17 @@ describe('workspace presentation', () => {
     expect(controller.view).toBe('help'); expect(controller.detail).toBe('unchanged'); expect(controller.models[0]?.thinkingLevels).toEqual(['off']);
     await controller.execute('/approve proposal 7'); const action = controller.pendingAction()!; action.body.expectedProposalVersion = 99;
     expect(controller.pendingAction()?.body.expectedProposalVersion).toBe(7);
+  });
+  it('lists every mission, direction and autoresearch in the sidebar, not only those in the recent event window', async () => {
+    const {controller,request} = setup();
+    request.mockImplementation(async (path: string) => path.startsWith('/missions') ? {missions:[{entityId:'mis_old',state:'completed',version:3,value:{title:'Old mission'}}]} : path.startsWith('/events') ? {events:[]} : {});
+    await controller.poll(); controller.sidebarRows(); await new Promise(resolve => setTimeout(resolve, 0));
+    expect(controller.sidebarRows().map(row => `${row.section}:${row.id}:${row.state}`)).toContain('missions:mis_old:completed');
+    expect(request).toHaveBeenCalledWith('/directions?projectId=p'); expect(request).toHaveBeenCalledWith('/autoresearch?projectId=p');
+  });
+  it('stages a paper export for the current project', async () => {
+    const {controller} = setup(); await controller.execute('/export-paper');
+    expect(controller.pendingAction()).toMatchObject({path:'/paper/export',body:{projectId:'p'}});
   });
   it('renders structured status and approval rows with inspected versions instead of JSON blobs', async () => {
     const {controller,request} = setup(); request.mockImplementation(async path => {
@@ -317,8 +342,8 @@ describe('project-scoped concurrency', () => {
     const {controller,request} = setup(); vi.spyOn(controller.client,'authenticate').mockResolvedValue();
     let onEvent!: (e:NoshEvent) => void, onState!: (s:'connecting'|'connected'|'disconnected') => void; const close=vi.fn();
     const subscribe=vi.spyOn(controller.client,'subscribe').mockImplementation((_p,_after,e,s) => {onEvent=e; onState=s; return close;});
-    request.mockResolvedValueOnce({projects:controller.projects}).mockResolvedValueOnce({events:[event(10)]});
-    await controller.initialize(); expect(subscribe).not.toHaveBeenCalled(); await controller.poll(); expect(subscribe).toHaveBeenCalledWith('p',10,expect.any(Function),expect.any(Function));
+    request.mockResolvedValueOnce({projects:controller.projects}).mockResolvedValueOnce({models:[]}).mockResolvedValueOnce({events:[event(10)]});
+    await controller.initialize(); expect(controller.modelsChecked).toBe(true); expect(controller.models).toEqual([]); expect(subscribe).not.toHaveBeenCalled(); await controller.poll(); expect(subscribe).toHaveBeenCalledWith('p',10,expect.any(Function),expect.any(Function));
     onEvent({eventId:'delta',sequence:null,type:'agent.text_delta',payload:{delta:'draft'},scope:{projectId:'p',agentId:'a'}}); expect(controller.transcriptEntries().some(e => e.status==='streaming')).toBe(true);
     onState('disconnected'); expect(controller.transcriptEntries().some(e => e.status==='streaming')).toBe(false);
     controller.selectProject('q'); expect(close).toHaveBeenCalledTimes(1); onEvent(event(11)); expect(controller.events).toEqual([]); controller.dispose();
