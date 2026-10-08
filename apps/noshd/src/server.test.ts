@@ -71,6 +71,8 @@ describe("noshd local API", () => {
     const daemon = new NoshDaemon({ dataDirectory: join(directory, "data"), bootstrapToken: token });
     const server = new LocalApiServer(daemon);
     daemon.start();
+    // This test drives Mission/Direction versions through the API; a background supervisor tick would race it.
+    daemon.missions.stop(); daemon.directions.stop(); daemon.experiments.stop();
     await server.listen({ port: 0 });
     const base = server.address();
 
