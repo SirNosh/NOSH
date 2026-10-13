@@ -23,12 +23,9 @@ describe("nosh_code sandbox", () => {
   });
 
   it("runs independent tool calls concurrently and chains dependent ones", async () => {
-    const started = performance.now();
+    // Each host call takes 200 ms; the two parallel calls finish within 100 ms of each other only if they ran together.
     const result = await runProgram(`const [a, b] = await Promise.all([tools.read("a.txt"), tools.read("b.txt")]); const c = await tools.read(a.args[0] + "+" + b.args[0]); return [c.args[0], Math.abs(a.at - b.at) < 100];`, ["read"], echo, never);
-    const elapsed = performance.now() - started;
     expect(result).toMatchObject({ ok: true, value: ["a.txt+b.txt", true], calls: 3 });
-    // Two parallel 200 ms calls plus one chained call, plus worker start-up; serial execution would take 600 ms.
-    expect(elapsed).toBeLessThan(560);
   });
 
   it("returns a failed tool call to the program as an Error it can catch", async () => {
