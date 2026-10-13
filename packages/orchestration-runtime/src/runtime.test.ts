@@ -131,6 +131,19 @@ describe("typed orchestration runtime", () => {
     expect(() => fixture.runtime.registerProgram(fixture.projectId, { $schema: schemaUri("orchestration-program"), schemaVersion: 1, programId, name: "program_orphan", version: "1.0.0", startStepId: "step_orphan", maximumSteps: 1, maximumWallClockSeconds: 1, maximumModelTokens: 1, maximumToolCalls: 1, state: { namespace: "state_orphan", schema: {}, initial: {} }, steps: [{ stepId: "step_orphan", instruction: { operation: "STOP", threadId: null, programId, reason: "orphan" }, guard: null, background: false, outputStateKey: null, nextStepId: null, failureStepId: null }] }, "program-orphan")).toThrow(/orphaned state/i);
     expect(fixture.store.projection(fixture.projectId, "program_state", programId)?.value).toEqual(state);
   });
+  test("checks each call inside nosh_code by its own tool name and counts it against the budget", async () => {
+    const fixture = setup();
+    const readOnly = skill(fixture.projectId, ["nosh_episode_submit", "nosh_workspace_read"]); fixture.runtime.registerSkill(fixture.projectId, readOnly, `skill-${crypto.randomUUID()}`);
+    const allowed = open(fixture.projectId, "program reads", { skillIds: [readOnly.skillId] }); await fixture.runtime.execute(allowed);
+    // The program call itself is exempt; its two reads are permitted by name.
+    fixture.sessions.extraTools = ["nosh_code", "nosh_workspace_read", "nosh_workspace_read"];
+    await fixture.runtime.execute(step(fixture.projectId, allowed.threadId, "read through a program"));
+    expect(fixture.runtime.episodes(fixture.projectId).at(-1)!.value.usage.toolCalls).toBe(4);
+    const denied = open(fixture.projectId, "program writes", { skillIds: [readOnly.skillId] }); await fixture.runtime.execute(denied);
+    fixture.sessions.extraTools = ["nosh_code", "nosh_workspace_write"];
+    await expect(fixture.runtime.execute(step(fixture.projectId, denied.threadId, "write through a program"))).rejects.toThrow("Skill tool policy rejected: nosh_workspace_write");
+    fixture.store.close();
+  });
 });
 
 function setup() { const root = join(tmpdir(), `nosh-runtime-${crypto.randomUUID()}`); mkdirSync(root); directories.push(root); const projectId = createId("prj"); const databasePath = join(root, "project.sqlite"); const store = new EventStore(databasePath); stores.push(store); const sessions = new Sessions((draft) => store.append(draft)); return { root, projectId, databasePath, store, sessions, runtime: runtime(projectId, root, store, sessions) }; }

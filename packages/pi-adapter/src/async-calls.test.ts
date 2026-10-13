@@ -18,7 +18,7 @@ describe("asynchronous tool calls", () => {
 
   it("answers a slow call with a placeholder, then wakes once with every result that landed together", async () => {
     const calls = new AsyncToolCalls(10); let finishRun!: (value: unknown) => void; let finishRead!: (value: unknown) => void;
-    const run = await calls.start("call_run", "nosh_run command_test", new Promise((resolve) => { finishRun = resolve; }), (value) => JSON.stringify(value));
+    const run = await calls.start("call_run", "nosh_run command_test", calls.trackRun(new Promise((resolve) => { finishRun = resolve; })), (value) => JSON.stringify(value));
     const read = await calls.start("call_read", "nosh_network_read https://api.crossref.org/x", new Promise((resolve) => { finishRead = resolve; }), (value) => JSON.stringify(value));
     expect(run).toMatchObject({ settled: false, placeholder: expect.stringContaining("nosh_run command_test is still running") });
     expect(read.settled).toBe(false);
@@ -30,6 +30,25 @@ describe("asynchronous tool calls", () => {
     expect(message).toContain("Async result of nosh_run command_test (call call_run):\n{\"exitCode\":0}");
     expect(message).toContain("Async result of nosh_network_read");
     expect(calls.worktreeBusy).toBe(false); expect(calls.idle).toBe(true);
+  });
+
+  it("counts a run as testing the worktree from its first moment, and releases it even when the run fails", async () => {
+    const calls = new AsyncToolCalls(60_000); let failRun!: (error: Error) => void; let finishRun!: (value: unknown) => void;
+    const failing = calls.trackRun(new Promise((_resolve, reject) => { failRun = reject; }));
+    const passing = calls.trackRun(new Promise((resolve) => { finishRun = resolve; }));
+    // Before any grace period: the old label check only saw runs that had already returned a placeholder.
+    expect(calls.worktreeBusy).toBe(true);
+    failRun(new Error("job failed")); await expect(failing).rejects.toThrow("job failed");
+    expect(calls.worktreeBusy).toBe(true);
+    finishRun({ exitCode: 0 }); await passing;
+    expect(calls.worktreeBusy).toBe(false);
+  });
+
+  it("aborts running programs on cancel and gives later programs a fresh signal", () => {
+    const calls = new AsyncToolCalls(); const first = calls.signal;
+    calls.cancel();
+    expect(first.aborted).toBe(true);
+    expect(calls.signal.aborted).toBe(false);
   });
 
   it("steers a result into a live run, requeues one that missed the run, and reports a heartbeat", async () => {

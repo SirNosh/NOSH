@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./dist/index.js" },
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -11,9 +13,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.80.10",
     "@earendil-works/pi-ai": "0.80.10",
+    "@earendil-works/pi-coding-agent": "0.80.10",
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
     "@nosh/core": "workspace:*",
-    "@nosh/wire": "workspace:*"
+    "@nosh/wire": "workspace:*",
+    "quickjs-emscripten-core": "0.32.0"
   }
 }

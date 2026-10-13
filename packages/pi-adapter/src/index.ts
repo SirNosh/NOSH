@@ -1,6 +1,7 @@
 import { runTerminalTurn, terminalPrompt, terminalToolNames, type TerminalContext, type TerminalHost, type TerminalStep } from "./terminal-output.js";
 export * from "./terminal-output.js";
 import { AsyncToolCalls } from "./async-calls.js";
+import { runProgram, type ProgramHost } from "./code-mode.js";
 export { AsyncToolCalls } from "./async-calls.js";
 import {
   AgentSession,
@@ -127,7 +128,7 @@ export class PiAdapter {
     const thinkingLevel = resolved?.thinkingLevel ?? options.thinkingLevel ?? globalDefaultThinkingLevel();
     const asyncCalls = new AsyncToolCalls();
     const { session } = await createAgentSession({
-      cwd: options.cwd, modelRuntime, resourceLoader: loader, customTools: this.submit ? createSessionTools(options, this.submit, asyncCalls) : [],
+      cwd: options.cwd, modelRuntime, resourceLoader: loader, customTools: this.submit ? createSessionTools(options, this.submit, asyncCalls, (event) => this.emit(event)) : [],
       ...(model ? { model } : {}), ...(activeToolIds ? { tools: activeToolIds } : {}), ...(thinkingLevel ? { thinkingLevel } : {}),
     });
     const timestamp = new Date().toISOString();
@@ -226,7 +227,7 @@ export class PiAdapter {
   }
   async abort(agentId: string): Promise<void> {
     const managed = this.required(agentId);
-    managed.cancelled = true; managed.asyncCalls.interrupt();
+    managed.cancelled = true; managed.asyncCalls.cancel();
     managed.inspection.status = "aborting";
     try {
       await managed.session.abort();
@@ -238,7 +239,7 @@ export class PiAdapter {
 
   stop(agentId: string): void {
     const managed = this.sessions.get(agentId); if (!managed) return;
-    managed.cancelled = true; managed.asyncCalls.interrupt();
+    managed.cancelled = true; managed.asyncCalls.cancel();
     managed.unsubscribe();
     managed.session.dispose();
     this.sessions.delete(agentId);
@@ -314,7 +315,7 @@ function submissionToolDescription(tool: string): string {
   const names = submissionToolSchemas[tool] ?? [];
   return `Submit one typed NOSH record. Accepted $schema: ${names.map((name) => schemaUri(name)).join(", ")}. Read the JSON Schema before submitting: ${names.map((name) => schemaDocumentPath(name)).join(", ")}.`;
 }
-export function createSessionTools(options: PiSessionOptions, submit: (tool: string, projectId: string, attemptKey: string, record: unknown, agentId: string) => unknown | Promise<unknown>, asyncCalls = new AsyncToolCalls()): ToolDefinition[] {
+export function createSessionTools(options: PiSessionOptions, submit: (tool: string, projectId: string, attemptKey: string, record: unknown, agentId: string) => unknown | Promise<unknown>, asyncCalls = new AsyncToolCalls(), emitTool: (event: EventDraft) => void = () => {}): ToolDefinition[] {
   const attemptKey = options.taskId ? `task:${options.taskId}` : `agent:${options.agentId}`;
   const submission = submissionTools.filter((name) => !(options.taskId || options.runtimeScoped) || !terminalToolNames.has(name)).map((name) => defineTool({
     // The record parameter is opaque to the provider; name the accepted schemas and where to read them.
@@ -326,16 +327,82 @@ export function createSessionTools(options: PiSessionOptions, submit: (tool: str
       return { content: [{ type: "text", text: `Receipt: ${clipJson(result, 4000)}` }], details: { accepted, receipt: json(result) } };
     },
   }));
+  const readUrl = (url: string) => readAllowedUrl(url, options.taskPermissions?.networkAllowlist ?? []);
+  // A run counts as testing the worktree from its first moment until it settles, whether called directly or from nosh_code.
+  const runCommand = (commandId: string) => asyncCalls.trackRun(Promise.resolve().then(() => submit("nosh_run", options.projectId, attemptKey, { commandId }, options.agentId)));
   const network = defineTool({
     name: "nosh_network_read", label: "nosh_network_read", description: "Read one HTTPS URL whose hostname is explicitly allowlisted by the Task Packet.",
     parameters: Type.Object({ url: Type.String({ minLength: 1, maxLength: 2_048 }) }),
     async execute(toolCallId, parameters) {
-      const outcome = await asyncCalls.start(toolCallId, `nosh_network_read ${parameters.url.slice(0, 200)}`, readAllowedUrl(parameters.url, options.taskPermissions?.networkAllowlist ?? []), (value) => clipJson(value, 60_000));
+      const outcome = await asyncCalls.start(toolCallId, `nosh_network_read ${parameters.url.slice(0, 200)}`, readUrl(parameters.url), (value) => clipJson(value, 60_000));
       if (!outcome.settled) return { content: [{ type: "text", text: outcome.placeholder }], details: { running: true } };
       return { content: [{ type: "text", text: JSON.stringify(outcome.value) }], details: json(outcome.value) };
     },
   });
-  return [...submission, network, ...workspaceTools(options, asyncCalls), ...runTools(options, submit, asyncCalls), ...artifactTools(options, submit)];
+  const tools = [...submission, network, ...workspaceTools(options, asyncCalls), ...runTools(options, runCommand, asyncCalls), ...artifactTools(options, submit)];
+  const code = codeTool(options, tools, { readUrl, runCommand }, asyncCalls, emitTool);
+  return code ? [...tools, code] : tools;
+}
+/** Guest function name -> the session tool it calls. Typed submissions and terminal tools are never reachable from a program. */
+const CODE_FUNCTIONS = { read: "nosh_workspace_read", write: "nosh_workspace_write", edit: "nosh_workspace_edit", run: "nosh_run", artifact: "nosh_artifact_read", fetch: "nosh_network_read" } as const;
+type CodeFunction = keyof typeof CODE_FUNCTIONS;
+const CODE_SIGNATURES: Record<CodeFunction, string> = {
+  read: "read(path) -> file text", write: "write(path, content)", edit: "edit(path, oldText, newText)",
+  run: "run(commandId) -> run result (exitCode, stdoutTail, ...)", artifact: "artifact(artifactId, offset?) -> artifact", fetch: "fetch(url) -> response",
+};
+const codeModeEnabled = () => process.env.NOSH_CODE_MODE !== "off";
+/** The guest functions this session may call: those whose tool is active, so a program never exceeds the session's own authority. */
+function codeFunctions(active: readonly string[] | undefined): CodeFunction[] {
+  if (!active || !codeModeEnabled()) return [];
+  return (Object.keys(CODE_FUNCTIONS) as CodeFunction[]).filter((name) => active.includes(CODE_FUNCTIONS[name]));
+}
+function codeArgument(value: unknown, label: string, maximum: number, minimum = 1): string {
+  if (typeof value !== "string" || value.length < minimum || value.length > maximum) throw new Error(`${label} must be a string of ${minimum}-${maximum} characters`);
+  return value;
+}
+function codeTool(options: PiSessionOptions, tools: readonly ToolDefinition[], raw: { readUrl: (url: string) => Promise<unknown>; runCommand: (commandId: string) => Promise<unknown> }, asyncCalls: AsyncToolCalls, emitTool: (event: EventDraft) => void): ToolDefinition | undefined {
+  const registered = new Set(tools.map((tool) => tool.name));
+  const functions = codeFunctions(executionToolIds(options)).filter((name) => registered.has(CODE_FUNCTIONS[name]));
+  if (!functions.length) return undefined;
+  const direct = (name: string, callId: string, parameters: Record<string, unknown>) => tools.find((tool) => tool.name === name)!.execute(callId, parameters as never, undefined, undefined, {} as never);
+  // Each function runs the same checked implementation as the direct tool, minus the async placeholder: the program awaits real results.
+  const implementations: Record<CodeFunction, (args: unknown[], callId: string) => Promise<unknown>> = {
+    read: async ([path], callId) => { const result = await direct("nosh_workspace_read", callId, { path: codeArgument(path, "path", 1_000) }); const [first] = result.content; return first?.type === "text" ? first.text : ""; },
+    write: async ([path, content], callId) => (await direct("nosh_workspace_write", callId, { path: codeArgument(path, "path", 1_000), content: codeArgument(content, "content", 2_000_000, 0) })).details,
+    edit: async ([path, oldText, newText], callId) => (await direct("nosh_workspace_edit", callId, { path: codeArgument(path, "path", 1_000), oldText: codeArgument(oldText, "oldText", 1_000_000, 0), newText: codeArgument(newText, "newText", 1_000_000, 0) })).details,
+    run: async ([commandId]) => raw.runCommand(codeArgument(commandId, "commandId", 200)),
+    artifact: async ([artifactId, offset], callId) => {
+      if (offset !== undefined && (!Number.isInteger(offset) || (offset as number) < 0)) throw new Error("offset must be a non-negative integer");
+      return (await direct("nosh_artifact_read", callId, { artifactId: codeArgument(artifactId, "artifactId", 64, 5), ...(offset === undefined ? {} : { offset }) })).details;
+    },
+    fetch: async ([url]) => raw.readUrl(codeArgument(url, "url", 2_048)),
+  };
+  const recordInner = (type: "agent.tool_started" | "agent.tool_completed", payload: Record<string, JsonValue>) => emitTool({ ...eventBase(options), retention: "persistent", type, payload });
+  return defineTool({
+    name: "nosh_code", label: "nosh_code",
+    description: `Run a short JavaScript program (the body of an async function: use await and return) that calls your tools, to do in one step what would otherwise take several: run independent calls together with Promise.all, feed one result into the next call, and filter a large result down to what you need before it reaches you. Functions: ${functions.map((name) => `tools.${CODE_SIGNATURES[name]}`).join("; ")}. A failed call throws an Error you can catch. There is no filesystem, network, timer, or module access beyond these functions. Limits: 50 calls, 5 s of computation; the return value and console.log output come back as JSON, clipped to 12,000 characters. Every call is checked and recorded exactly like a direct tool call.`,
+    parameters: Type.Object({ code: Type.String({ minLength: 1, maxLength: 20_000 }) }),
+    async execute(toolCallId, parameters) {
+      const host: ProgramHost = async (name, args, index) => {
+        const fn = name as CodeFunction; const toolName = CODE_FUNCTIONS[fn]; const callId = `${toolCallId}:${index}`;
+        recordInner("agent.tool_started", { toolCallId: callId, toolName, args: json(args), parentToolCallId: toolCallId });
+        try {
+          const value = await implementations[fn](args, callId);
+          recordInner("agent.tool_completed", { toolCallId: callId, toolName, isError: false, result: json(value), parentToolCallId: toolCallId });
+          return value;
+        } catch (error) {
+          recordInner("agent.tool_completed", { toolCallId: callId, toolName, isError: true, result: { error: error instanceof Error ? error.message : String(error) }, parentToolCallId: toolCallId });
+          throw error;
+        }
+      };
+      // The program as a whole is the async unit: a long one (e.g. it runs the tests) returns a placeholder and wakes the model later.
+      const outcome = await asyncCalls.start(toolCallId, "nosh_code", runProgram(parameters.code, functions, host, asyncCalls.signal), (value) => clipJson(value, 12_000));
+      if (!outcome.settled) return { content: [{ type: "text", text: outcome.placeholder }], details: { running: true } };
+      const result = outcome.value as { ok?: boolean; error?: string; logs?: string[] };
+      if (result.ok === false) throw new Error(`Program failed: ${result.error ?? "unknown error"}${result.logs?.length ? `\nLogs: ${result.logs.join("\n")}` : ""}`);
+      return { content: [{ type: "text", text: clipJson(outcome.value, 12_000) }], details: json(outcome.value) };
+    },
+  });
 }
 /** Read-only, daemon-checked view of Project Artifacts. Files are cited as "artifact:<path>" in final records and snapshotted by the daemon. */
 function artifactTools(options: PiSessionOptions, submit: (tool: string, projectId: string, attemptKey: string, record: unknown, agentId: string) => unknown | Promise<unknown>): ToolDefinition[] {
@@ -352,16 +419,15 @@ function artifactTools(options: PiSessionOptions, submit: (tool: string, project
   })];
 }
 /** The agent never spawns processes: nosh_run asks the daemon to run one command declared in the approved Project contract as a supervised Job in this task's worktree. */
-function runTools(options: PiSessionOptions, submit: (tool: string, projectId: string, attemptKey: string, record: unknown, agentId: string) => unknown | Promise<unknown>, asyncCalls: AsyncToolCalls): ToolDefinition[] {
+function runTools(options: PiSessionOptions, runCommand: (commandId: string) => Promise<unknown>, asyncCalls: AsyncToolCalls): ToolDefinition[] {
   if (options.taskPermissions?.subprocess !== "allowlisted" || !options.taskPermissions.allowedToolIds.includes("tool_nosh.run") || !options.taskWorkspace || !options.taskId) return [];
-  const taskId = options.taskId;
   return [defineTool({
     name: "nosh_run", label: "nosh_run",
     description: "Run one command declared in the approved Project contract, by commandId, in this task's worktree as a supervised daemon Job; returns exit code and output tails. The daemon first commits your current edits, so each run is tied to an exact commit. Asynchronous: a long run returns a placeholder at once and its result wakes you later; edits are refused while it runs. Re-running a command on an unchanged commit returns the recorded result instantly, so run again only after edits. Only a passing run on your final content may be cited as a validator (cite its jobId in validatorRunIds): run it after your last edit.",
     parameters: Type.Object({ commandId: Type.String({ minLength: 1, maxLength: 200 }) }),
     async execute(toolCallId, parameters) {
       // Asynchronous: a run longer than the grace period returns a placeholder now and its result wakes the model later.
-      const outcome = await asyncCalls.start(toolCallId, `nosh_run ${parameters.commandId}`, (async () => submit("nosh_run", options.projectId, `task:${taskId}`, { commandId: parameters.commandId }, options.agentId))(), (value) => clipJson(value, 12_000));
+      const outcome = await asyncCalls.start(toolCallId, `nosh_run ${parameters.commandId}`, runCommand(parameters.commandId), (value) => clipJson(value, 12_000));
       if (!outcome.settled) return { content: [{ type: "text", text: outcome.placeholder }], details: { running: true } };
       return { content: [{ type: "text", text: clipJson(outcome.value, 12_000) }], details: json(outcome.value) };
     },
@@ -433,11 +499,15 @@ function atomicWorkspaceReplace(options: PiSessionOptions, path: string, content
     if (existsSync(temporary)) unlinkSync(temporary);
   }
 }
-export function mapPiEvent(scope: PiSessionScope, event: AgentSessionEvent, previousUsage: number | ModelUsage = 0): EventDraft | undefined {
-  const base = {
+/** The envelope every Pi-sourced event shares, so calls made inside nosh_code are recorded exactly like direct ones. */
+function eventBase(scope: PiSessionScope) {
+  return {
     $schema: schemaUri("event"), schemaVersion: 1 as const, source: "pi", correlationId: scope.taskId, causationId: null,
     scope: { projectId: scope.projectId, missionId: scope.missionId, directionId: scope.directionId, autoresearchId: scope.autoresearchId, experimentId: scope.experimentId, runId: scope.runId, jobId: scope.jobId, agentId: scope.agentId },
   };
+}
+export function mapPiEvent(scope: PiSessionScope, event: AgentSessionEvent, previousUsage: number | ModelUsage = 0): EventDraft | undefined {
+  const base = eventBase(scope);
   switch (event.type) {
     case "agent_start": return { ...base, retention: "persistent", type: "agent.started", payload: {} };
     case "agent_end": { const current = modelUsage(event.messages); const previous = typeof previousUsage === "number" ? { totalTokens: previousUsage, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } : previousUsage; const usage = { modelTokens: budgetTokens(delta(current.totalTokens, previous.totalTokens), delta(current.inputTokens, previous.inputTokens), delta(current.outputTokens, previous.outputTokens), delta(current.cacheReadTokens, previous.cacheReadTokens), delta(current.cacheWriteTokens, previous.cacheWriteTokens)), providerTotalTokens: delta(current.totalTokens, previous.totalTokens), inputTokens: delta(current.inputTokens, previous.inputTokens), outputTokens: delta(current.outputTokens, previous.outputTokens), cacheReadTokens: delta(current.cacheReadTokens, previous.cacheReadTokens), cacheWriteTokens: delta(current.cacheWriteTokens, previous.cacheWriteTokens) }; const assistant = latestAssistant(event.messages); const failure = assistantFailure(assistant); if (failure) return { ...base, retention: "persistent", type: event.willRetry === true ? "agent.retrying" : "agent.failed", payload: { ...failure, ...usage, ...(typeof event.willRetry === "boolean" ? { willRetry: event.willRetry } : {}) } }; return { ...base, retention: "persistent", type: "agent.completed", payload: { message: assistantText(event.messages), ...usage, ...(typeof event.willRetry === "boolean" ? { willRetry: event.willRetry } : {}) } }; }
@@ -626,7 +696,9 @@ export function sessionToolIds(options: Pick<PiSessionOptions, "taskId" | "taskP
 }
 function executionToolIds(options: PiSessionOptions): string[] | undefined {
   const ids = sessionToolIds(options);
-  return options.taskId || options.runtimeScoped ? (ids ?? [...submissionTools, "read", "edit", "write", "bash", "grep", "find", "ls"]).filter((name) => !terminalToolNames.has(name) && (!options.tools || options.tools.includes(name))) : ids;
+  const active = options.taskId || options.runtimeScoped ? (ids ?? [...submissionTools, "read", "edit", "write", "bash", "grep", "find", "ls"]).filter((name) => !terminalToolNames.has(name) && (!options.tools || options.tools.includes(name))) : ids;
+  // nosh_code composes tools the session already has; unscoped chat (no explicit list) never gets it.
+  return active && codeFunctions(active).length ? [...active, "nosh_code"] : active;
 }
 function assertEnforceableTaskPermissions(options: PiSessionOptions): void {
   const permissions = options.taskPermissions;

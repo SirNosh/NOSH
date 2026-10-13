@@ -1,6 +1,6 @@
 import { createId } from "@nosh/core";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { EventDraft } from "@nosh/wire";
 import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -313,5 +313,103 @@ describe("default terminal tool without a Task Packet", () => {
     const taskId = createId("tsk");
     expect(sessionToolIds({ taskId, role: "reviewer" })).toEqual(["nosh_artifact_read", "nosh_review_submit"]);
     for (const role of ["general_worker", "research_director", "mission_director"] as const) expect(sessionToolIds({ taskId, role })).toEqual(["nosh_response_submit"]);
+  });
+});
+
+describe("nosh_code", () => {
+  const workspace = { worktreeId: "wt_code", branch: "main", startingCommit: "a".repeat(40), writeScopes: ["src/**"], protectedScopes: [".nosh/**"] };
+  const permissions = (allowedToolIds: string[], subprocess: "disabled" | "allowlisted" = "disabled") => ({ network: "disabled" as const, subprocess, gitCommit: false, gitPush: false, delegation: "request_only" as const, networkAllowlist: [], allowedToolIds });
+  // Programs run in a worker loaded next to the compiled module, so behaviour is exercised from dist (built by `pnpm test`).
+  const compiled = async () => await import(new URL("../dist/index.js", import.meta.url).href) as typeof import("./index.js");
+
+  it("is offered only to sessions that already hold a tool it can call, and NOSH_CODE_MODE=off removes it", async () => {
+    const adapter = new PiAdapter(() => undefined, () => ({ accepted: true }), testRuntime()); const packagePath = resolve(import.meta.dirname, "..", "..", "..", "pi-package");
+    const cwd = mkdtempSync(join(tmpdir(), "nosh-code-exposure-"));
+    const active = async (options: Partial<Parameters<PiAdapter["start"]>[0]>) => { const agentId = createId("agt"); try { return (await adapter.start({ ...scope, agentId, role: "general_worker", cwd, packagePath, model: { provider: "provider-a", id: "reasoning-model" }, ...options })).activeToolIds; } finally { adapter.stop(agentId); } };
+    try {
+    expect(await active({ taskPermissions: permissions(["tool_pi.read", "tool_pi.edit"]), taskWorkspace: workspace })).toEqual(expect.arrayContaining(["nosh_code", "nosh_workspace_read", "nosh_workspace_edit"]));
+    // Reviewers batch-read Artifacts; Directors have no tools; unscoped Project chat never gets programs.
+    expect(await active({ role: "reviewer" })).toEqual(expect.arrayContaining(["nosh_code", "nosh_artifact_read"]));
+    expect(await active({ role: "mission_director" })).not.toContain("nosh_code");
+    expect(await active({ role: "nosh", taskId: null })).not.toContain("nosh_code");
+    process.env.NOSH_CODE_MODE = "off";
+    try { expect(await active({ taskPermissions: permissions(["tool_pi.read"]), taskWorkspace: workspace })).not.toContain("nosh_code"); } finally { delete process.env.NOSH_CODE_MODE; }
+    } finally { rmSync(cwd, { recursive: true, force: true }); }
+  });
+
+  it("batches checked workspace calls, records each one like a direct call, and exposes no other tools", async () => {
+    const { createSessionTools: tools } = await compiled();
+    const directory = mkdtempSync(join(tmpdir(), "nosh-code-")); mkdirSync(join(directory, "src"));
+    writeFileSync(join(directory, "src", "a.ts"), "export const a = 1;\n// TODO a\n"); writeFileSync(join(directory, "src", "b.ts"), "export const b = 2;\n// TODO b\n");
+    const events: EventDraft[] = [];
+    try {
+      const code = tools({ ...scope, role: "general_worker", cwd: directory, packagePath: ".", taskPermissions: permissions(["tool_pi.read", "tool_pi.edit"]), taskWorkspace: workspace }, () => ({ accepted: true }), undefined, (event) => events.push(event)).find((tool) => tool.name === "nosh_code")!;
+      expect(code.description).toContain("tools.read(path)"); expect(code.description).not.toContain("tools.run");
+      const result = await code.execute("call_code", { code: `const files = await Promise.all(["src/a.ts", "src/b.ts"].map((path) => tools.read(path)));
+        let escaped; try { await tools.read("../outside.txt"); } catch (error) { escaped = error.message; }
+        await tools.edit("src/a.ts", "a = 1", "a = 10");
+        return { todos: files.map((text) => text.split(String.fromCharCode(10)).filter((line) => line.includes("TODO"))), escaped, functions: Object.keys(tools) };` }, undefined, undefined, {} as never);
+      const value = (result.details as { value: { todos: string[][]; escaped: string; functions: string[] } }).value;
+      expect(value.todos).toEqual([["// TODO a"], ["// TODO b"]]);
+      expect(value.escaped).toContain("escapes the assigned root");
+      // tool_pi.read also grants Artifact reads (sessionToolIds); write, run, and fetch were never granted.
+      expect(value.functions).toEqual(["read", "edit", "artifact"]);
+      expect(readFileSync(join(directory, "src", "a.ts"), "utf8")).toContain("a = 10");
+      const completed = events.filter((event) => event.type === "agent.tool_completed").map((event) => event.payload as Record<string, unknown>);
+      expect(completed.map((payload) => [payload.toolName, payload.isError, payload.parentToolCallId])).toEqual([
+        ["nosh_workspace_read", false, "call_code"], ["nosh_workspace_read", false, "call_code"], ["nosh_workspace_read", true, "call_code"], ["nosh_workspace_edit", false, "call_code"],
+      ]);
+      expect(events.filter((event) => event.type === "agent.tool_started")).toHaveLength(4);
+      expect(events[0]).toMatchObject({ source: "pi", correlationId: scope.taskId, scope: { projectId: scope.projectId, agentId: scope.agentId } });
+      await expect(code.execute("call_bad", { code: `throw new Error("nope")` }, undefined, undefined, {} as never)).rejects.toThrow("Program failed: Error: nope");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("runs in a real Pi turn: the model calls nosh_code, receives the filtered result, then answers", async () => {
+    const { PiAdapter: Adapter, terminalOutputSchema } = await compiled();
+    const cwd = mkdtempSync(join(tmpdir(), "nosh-code-turn-")); writeFileSync(join(cwd, "a.txt"), "one\ntwo\n"); writeFileSync(join(cwd, "b.txt"), "three\nfour\n");
+    const record = { $schema: "https://nosh.dev/schemas/task-failure/v1", schemaVersion: 1 };
+    const final = JSON.stringify({ $schema: terminalOutputSchema, schemaVersion: 1, records: [record] });
+    const seen: string[] = []; const events: EventDraft[] = []; const accepted: unknown[] = [];
+    const faux = fauxProvider({ provider: "code-proof", api: "code-proof-api", models: [{ id: "deterministic", reasoning: false }] });
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("nosh_code", { code: "const [a, b] = await Promise.all([tools.read('a.txt'), tools.read('b.txt')]); return (a + b).trim().split(String.fromCharCode(10)).length;" }, { id: "call_code" })]),
+      (ctx) => { seen.push(JSON.stringify(ctx.messages)); return fauxAssistantMessage(final); },
+    ]);
+    const runtime = { hasConfiguredAuth: () => true, getAuth: async () => ({ auth: { apiKey: "fake" }, env: {} }), getAvailable: async () => faux.models, getProviders: () => [faux.provider], streamSimple: (model: Model<Api>, ctx: never, options: never) => faux.provider.stream(model, ctx, options) } as unknown as ModelRuntime;
+    const host = { reject: async (_context: unknown, reason: string) => { throw new Error(`unexpected rejection: ${reason}`); }, submit: async (_bound: unknown, records: unknown) => { accepted.push(records); return { accepted: true, retryAllowed: false, effect: { state: "completed" } }; } };
+    const agentId = createId("agt");
+    const adapter = new Adapter((event) => events.push(event), () => ({ accepted: true }), runtime, host as never);
+    try {
+      await adapter.start({ ...scope, agentId, role: "general_worker", cwd, packagePath: resolve(import.meta.dirname, "..", "..", "..", "pi-package"), model: { provider: "code-proof", id: "deterministic" },
+        taskPermissions: permissions(["tool_pi.read", "tool_nosh.response.submit"]), taskWorkspace: { ...workspace, writeScopes: ["**"] } });
+      await adapter.prompt(agentId, "Count the lines of a.txt and b.txt.");
+      expect(seen[0]).toContain('\\"value\\":4');
+      expect(accepted).toEqual([[record]]);
+      const completed = events.filter((event) => event.type === "agent.tool_completed").map((event) => event.payload as Record<string, unknown>);
+      expect(completed.map((payload) => [payload.toolName, payload.parentToolCallId ?? null])).toEqual([["nosh_workspace_read", "call_code"], ["nosh_workspace_read", "call_code"], ["nosh_code", null]]);
+    } finally { adapter.stop(agentId); rmSync(cwd, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it("routes tools.run to the daemon, refuses edits while it tests the worktree, and goes async when the program runs long", async () => {
+    const { createSessionTools: tools, AsyncToolCalls: Calls } = await compiled();
+    const directory = mkdtempSync(join(tmpdir(), "nosh-code-run-")); mkdirSync(join(directory, "src")); writeFileSync(join(directory, "src", "a.ts"), "export const a = 1;\n");
+    const submitted: unknown[][] = [];
+    const submit = async (...values: unknown[]) => { submitted.push(values); await new Promise((resolve) => setTimeout(resolve, 300)); return { accepted: true, exitCode: 0, stdoutTail: "1 passed" }; };
+    const asyncCalls = new Calls(50);
+    try {
+      const code = tools({ ...scope, role: "general_worker", cwd: directory, packagePath: ".", taskPermissions: permissions(["tool_pi.read", "tool_pi.edit", "tool_nosh.run"], "allowlisted"), taskWorkspace: workspace }, submit, asyncCalls).find((tool) => tool.name === "nosh_code")!;
+      const placeholder = await code.execute("call_run_code", { code: `const run = tools.run("command_test");
+        let refused; try { await tools.edit("src/a.ts", "a = 1", "a = 2"); } catch (error) { refused = error.message; }
+        const result = await run; return { exitCode: result.exitCode, refused };` }, undefined, undefined, {} as never);
+      expect((placeholder.content[0] as { text: string }).text).toContain("nosh_code is still running");
+      const message = await asyncCalls.next(10_000);
+      expect(message).toContain("Async result of nosh_code (call call_run_code)");
+      expect(message).toContain("\"exitCode\":0");
+      expect(message).toContain("edits are refused");
+      expect(submitted).toEqual([["nosh_run", scope.projectId, `task:${scope.taskId}`, { commandId: "command_test" }, scope.agentId]]);
+      expect(asyncCalls.worktreeBusy).toBe(false);
+      expect(readFileSync(join(directory, "src", "a.ts"), "utf8")).toBe("export const a = 1;\n");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });

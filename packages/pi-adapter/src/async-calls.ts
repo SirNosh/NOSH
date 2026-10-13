@@ -15,13 +15,17 @@ export class AsyncToolCalls {
   private readonly pending = new Map<string, { label: string; startedAt: number }>();
   private readonly inbox: string[] = [];
   private waiters: Array<() => void> = [];
+  private runs = 0;
+  private programs = new AbortController();
   /** Set by the session owner: delivers a result into a live agent run; returns false when no run is live. */
   deliver: (text: string) => boolean = () => false;
 
   constructor(private readonly graceMs = ASYNC_GRACE_MS) {}
 
-  /** True while a call that reads or writes the task worktree (a nosh_run) is in flight. */
-  get worktreeBusy(): boolean { return [...this.pending.values()].some((call) => call.label.startsWith("nosh_run")); }
+  /** True while a nosh_run (direct, or inside a nosh_code program) is testing the task worktree. */
+  get worktreeBusy(): boolean { return this.runs > 0; }
+  /** Fires when the session is aborted or stopped: running nosh_code programs stop. */
+  get signal(): AbortSignal { return this.programs.signal; }
   get running(): string[] { return [...this.pending.entries()].map(([callId, call]) => `${call.label} (call ${callId}, ${Math.round((Date.now() - call.startedAt) / 1000)}s)`); }
   get idle(): boolean { return !this.pending.size && !this.inbox.length; }
 
@@ -40,6 +44,9 @@ export class AsyncToolCalls {
     });
     return { settled: false, placeholder: `${label} is still running in the background. Its result arrives in a later message that wakes you: continue with independent read-only work, or end your turn with no tool calls to wait for it. Do not give your final answer while it is running.` };
   }
+
+  /** Marks a nosh_run as testing the worktree from the moment it starts until it settles, whatever its outcome. */
+  trackRun<T>(work: Promise<T>): Promise<T> { this.runs += 1; return work.finally(() => { this.runs -= 1; }); }
 
   /** Re-queue messages that were steered into a run that ended before consuming them. */
   requeue(texts: readonly string[]): void { if (texts.length) { this.inbox.unshift(...texts); this.wake(); } }
@@ -60,6 +67,9 @@ export class AsyncToolCalls {
 
   /** Wakes a sleeping wake loop at once (abort/stop); the loop re-checks cancellation. */
   interrupt(): void { this.wake(); }
+
+  /** Abort/stop: stops running nosh_code programs and wakes the loop; later programs get a fresh signal. */
+  cancel(): void { this.programs.abort(); this.programs = new AbortController(); this.wake(); }
 
   private wake(): void { const waiters = this.waiters; this.waiters = []; for (const waiter of waiters) waiter(); }
 }

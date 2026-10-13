@@ -114,6 +114,8 @@ Generated from the production dependency graph in `pnpm-lock.yaml`. NOSH source 
 - @earendil-works/pi-ai 0.80.10 — https://github.com/earendil-works/pi#readme
 - @earendil-works/pi-coding-agent 0.80.10 — https://github.com/earendil-works/pi#readme
 - @earendil-works/pi-tui 0.80.10 — https://github.com/earendil-works/pi#readme
+- @jitl/quickjs-ffi-types 0.32.0 — https://github.com/justjake/quickjs-emscripten#readme
+- @jitl/quickjs-wasmfile-release-sync 0.32.0 — https://github.com/justjake/quickjs-emscripten#readme
 - @mariozechner/clipboard 0.3.9 — https://github.com/badlogic/clipboard#readme
 - @mariozechner/clipboard-linux-x64-gnu 0.3.9 — https://github.com/badlogic/clipboard#readme
 - @mariozechner/clipboard-linux-x64-musl 0.3.9 — https://github.com/badlogic/clipboard#readme
@@ -174,6 +176,7 @@ Generated from the production dependency graph in `pnpm-lock.yaml`. NOSH source 
 - prebuild-install 7.1.3 — https://github.com/prebuild/prebuild-install
 - proper-lockfile 4.1.2 — https://github.com/moxystudio/node-proper-lockfile
 - pump 3.0.4 — https://github.com/mafintosh/pump#readme
+- quickjs-emscripten-core 0.32.0 — https://github.com/justjake/quickjs-emscripten#readme
 - readable-stream 3.6.2 — https://github.com/nodejs/readable-stream#readme
 - retry 0.12.0, 0.13.1 — https://github.com/tim-kos/node-retry
 - safe-buffer 5.2.1 — https://github.com/feross/safe-buffer
