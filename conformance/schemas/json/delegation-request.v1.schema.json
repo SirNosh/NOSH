@@ -1,0 +1,120 @@
+{
+  "$ref": "#/definitions/delegation-request",
+  "definitions": {
+    "delegation-request": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/delegation-request/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "requestingTaskId": {
+          "type": "string",
+          "pattern": "^tsk_[0-9a-f]{32}$"
+        },
+        "requestingAgentId": {
+          "type": "string",
+          "pattern": "^agt_[0-9a-f]{32}$"
+        },
+        "requestedRole": {
+          "type": "string",
+          "enum": [
+            "librarian_researcher",
+            "general_worker",
+            "reviewer"
+          ]
+        },
+        "proposedObjective": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "proposedInputs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          }
+        },
+        "proposedOutputs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          }
+        },
+        "scopeBoundaries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "maxItems": 100
+        },
+        "budgetEstimate": {
+          "type": "object",
+          "properties": {
+            "modelTokens": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "wallClockSeconds": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "modelTokens",
+            "wallClockSeconds"
+          ],
+          "additionalProperties": false
+        },
+        "dependencyEffect": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "submittedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "requestId",
+        "requestingTaskId",
+        "requestingAgentId",
+        "requestedRole",
+        "proposedObjective",
+        "reason",
+        "proposedInputs",
+        "proposedOutputs",
+        "scopeBoundaries",
+        "budgetEstimate",
+        "dependencyEffect",
+        "submittedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/delegation-request/v1"
+}

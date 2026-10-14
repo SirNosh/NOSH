@@ -1,0 +1,164 @@
+{
+  "$ref": "#/definitions/skill-manifest",
+  "definitions": {
+    "skill-manifest": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/skill-manifest/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "skillId": {
+          "type": "string",
+          "pattern": "^skl_[0-9a-f]{32}$"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "activation": {
+          "type": "object",
+          "properties": {
+            "roles": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "nosh",
+                  "mission_director",
+                  "research_director",
+                  "librarian_researcher",
+                  "general_worker",
+                  "reviewer"
+                ]
+              },
+              "minItems": 1
+            },
+            "requiredCapabilities": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "maxItems": 500
+            },
+            "episodeTypes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "maxItems": 500
+            }
+          },
+          "required": [
+            "roles",
+            "requiredCapabilities",
+            "episodeTypes"
+          ],
+          "additionalProperties": false
+        },
+        "promptFragment": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "permittedTools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "maxItems": 200
+        },
+        "inputEpisodeTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "outputEpisodeType": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "executionMode": {
+          "type": "string",
+          "enum": [
+            "prompt",
+            "program"
+          ]
+        },
+        "programId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^prg_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "preflightChecks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        },
+        "postflightChecks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          },
+          "maxItems": 500
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "skillId",
+        "name",
+        "version",
+        "description",
+        "activation",
+        "promptFragment",
+        "permittedTools",
+        "inputEpisodeTypes",
+        "outputEpisodeType",
+        "executionMode",
+        "programId",
+        "preflightChecks",
+        "postflightChecks"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/skill-manifest/v1"
+}

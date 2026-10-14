@@ -1,0 +1,236 @@
+{
+  "$ref": "#/definitions/experiment-result",
+  "definitions": {
+    "experiment-result": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/experiment-result/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "autoresearchId": {
+          "type": "string",
+          "pattern": "^ar_[0-9a-f]{32}$"
+        },
+        "experimentId": {
+          "type": "string",
+          "pattern": "^exp_[0-9a-f]{32}$"
+        },
+        "parentExperimentId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "branch": {
+          "type": "string"
+        },
+        "evaluatedCommit": {
+          "type": "string",
+          "minLength": 7
+        },
+        "evaluationContractHash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "runIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^run_[0-9a-f]{32}$"
+          },
+          "minItems": 1
+        },
+        "runSetStatus": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial",
+            "invalid"
+          ]
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {}
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          }
+        },
+        "guardrails": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {}
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          }
+        },
+        "comparison": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "deterministicValidation": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "reviewId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^rev_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviewVerdict": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "PASS",
+                "REVISE",
+                "REDESIGN",
+                "BLOCKED"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "promotionRecommendation": {
+          "type": "string",
+          "enum": [
+            "promote",
+            "hold",
+            "reject"
+          ]
+        },
+        "promotionDecision": {
+          "type": "string",
+          "enum": [
+            "promoted",
+            "held",
+            "rejected"
+          ]
+        },
+        "artifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^art_[0-9a-f]{32}$"
+          }
+        },
+        "attemptFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "autoresearchId",
+        "experimentId",
+        "parentExperimentId",
+        "branch",
+        "evaluatedCommit",
+        "evaluationContractHash",
+        "runIds",
+        "runSetStatus",
+        "metrics",
+        "guardrails",
+        "comparison",
+        "deterministicValidation",
+        "reviewId",
+        "reviewVerdict",
+        "promotionRecommendation",
+        "promotionDecision",
+        "artifactIds",
+        "attemptFingerprint",
+        "completedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/experiment-result/v1"
+}

@@ -1,0 +1,438 @@
+{
+  "$ref": "#/definitions/mission-director-cycle",
+  "definitions": {
+    "mission-director-cycle": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/mission-director-cycle/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "cycleId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+          "maxLength": 128
+        },
+        "missionId": {
+          "type": "string",
+          "pattern": "^mis_[0-9a-f]{32}$"
+        },
+        "directorAgentId": {
+          "type": "string",
+          "pattern": "^agt_[0-9a-f]{32}$"
+        },
+        "observedObjectiveVersion": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "observedGraphVersion": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "consumedEventRange": {
+          "type": "object",
+          "properties": {
+            "fromSequence": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "toSequence": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "fromSequence",
+            "toSequence"
+          ],
+          "additionalProperties": false
+        },
+        "northStarCheck": {
+          "type": "object",
+          "properties": {
+            "missionObjective": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "unsatisfiedCriterionIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              }
+            },
+            "criticalPathNodeIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              }
+            },
+            "currentWorkContributes": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "missionObjective",
+            "unsatisfiedCriterionIds",
+            "criticalPathNodeIds",
+            "currentWorkContributes"
+          ],
+          "additionalProperties": false
+        },
+        "portfolioCheck": {
+          "type": "object",
+          "properties": {
+            "readyNodeIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              }
+            },
+            "starvedNodeIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              }
+            },
+            "overfocusedNodeId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "fairnessAction": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "readyNodeIds",
+            "starvedNodeIds",
+            "overfocusedNodeId",
+            "fairnessAction"
+          ],
+          "additionalProperties": false
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "targetId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                "maxLength": 128
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "action",
+              "targetId",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "createdTaskIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^tsk_[0-9a-f]{32}$"
+          }
+        },
+        "invokedDirectionIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^dir_[0-9a-f]{32}$"
+          }
+        },
+        "invokedAutoresearchIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^ar_[0-9a-f]{32}$"
+          }
+        },
+        "graphChangeProposalIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+            "maxLength": 128
+          }
+        },
+        "userInputRequestId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "budgetWarnings": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "maxItems": 100
+        },
+        "blockerIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^blk_[0-9a-f]{32}$"
+          }
+        },
+        "nextWake": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "event",
+                "deadline",
+                "event_or_deadline"
+              ]
+            },
+            "deadline": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "deadline"
+          ],
+          "additionalProperties": false
+        },
+        "submittedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "spawn": {
+          "type": "object",
+          "properties": {
+            "nodeId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "research_direction",
+                "autoresearch"
+              ]
+            },
+            "question": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "decisionUse": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "evaluation": {
+              "type": "object",
+              "properties": {
+                "commandId": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                },
+                "resultPath": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "primaryMetric": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "objective": {
+                      "type": "string",
+                      "enum": [
+                        "maximize",
+                        "minimize"
+                      ]
+                    },
+                    "minimumEffect": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "objective",
+                    "minimumEffect"
+                  ],
+                  "additionalProperties": false
+                },
+                "guardrails": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "direction": {
+                        "type": "string",
+                        "enum": [
+                          "maximize",
+                          "minimize"
+                        ]
+                      },
+                      "threshold": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "direction",
+                      "threshold"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "maxItems": 8
+                },
+                "target": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "maximumNoProgressRounds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 3
+                }
+              },
+              "required": [
+                "commandId",
+                "resultPath",
+                "primaryMetric",
+                "guardrails",
+                "target",
+                "maximumNoProgressRounds"
+              ],
+              "additionalProperties": false
+            },
+            "familyTags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "minItems": 1,
+              "maxItems": 8
+            },
+            "scope": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "minItems": 1,
+              "maxItems": 32
+            }
+          },
+          "required": [
+            "nodeId",
+            "kind",
+            "question",
+            "decisionUse",
+            "evaluation",
+            "familyTags",
+            "scope"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "cycleId",
+        "missionId",
+        "directorAgentId",
+        "observedObjectiveVersion",
+        "observedGraphVersion",
+        "consumedEventRange",
+        "northStarCheck",
+        "portfolioCheck",
+        "decisions",
+        "createdTaskIds",
+        "invokedDirectionIds",
+        "invokedAutoresearchIds",
+        "graphChangeProposalIds",
+        "userInputRequestId",
+        "budgetWarnings",
+        "blockerIds",
+        "nextWake",
+        "submittedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/mission-director-cycle/v1"
+}

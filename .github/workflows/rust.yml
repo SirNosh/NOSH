@@ -1,0 +1,55 @@
+name: Rust port
+
+on:
+  push:
+    branches: [rust-port]
+  pull_request:
+    branches: [rust-port]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  NOSH_TS_ROOT: ${{ github.workspace }}/ts
+
+jobs:
+  rust:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: rust }
+      # The TypeScript implementation is the reference. Only the committed schemas and fixtures are
+      # checked out; full history lets drift.mjs compare against each crate's sync commit.
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/optimize-harness-and-project-intake
+          path: ts
+          fetch-depth: 0
+          sparse-checkout: |
+            packages/wire/src/schemas
+            fixtures/schemas
+      - uses: actions/setup-node@v4
+        with: { node-version: 22.19.0 }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: rust }
+      - name: Format
+        working-directory: rust
+        run: cargo fmt --all --check
+      - name: Clippy
+        working-directory: rust
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test
+        working-directory: rust
+        run: cargo test --workspace --locked
+      - name: Vendored schemas match TypeScript
+        working-directory: rust
+        run: node scripts/sync-schemas.mjs --check
+      - name: No unported strict TypeScript changes
+        working-directory: rust
+        run: node scripts/drift.mjs --check

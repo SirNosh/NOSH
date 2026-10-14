@@ -1,0 +1,225 @@
+{
+  "$ref": "#/definitions/progress-update",
+  "definitions": {
+    "progress-update": {
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://nosh.dev/schemas/progress-update/v1"
+        },
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "progressId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "taskId": {
+          "type": "string",
+          "pattern": "^tsk_[0-9a-f]{32}$"
+        },
+        "attempt": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "agentId": {
+          "type": "string",
+          "pattern": "^agt_[0-9a-f]{32}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "milestone",
+            "anomaly",
+            "budget_warning",
+            "review_ready",
+            "heartbeat_recovery"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "goalStackIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "minItems": 1,
+          "maxItems": 16
+        },
+        "durableDelta": {
+          "type": "object",
+          "properties": {
+            "commitIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "artifactIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^art_[0-9a-f]{32}$"
+              }
+            },
+            "evidenceIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^evd_[0-9a-f]{32}$"
+              }
+            },
+            "graphNodeStateChanges": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {}
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  }
+                ]
+              }
+            },
+            "closedDefectIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "commitIds",
+            "artifactIds",
+            "evidenceIds",
+            "graphNodeStateChanges",
+            "closedDefectIds"
+          ],
+          "additionalProperties": false
+        },
+        "validation": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
+        "currentOperation": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "nextOperation": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "estimatedRemainingSeconds": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "newRisk": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "blockerId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^blk_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attemptFingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "emittedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "$schema",
+        "schemaVersion",
+        "progressId",
+        "taskId",
+        "attempt",
+        "agentId",
+        "kind",
+        "summary",
+        "goalStackIds",
+        "durableDelta",
+        "validation",
+        "currentOperation",
+        "nextOperation",
+        "estimatedRemainingSeconds",
+        "newRisk",
+        "blockerId",
+        "attemptFingerprint",
+        "emittedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nosh.dev/schemas/progress-update/v1"
+}
