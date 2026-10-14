@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createId } from "@nosh/core";
 import { approveProjectContract, readProjectContract } from "@nosh/evidence";
 import type { EventStore, RegisteredProject } from "@nosh/persistence";
 import type { AgentInspection, PiAdapter, PiSessionOptions } from "@nosh/pi-adapter";
@@ -130,6 +131,29 @@ describe("Mission research spawning", { timeout: 120_000 }, () => {
     } finally { cleanup(); }
   });
 
+  it("re-runs an interrupted task session under the same task ID, as resuming after a daemon restart does", async () => {
+    const { daemon, project, running, cleanup } = fixture("nosh-session-resume-");
+    try {
+      const mission = running(daemon.research.createMission(project.projectId, { title: "Resume", objective: "Resume a task session", deliverables: ["Result"], successCriteria: ["Reviewed"], idempotencyKey: "resume-create" }));
+      vi.spyOn(daemon.agents, "start").mockImplementation(async (options) => ({ ...options, piSessionId: `pi_${options.agentId}`, status: "running" }) as unknown as AgentInspection);
+      vi.spyOn(daemon.agents, "prompt").mockResolvedValue(); vi.spyOn(daemon.agents, "stop").mockImplementation(() => undefined);
+      const owner = { missionId: mission.entityId, directionId: null, autoresearchId: null };
+      const direction = { entityId: createId("dir"), value: { missionId: mission.entityId } };
+      type Session = { runSession(...args: unknown[]): Promise<void>; session(...args: unknown[]): Promise<void> };
+      const missions = daemon.missions as unknown as Session; const directions = daemon.directions as unknown as Session; const experiments = daemon.experiments as unknown as Session;
+      const sessions = [
+        (taskId: string, agentId: string) => missions.runSession(project, { agentId, taskId, missionId: mission.entityId, role: "general_worker" }, "Do the task"),
+        (taskId: string, agentId: string) => directions.session(project, direction, agentId, taskId, "general_worker", "Do the task"),
+        (taskId: string, agentId: string) => experiments.session(project, owner, { agentId, taskId, experimentId: null, role: "general_worker", cwd: project.repositoryRoot }, "Do the task"),
+      ];
+      for (const run of sessions) {
+        // The first session is cut short (here: no record submitted); the resumed one reuses its task and agent IDs.
+        const taskId = createId("tsk"); const agentId = createId("agt");
+        for (const attempt of [1, 2]) { const error = await run(taskId, agentId).then(() => null, (failure: unknown) => failure as Error); expect({ attempt, message: error?.message ?? "" }).not.toMatchObject({ message: expect.stringContaining("idempotency key was reused") }); }
+      }
+    } finally { vi.restoreAllMocks(); cleanup(); }
+  });
+
   it("accepts a spawn node when its child closes and retries it when the child stops", async () => {
     const { daemon, project, emit, submit, jobs, running, cleanup } = fixture("nosh-spawn-resolve-");
     try {
@@ -170,6 +194,12 @@ describe("Mission research spawning", { timeout: 120_000 }, () => {
       const runs = daemon.research.autoresearch(project.projectId);
       expect(runs).toHaveLength(1);
       expect(runs[0]!.value).toMatchObject({ directionId: child.entityId, invokedByRole: "research_director", decisionQuestion: child.value.question, origin: { scopeType: "direction", scopeId: child.entityId } });
+      // An Autoresearch left blocked with nobody working on it must not hold the Direction forever.
+      const blocked = daemon.research.transitionAutoresearch(project.projectId, runs[0]!.entityId, daemon.research.autoresearchExecution(project.projectId, runs[0]!.entityId).version, "blocked", "fixture-ar-blocked");
+      const now = Date.now(); vi.spyOn(Date, "now").mockReturnValue(now + 11 * 60_000);
+      await directions.tick();
+      expect(daemon.research.autoresearchExecution(project.projectId, blocked.entityId).state).toBe("stopped");
+      expect(daemon.research.scopedEvents(project.projectId, mission.entityId, "direction.autoresearch_stopped").map((entry) => (entry.payload as { autoresearchId: string }).autoresearchId)).toEqual([blocked.entityId]);
       vi.restoreAllMocks();
       await daemon.controlMission(project.projectId, mission.entityId, daemon.research.mission(project.projectId, mission.entityId).version, "stop", "immediate", "stop-mission-0001");
       expect(daemon.research.direction(project.projectId, child.entityId).state).toBe("stopped");

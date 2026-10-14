@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { daemonTaskFacts, declaredTaskCommands, librarianNetworkAllowed, librarianResearchHosts, taskCommandInstructions, taskCommandRuns, type DirectionProjection, type ResearchControl, type Stored } from "./research-control.js";
 import { completionRunIssues, validateGitCompletion, writeUpOnly } from "./task-postflight.js";
 import { DirectorSlip, directionAutoresearchOutcomes, directionBrief, directorRetryAllowed } from "./director-brief.js";
-import { MIN_AUTORESEARCH_TOKENS, runEvaluationJob, spawnDirectionAutoresearch, type DirectionSpawn } from "./research-spawner.js";
+import { CHILD_BLOCKED_MS, MIN_AUTORESEARCH_TOKENS, runEvaluationJob, spawnDirectionAutoresearch, type DirectionSpawn } from "./research-spawner.js";
 /** Autoresearch a Direction starts on its own per hypothesis node; after that it waits for its user. */
 const MAX_AUTONOMOUS_AUTORESEARCH = 2;
 import { createTaskWorktree, taskWorktreePath } from "./task-worktree.js";
@@ -70,7 +70,13 @@ export class DirectionSupervisor {
   private async awaitAutoresearch(project: RegisteredProject, direction: Stored<DirectionProjection>, node: GraphNode): Promise<void> {
     const projectId = project.projectId; const id = direction.entityId;
     const consumed = new Set(this.research.eventsAfter(projectId, 0).filter((entry) => ["direction.hypothesis_resolved", "direction.hypothesis_continued"].includes(entry.type) && entry.scope.directionId === id && (entry.payload as { nodeId?: string }).nodeId === node.id).map((entry) => String((entry.payload as { autoresearchId?: string }).autoresearchId)));
-    const runs = this.research.autoresearch(projectId).filter((run) => run.value.directionId === id && !consumed.has(run.entityId));
+    let runs = this.research.autoresearch(projectId).filter((run) => run.value.directionId === id && !consumed.has(run.entityId));
+    // A run left blocked with nobody working on it would hold the node forever: stop it, as a Mission does with a stale child.
+    for (const run of runs.filter((entry) => ["blocked", "paused"].includes(entry.state) && Date.now() - Date.parse(entry.value.updatedAt) > CHILD_BLOCKED_MS && !this.agents.inspect().some((agent) => agent.autoresearchId === entry.entityId))) {
+      this.research.transitionAutoresearch(projectId, run.entityId, run.version, "stopped", `child-stop:${run.entityId}:${run.version}`);
+      this.emit(event(projectId, id, direction.value.missionId, "direction.autoresearch_stopped", { nodeId: node.id, autoresearchId: run.entityId, priorState: run.state }));
+      runs = this.research.autoresearch(projectId).filter((entry) => entry.value.directionId === id && !consumed.has(entry.entityId));
+    }
     const completed = runs.find((run) => run.state === "completed");
     const finished = runs.find((run) => ["failed", "stopped"].includes(run.state));
     // A first Autoresearch that improved nothing is not the answer yet while a second, distinct one can still run.
@@ -220,7 +226,7 @@ export class DirectionSupervisor {
       try { await this.agents.prompt(agentId, prompt); } finally { this.agents.stop(agentId); }
       return;
     }
-    const threadId = createId("thr"); const issuedAt = new Date().toISOString(); const key = `runtime:${taskId}`;
+    const threadId = createId("thr"); const issuedAt = new Date().toISOString(); const key = `runtime:${taskId}:${threadId}`;
     await this.runtime.execute({ $schema: schemaUri("runtime-instruction"), schemaVersion: 1, instructionId: createId("ins"), projectId: project.projectId, idempotencyKey: `${key}:open`, proposedByAgentId: null, issuedAt, operation: "THREAD_OPEN", threadId, taskId, initialAgentId: agentId, ownerScope: { missionId: direction.value.missionId, directionId: direction.entityId, autoresearchId: null, experimentId: null, graphNodeId: null }, role, purpose: `Execute Direction task ${taskId}`, executionMode: "background", parentThreadId: null, inputRefs: [], skillIds: [], capabilities: [], taskPermissions: taskPermissions ?? null, taskWorkspace: taskWorkspace ?? null, budget: { maximumToolCalls: 200, maximumModelTokens: 100_000, maximumWallClockSeconds: 7_200 } });
     try {
       await this.runtime.execute({ $schema: schemaUri("runtime-instruction"), schemaVersion: 1, instructionId: createId("ins"), projectId: project.projectId, idempotencyKey: `${key}:step`, proposedByAgentId: null, issuedAt, operation: "THREAD_STEP", threadId, objective: prompt, expectedEpisodeType: episodeTypeForRole(role), inputRefs: [], skillIds: [] });

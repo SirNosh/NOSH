@@ -15,14 +15,13 @@ import { DirectorSlip, directorRetryAllowed, missionBrief, type SpawnBriefContex
 import { createTaskWorktree, taskWorktreePath } from "./task-worktree.js";
 import { completionInstructions, generalWorkerCompletionTemplate, librarianInstructions, reviewerInstructions } from "./task-templates.js";
 import { completionRunIssues, validateGitCompletion, writeUpOnly } from "./task-postflight.js";
-import { allocateBudget, probeEvaluation, freezeContract, spawnIssues, spawnMissionChild, type JobRunner, type MissionSpawn } from "./research-spawner.js";
+import { CHILD_BLOCKED_MS, allocateBudget, probeEvaluation, freezeContract, spawnIssues, spawnMissionChild, type JobRunner, type MissionSpawn } from "./research-spawner.js";
 /**
  * What a failed attempt produced, for the focus governor: a session that never delivered a result is a transient retry;
  * otherwise the changed commit and the issues or review that rejected it, so only a genuinely repeated failure alarms.
  */
 type FailureFingerprint = { transient: true } | { diffHash: string | null; evidence: JsonValue };
 /** A research child blocked or paused this long, with nothing of its own running, is stopped so its spawn node can retry. */
-const CHILD_BLOCKED_MS = 10 * 60_000;
 /** Agents of the Mission itself, not of the Directions and Autoresearch it spawned. */
 function ownAgent(agent: { missionId: string | null; directionId: string | null; autoresearchId: string | null }, missionId: string): boolean { return agent.missionId === missionId && !agent.directionId && !agent.autoresearchId; }
 /** A spawn node leased to the research child it started. */
@@ -352,7 +351,7 @@ export class MissionSupervisor {
       try { await this.agents.prompt(input.agentId, prompt); } finally { this.agents.stop(input.agentId); }
       return;
     }
-    const threadId = createId("thr"); const issuedAt = new Date().toISOString(); const key = `runtime:${input.taskId}`;
+    const threadId = createId("thr"); const issuedAt = new Date().toISOString(); const key = `runtime:${input.taskId}:${threadId}`;
     await this.runtime.execute({ $schema: schemaUri("runtime-instruction"), schemaVersion: 1, instructionId: createId("ins"), projectId: project.projectId, idempotencyKey: `${key}:open`, proposedByAgentId: null, issuedAt, operation: "THREAD_OPEN", threadId, taskId: input.taskId, initialAgentId: input.agentId, ownerScope: { missionId: input.missionId, directionId: null, autoresearchId: null, experimentId: null, graphNodeId: null }, role: input.role, purpose: `Execute Mission task ${input.taskId}`, executionMode: "background", parentThreadId: null, inputRefs: [], skillIds: [], capabilities: [], taskPermissions: input.taskPermissions ?? null, taskWorkspace: input.taskWorkspace ?? null, budget: { maximumToolCalls: 200, maximumModelTokens: 100_000, maximumWallClockSeconds: 7_200 } });
     try {
       await this.runtime.execute({ $schema: schemaUri("runtime-instruction"), schemaVersion: 1, instructionId: createId("ins"), projectId: project.projectId, idempotencyKey: `${key}:step`, proposedByAgentId: null, issuedAt, operation: "THREAD_STEP", threadId, objective: prompt, expectedEpisodeType: episodeTypeForRole(input.role), inputRefs: [], skillIds: [] });

@@ -112,6 +112,19 @@ describe("AutoresearchSupervisor", () => {
     }
   }, 90_000);
 
+  it("branches the next round from the root when the previous round promoted nothing", async () => {
+    const run = await runAutoresearchFixture({ primaryMetric: { name: "score", objective: "minimize", minimumEffect: 1 }, baselineMetrics: { score: 4 }, guardrails: [{ name: "guardrail_pass", direction: "maximize", threshold: 1 }], roundWidths: [1, 1], stopConditions: { maximumNoProgressRounds: 3 }, execution: { runner: "native", command: [process.execPath, "-e", "require('fs').writeFileSync('metrics.json','{\"score\":2,\"guardrail_pass\":false}')"], resultPath: "metrics.json", timeoutSeconds: 30, usesGpu: false } }, { maximumExperiments: 2, maximumRounds: 2 });
+    try {
+      expect(run.errors).toEqual([]);
+      const results = run.records.filter((record) => record.$schema === schemaUri("experiment-result")) as Array<{ parentExperimentId: string; promotionDecision: string }>;
+      expect(results).toHaveLength(2);
+      // Round 2 has no accepted frontier, so it starts again from the root: one level deep, not two.
+      expect(new Set(results.map((result) => result.parentExperimentId)).size).toBe(1);
+    } finally {
+      run.cleanup();
+    }
+  }, 90_000);
+
   it("records negative Evidence as reviewed when the experiment Review confirms the measured failure", async () => {
     const run = await runAutoresearchFixture({ primaryMetric: { name: "score", objective: "minimize", minimumEffect: 1 }, baselineMetrics: { score: 4 }, guardrails: [{ name: "guardrail_pass", direction: "maximize", threshold: 1 }], roundWidths: [1], execution: { runner: "native", command: [process.execPath, "-e", "require('fs').writeFileSync('metrics.json','{\"score\":2,\"guardrail_pass\":false}')"], resultPath: "metrics.json", timeoutSeconds: 30, usesGpu: false } });
     try {
@@ -254,7 +267,7 @@ function expectReviewedEvidenceAuthority(records: unknown[]): void {
   }
 }
 
-async function runAutoresearchFixture(evaluationContract: JsonValue, options: { transformReview?: (record: Record<string, JsonValue>) => Record<string, JsonValue>; deferCompletion?: boolean; failProposals?: number; resumes?: number } = {}) {
+async function runAutoresearchFixture(evaluationContract: JsonValue, options: { transformReview?: (record: Record<string, JsonValue>) => Record<string, JsonValue>; deferCompletion?: boolean; failProposals?: number; resumes?: number; maximumExperiments?: number; maximumRounds?: number } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "nosh-autoresearch-terminal-"));
   const repositoryRoot = join(directory, "repository");
   mkdirSync(repositoryRoot);
@@ -269,7 +282,7 @@ async function runAutoresearchFixture(evaluationContract: JsonValue, options: { 
     store.append({ $schema: schemaUri("event"), schemaVersion: 1, retention: "persistent", type: "job.state_changed", source: "fixture", scope: { projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: job.runId, jobId: job.jobId, agentId: null }, correlationId: job.jobId, causationId: null, payload: job as unknown as JsonValue });
     if (["completed", "failed", "cancelled", "lost"].includes(job.state)) jobEvents.emit("terminal");
   });
-  let execution = research.createAutoresearch(projectId, { decisionQuestion: "Does the bounded variant meet the frozen stop condition?", evaluationContract, maximumExperiments: 1, maximumRounds: 1, idempotencyKey: `terminal-${createId("cmd")}` });
+  let execution = research.createAutoresearch(projectId, { decisionQuestion: "Does the bounded variant meet the frozen stop condition?", evaluationContract, maximumExperiments: options.maximumExperiments ?? 1, maximumRounds: options.maximumRounds ?? 1, idempotencyKey: `terminal-${createId("cmd")}` });
   execution = research.transitionAutoresearch(projectId, execution.entityId, execution.version, "running", `terminal-running-${execution.entityId}`);
   const transition = research.transitionAutoresearch.bind(research);
   let completionAttempts = 0;

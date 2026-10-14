@@ -28,6 +28,8 @@ export type DirectionSpawn = { nodeId: string; kind: "autoresearch"; question: s
 /** Smallest model-token allocations worth spawning; below them a child cannot finish its own reviewed closure. */
 const MIN_DIRECTION_TOKENS = 300_000;
 export const MIN_AUTORESEARCH_TOKENS = 150_000;
+/** How long a spawned child may sit blocked or paused, with no agent working on it, before its parent stops it. */
+export const CHILD_BLOCKED_MS = 10 * 60_000;
 /** Share of the Mission ceiling kept for the Mission's own nodes and reviews. */
 const MISSION_RESERVE = 0.3;
 
