@@ -5,8 +5,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { JobSupervisor, type JobSpec } from "./index.js";
 
+// The test Job must outlive the setup before recover(): hosted Windows runners have taken over 8 s for it. Tests cancel it.
 function spec(directory: string, jobId = "job_test1"): JobSpec {
-  return { jobId, projectId: "prj_test", missionId: null, directionId: null, autoresearchId: null, runId: "run_test", experimentId: "exp_test", commitSha: "1234567", workingDirectory: directory, runner: "native", distribution: null, command: [process.execPath, "-e", "console.log('started'); setTimeout(() => console.log('done'), 8000)"], checkpointCommand: null, environmentLockHash: "sha256:test", evaluationContractHash: "sha256:test", timeoutSeconds: 10, usesGpu: false };
+  return { jobId, projectId: "prj_test", missionId: null, directionId: null, autoresearchId: null, runId: "run_test", experimentId: "exp_test", commitSha: "1234567", workingDirectory: directory, runner: "native", distribution: null, command: [process.execPath, "-e", "console.log('started'); setTimeout(() => console.log('done'), 120000)"], checkpointCommand: null, environmentLockHash: "sha256:test", evaluationContractHash: "sha256:test", timeoutSeconds: 10, usesGpu: false };
 }
 
 describe("JobSupervisor", { timeout: 20_000 }, () => {
