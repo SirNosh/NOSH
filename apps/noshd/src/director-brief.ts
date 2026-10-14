@@ -174,6 +174,7 @@ export function missionBrief(input: { research: ResearchControl; project: Regist
       "- Declared evaluation commands (spawn.evaluation.commandId must be one; the daemon runs it once and the metrics it writes become the frozen baseline, so never state baseline numbers yourself):",
       ...(input.spawn.commands.length ? input.spawn.commands.map((command) => `  - ${command.commandId}: ${clip(command.argv.join(" "), 200)} (${clip(command.description, 160)})`) : ["  - none declared; this node cannot be spawned"]),
       "- Choose spawn.evaluation.primaryMetric.name and guardrail names from the keys that command writes to spawn.evaluation.resultPath (a relative JSON file).",
+      "- A guardrail threshold is the allowed change from the measured baseline, not an absolute value: {name: \"f1\", direction: \"maximize\", threshold: -0.005} lets f1 drop at most 0.005 below the baseline; for minimize use zero or a positive allowance.",
       "- Research children already specified for this Mission (this one must answer a different question):", ...(input.spawn.siblings.length ? input.spawn.siblings.map((line) => `  - ${clip(line, 300)}`) : ["  - none"]),
       "- Earlier specs for this node the daemon rejected (fix what each says):", ...(input.spawn.rejections.length ? input.spawn.rejections.map((line) => `  - ${clip(line, 600)}`) : ["  - none"]),
     ] : []),

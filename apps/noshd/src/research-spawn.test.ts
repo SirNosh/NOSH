@@ -48,7 +48,7 @@ function fixture(prefix: string) {
   const cleanup = () => { daemon.stop(); rmSync(directory, { recursive: true, force: true }); };
   return { daemon, project: project as RegisteredProject, emit, submit, jobs, running, cleanup };
 }
-const spec = (kind: string) => (nodeId: string): JsonValue => ({ nodeId, kind, question: `Does change ${nodeId} lower the score?`, decisionUse: kind === "research_direction" ? "Choose what the Mission builds on." : null, evaluation: { commandId: "command_evaluate", resultPath: "metrics.json", primaryMetric: { name: "score", objective: "minimize", minimumEffect: 0.01 }, guardrails: [{ name: "f1", direction: "maximize", threshold: 0.85 }], target: null, maximumNoProgressRounds: 1 }, familyTags: [`family-${nodeId.slice(-6)}`], scope: ["src/**"] });
+const spec = (kind: string) => (nodeId: string): JsonValue => ({ nodeId, kind, question: `Does change ${nodeId} lower the score?`, decisionUse: kind === "research_direction" ? "Choose what the Mission builds on." : null, evaluation: { commandId: "command_evaluate", resultPath: "metrics.json", primaryMetric: { name: "score", objective: "minimize", minimumEffect: 0.01 }, guardrails: [{ name: "f1", direction: "maximize", threshold: -0.05 }], target: null, maximumNoProgressRounds: 1 }, familyTags: [`family-${nodeId.slice(-6)}`], scope: ["src/**"] });
 
 describe("Mission research spawning", { timeout: 120_000 }, () => {
   it("spawns its Research Directions and its own Autoresearch from Director specs, with a measured baseline", async () => {
@@ -69,6 +69,8 @@ describe("Mission research spawning", { timeout: 120_000 }, () => {
       expect(runs[0]!.value).toMatchObject({ directionId: null, missionId: mission.entityId, invokedByRole: "mission_director", state: "running" });
       // The baseline is what the declared command measured, never a number from the Director.
       expect((runs[0]!.value.evaluationContract as { baselineMetrics: Record<string, number> }).baselineMetrics).toEqual({ score: 0.5, f1: 0.9 });
+      // A spawn guardrail is a change from that baseline: "f1 may drop 0.05" freezes as f1 >= 0.85.
+      expect((runs[0]!.value.evaluationContract as { guardrails: unknown[] }).guardrails).toEqual([{ name: "f1", direction: "maximize", threshold: 0.85 }]);
       expect(directors.prompts.some((prompt) => prompt.includes("command_evaluate:"))).toBe(true);
       const nodes = daemon.research.mission(project.projectId, mission.entityId).value.nodes.filter((node) => node.state === "working");
       expect(nodes.map((node) => node.lease?.ownerId).sort()).toEqual([...directions.map((direction) => direction.entityId), runs[0]!.entityId].sort());
@@ -90,6 +92,11 @@ describe("Mission research spawning", { timeout: 120_000 }, () => {
       expect(rejected.length).toBeGreaterThanOrEqual(1);
       expect(JSON.stringify(rejected[0]!.payload)).toContain("command_missing is not a command declared in the Project contract");
       expect(directors.prompts.at(-1)).toContain("command_missing is not a command declared");
+      expect(directors.prompts.at(-1)).toContain("change from the measured baseline");
+      const { spawnIssues } = await import("./research-spawner.js");
+      const nodeId = mission.value.nodes.find((node) => node.type === "research_direction")!.id;
+      const demanding = { ...(spec("research_direction")(nodeId) as Record<string, JsonValue>), evaluation: { ...((spec("research_direction")(nodeId) as { evaluation: Record<string, JsonValue> }).evaluation), guardrails: [{ name: "f1", direction: "maximize", threshold: 0.005 }] } };
+      expect(spawnIssues(project, demanding as never, nodeId, "research_direction").join(" ")).toContain("guardrail f1");
       expect(daemon.research.directions(project.projectId)).toHaveLength(0);
 
       // One active Mission per Project: finish the first before the tight one.
@@ -99,6 +106,25 @@ describe("Mission research spawning", { timeout: 120_000 }, () => {
       await new MissionSupervisor(daemon.research, directors as unknown as PiAdapter, () => [project], ".", emit, undefined, jobs).tick(); await new Promise((resolve) => setTimeout(resolve, 300));
       expect(JSON.stringify(daemon.research.scopedEvents(project.projectId, tight.entityId, "research.spawn_rejected")[0]?.payload)).toContain("budget_insufficient");
       expect(daemon.research.mission(project.projectId, tight.entityId).value.nodes.some((node) => node.state === "blocked")).toBe(true);
+    } finally { cleanup(); }
+  });
+
+  it("tells the Director which JSON file the command wrote and which metric keys it holds, even when the file is gitignored", async () => {
+    const { daemon, project, emit, submit, jobs, running, cleanup } = fixture("nosh-spawn-hint-");
+    try {
+      writeFileSync(join(project.repositoryRoot, ".gitignore"), "metrics.json\n");
+      spawnSync("git", ["-C", project.repositoryRoot, "-c", "user.name=T", "-c", "user.email=t@example.invalid", "add", ".gitignore"], { windowsHide: true });
+      spawnSync("git", ["-C", project.repositoryRoot, "-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-qm", "ignore metrics"], { windowsHide: true });
+      const mission = running(daemon.research.createMission(project.projectId, { title: "Hint", objective: "Find the metrics file", deliverables: ["Result"], successCriteria: ["Reviewed"], researchPlan: { directions: 1, missionAutoresearch: false }, idempotencyKey: "hint-create" }));
+      const wrong = [{ resultPath: "results/dev.json", metric: "score" }, { resultPath: "metrics.json", metric: "ece" }];
+      let call = 0;
+      const directors = new Directors(submit, (nodeId) => { const base = spec("research_direction")(nodeId) as { evaluation: Record<string, JsonValue> }; const pick = wrong[Math.min(call++, wrong.length - 1)]!; return { ...base, evaluation: { ...base.evaluation, resultPath: pick.resultPath, primaryMetric: { name: pick.metric, objective: "minimize", minimumEffect: 0.01 }, guardrails: [] } } as JsonValue; });
+      const supervisor = new MissionSupervisor(daemon.research, directors as unknown as PiAdapter, () => [project], ".", emit, undefined, jobs);
+      for (const deadline = Date.now() + 60_000; Date.now() < deadline && daemon.research.scopedEvents(project.projectId, mission.entityId, "research.spawn_rejected").length < 2;) { await supervisor.tick(); await new Promise((resolve) => setTimeout(resolve, 50)); }
+      const [absent, missingKey] = daemon.research.scopedEvents(project.projectId, mission.entityId, "research.spawn_rejected").map((entry) => JSON.stringify(entry.payload));
+      expect(absent).toContain("results/dev.json"); expect(absent).toContain("metrics.json");
+      expect(missingKey).toContain("score"); expect(missingKey).toContain("f1");
+      expect(directors.prompts.at(-1)).toContain("metrics.json");
     } finally { cleanup(); }
   });
 

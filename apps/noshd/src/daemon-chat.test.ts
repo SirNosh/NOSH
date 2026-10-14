@@ -144,6 +144,22 @@ describe("discovery contract successor template", () => {
   });
 });
 
+describe("discovery intake prompt", () => {
+  it("lets the user add commands beyond the detected ones", async () => {
+    const { intakePrompt } = await import("./daemon.js");
+    const { readProjectContract } = await import("@nosh/evidence");
+    const directory = mkdtempSync(join(tmpdir(), "nosh-intake-"));
+    const daemon = new NoshDaemon({ dataDirectory: join(directory, "data"), bootstrapToken: "test" });
+    try {
+      const project = daemon.initializeProject({ path: join(directory, "repository"), createRepository: true, workingTitle: "Intake fixture" });
+      writeFileSync(join(project.repositoryRoot, "package.json"), JSON.stringify({ scripts: { test: "node --test" } }));
+      const prompt = intakePrompt(readProjectContract(project.repositoryRoot), project.repositoryRoot);
+      expect(prompt).toContain("Runnable commands detected");
+      expect(prompt).toContain("Add any other command the user names");
+    } finally { daemon.stop(); rmSync(directory, { recursive: true, force: true }); }
+  });
+});
+
 describe("one-step start", () => {
   it("walks a draft Mission to running under one approval, idempotently, and refuses a stale version", async () => {
     const f = fixture();

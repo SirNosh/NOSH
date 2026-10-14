@@ -104,7 +104,7 @@ export class MissionSupervisor {
       const probe = spawn && !issues.length ? await probeEvaluation(this.research, this.jobRunner, project, { missionId: mission.entityId, directionId: null, spawn, baseCommit }) : null;
       if (!spawn || !probe?.ok) {
         const failure = probe && !probe.ok ? probe : null;
-        this.emit(event(projectId, mission.entityId, "research.spawn_rejected", { nodeId: node.id, attempt, issues: [...issues, ...(failure?.issues ?? [])], metricKeys: failure?.metricKeys ?? [], untrackedJson: failure?.untrackedJson ?? [] }));
+        this.emit(event(projectId, mission.entityId, "research.spawn_rejected", { nodeId: node.id, attempt, issues: [...issues, ...(failure?.issues ?? [])], metricKeys: failure?.metricKeys ?? [], writtenJson: failure?.writtenJson ?? [] }));
         // Repeated rejections cost the node one attempt, so a Director that cannot specify a child does not loop forever.
         if (rejections.length + 1 >= 3) { mission = this.research.mission(projectId, mission.entityId); const leaseId = createId("tsk"); mission = this.research.transitionMissionNode(projectId, mission.entityId, mission.version, node.id, "leased", `spawn-giveup-lease-${node.id}-${attempt}`, { leaseId, ownerId: "agt_spawn", version: mission.version, expiresAt: new Date(Date.now() + 60_000).toISOString() }); this.research.transitionMissionNode(projectId, mission.entityId, mission.version, node.id, "working", `spawn-giveup-working-${node.id}-${attempt}`); await this.retryOrBlock(projectId, mission.entityId, node.id, leaseId, { diffHash: null, evidence: { spawnRejected: node.id, attempt } }); }
         return;

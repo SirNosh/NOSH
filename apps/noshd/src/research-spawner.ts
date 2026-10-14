@@ -5,11 +5,9 @@
  * from that measurement, and creates and starts the child under a durable intent, so a restart between steps resumes
  * instead of duplicating work.
  */
-import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 import { createId } from "@nosh/core";
-import { worktreeGitEnvironment } from "@nosh/git-workspaces";
 import { loadNativeEvaluation, type JobRecord, type JobSpec } from "@nosh/jobs";
 import type { RegisteredProject } from "@nosh/persistence";
 import { sha256, type JsonValue } from "@nosh/wire";
@@ -58,28 +56,48 @@ export function spawnIssues(project: RegisteredProject, spawn: MissionSpawn, nod
   if (!declaredTaskCommands(project).some((command) => command.commandId === spawn.evaluation.commandId)) issues.push(`spawn.evaluation.commandId ${spawn.evaluation.commandId} is not a command declared in the Project contract (declared: ${declaredTaskCommands(project).map((command) => command.commandId).join(", ") || "none"})`);
   const path = spawn.evaluation.resultPath;
   if (/^[a-zA-Z]:|^[\\/]/.test(path) || path.split(/[\\/]/).includes("..")) issues.push("spawn.evaluation.resultPath must be a relative path inside the repository");
+  // A guardrail threshold is a change from the measured baseline; one the baseline itself fails would refuse every experiment.
+  for (const guardrail of spawn.evaluation.guardrails) if (guardrail.direction === "maximize" ? guardrail.threshold > 0 : guardrail.threshold < 0) issues.push(`guardrail ${guardrail.name}: threshold is the allowed change from the measured baseline, so for ${guardrail.direction} it must be ${guardrail.direction === "maximize" ? "zero or negative (-0.005 allows a 0.005 drop)" : "zero or positive (0.005 allows a 0.005 rise)"}`);
   return issues;
 }
 
 /** Runs the declared command once at the base commit; the measured metrics become the frozen baseline. */
-export async function probeEvaluation(research: ResearchControl, jobRunner: JobRunner, project: RegisteredProject, input: { missionId: string; directionId: string | null; spawn: MissionSpawn; baseCommit: string }): Promise<{ ok: true; metrics: Record<string, number>; execution: EvaluationExecution; probeJobId: string } | { ok: false; issues: string[]; metricKeys: string[]; untrackedJson: string[] }> {
+export async function probeEvaluation(research: ResearchControl, jobRunner: JobRunner, project: RegisteredProject, input: { missionId: string; directionId: string | null; spawn: MissionSpawn; baseCommit: string }): Promise<{ ok: true; metrics: Record<string, number>; execution: EvaluationExecution; probeJobId: string } | { ok: false; issues: string[]; metricKeys: string[]; writtenJson: string[] }> {
   const command = declaredTaskCommands(project).find((entry) => entry.commandId === input.spawn.evaluation.commandId)!;
   const execution: EvaluationExecution = { runner: "native", distribution: null, command: command.argv, resultPath: input.spawn.evaluation.resultPath, timeoutSeconds: command.timeoutSeconds, usesGpu: false };
-  const tree = createTaskWorktree(research, project, createId("tsk"), input.baseCommit);
+  const tree = createTaskWorktree(research, project, createId("tsk"), input.baseCommit); const started = Date.now();
   const run = await runEvaluationJob(jobRunner, { projectId: project.projectId, missionId: input.missionId, directionId: input.directionId, autoresearchId: null, experimentId: createId("exp"), commitSha: input.baseCommit, worktree: tree.path, execution, evaluationContractHash: sha256({ probe: input.spawn.evaluation as unknown as JsonValue }) });
   const metrics = Object.fromEntries(Object.entries(run.metrics && typeof run.metrics === "object" && !Array.isArray(run.metrics) ? run.metrics : {}).filter((entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1])));
   const issues = run.failure ? [`probe ${command.argv.join(" ")}: ${run.failure}`] : [];
   for (const name of [input.spawn.evaluation.primaryMetric.name, ...input.spawn.evaluation.guardrails.map((guardrail) => guardrail.name)]) if (!run.failure && !(name in metrics)) issues.push(`metric ${name} is not a finite number in ${input.spawn.evaluation.resultPath}`);
   if (!issues.length) return { ok: true, metrics, execution, probeJobId: run.jobId };
-  const status = spawnSync("git", ["-C", tree.path, "status", "--porcelain", "--untracked-files=all"], { encoding: "utf8", windowsHide: true, env: worktreeGitEnvironment(tree.path) });
-  const untrackedJson = (status.stdout ?? "").split(/\r?\n/).filter((line) => line.startsWith("?? ") && line.endsWith(".json")).map((line) => line.slice(3)).slice(0, 20);
-  return { ok: false, issues, metricKeys: Object.keys(metrics).slice(0, 40), untrackedJson };
+  // The rejection is all the Director sees next cycle, so it names what the command really wrote. Outputs are often
+  // gitignored (metrics.json), so they are found by modification time, not Git status.
+  const writtenJson = jsonWrittenSince(tree.path, started); const metricKeys = Object.keys(metrics).slice(0, 40);
+  if (run.failure === "evaluation result file is absent") issues.push(writtenJson.length ? `${input.spawn.evaluation.resultPath} does not exist; the command wrote ${writtenJson.join(", ")}: use one of these as resultPath` : `${input.spawn.evaluation.resultPath} does not exist and the command wrote no JSON file in the repository`);
+  else if (!run.failure) issues.push(`numeric keys in ${input.spawn.evaluation.resultPath}: ${metricKeys.join(", ") || "none"}`);
+  return { ok: false, issues, metricKeys, writtenJson };
+}
+
+/** Repository-relative JSON files modified since `since`, skipping Git metadata and dependencies. */
+function jsonWrittenSince(root: string, since: number, directory = root, depth = 0): string[] {
+  if (depth > 4) return [];
+  const found: string[] = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (entry.name === ".git" || entry.name === "node_modules") continue;
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) found.push(...jsonWrittenSince(root, since, path, depth + 1));
+    else if (entry.isFile() && entry.name.endsWith(".json") && statSync(path).mtimeMs >= since - 2_000) found.push(relative(root, path).replaceAll("\\", "/"));
+  }
+  return found.slice(0, 20);
 }
 
 /** The frozen evaluation contract: the director's metric judgment plus the daemon-measured baseline. */
 export function freezeContract(spawn: MissionSpawn, probe: { metrics: Record<string, number>; execution: EvaluationExecution; probeJobId: string }, provenance: { missionId: string; baseCommit: string }): JsonValue {
   return {
-    primaryMetric: spawn.evaluation.primaryMetric as unknown as JsonValue, guardrails: spawn.evaluation.guardrails as unknown as JsonValue, baselineMetrics: probe.metrics,
+    primaryMetric: spawn.evaluation.primaryMetric as unknown as JsonValue, baselineMetrics: probe.metrics,
+    // The Director wrote each threshold as a change from a baseline it could not see; frozen, it is an absolute bound.
+    guardrails: spawn.evaluation.guardrails.map((guardrail) => ({ name: guardrail.name, direction: guardrail.direction, threshold: probe.metrics[guardrail.name]! + guardrail.threshold })),
     metrics: Object.keys(probe.metrics), datasets: [`declared command ${spawn.evaluation.commandId} (${probe.execution.command.join(" ")})`], seeds: [0],
     stopConditions: { ...(spawn.evaluation.target === null ? {} : { target: spawn.evaluation.target }), maximumNoProgressRounds: spawn.evaluation.maximumNoProgressRounds },
     execution: probe.execution as unknown as JsonValue,
