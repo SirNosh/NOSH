@@ -18,8 +18,10 @@ Scripts and tests find the TypeScript tree through `--ts-root`, then `NOSH_TS_RO
 ## Keeping up with TypeScript changes
 
 - **`conformance/schemas/`** is a vendored copy of the TypeScript JSON Schemas and golden fixtures; `SOURCE.json` records the source commit.
-  - `node scripts/sync-schemas.mjs` re-copies them.
-  - `--check` fails if they differ from the TypeScript tree.
+  - `node scripts/sync-schemas.mjs` re-copies them. It needs a built TypeScript tree (`corepack pnpm build`), because it also writes two files from the live zod schemas:
+    - `refinements.json`: where each zod refinement and default applies, the hash of its source, and zod's date regexes. The Rust validator applies these, and a refinement whose hash it doesn't know fails the tests until it is ported.
+    - `vectors.json`: the TypeScript verdicts on the hand-written cases in `conformance/cases.json`, and its canonical JSON for tricky inputs. The Rust tests replay them.
+  - `--check` fails if the schemas or fixtures differ from the TypeScript tree.
 - **`port-map.json`** records, for each crate, the TypeScript paths it mirrors and the commit it was last synced to.
   - `node scripts/drift.mjs` lists TypeScript changes since then.
   - `--check` fails when a *strict* path changed after the sync. Strict paths hold logic that no fixture captures, such as zod refinements, migrations and the terminal-output protocol.
@@ -39,8 +41,8 @@ node scripts/drift.mjs --check
 
 | Phase | Scope | State |
 |---|---|---|
-| P0 | Workspace, drift tracking, CI | in progress |
-| P1 | `nosh-wire`: IDs, time, canonical JSON + hashes, schema validation | next |
+| P0 | Workspace, drift tracking, CI | done |
+| P1 | `nosh-wire`: IDs, time, canonical JSON + hashes, schema validation | in progress |
 | P2 | `nosh-store`: SQLite migrations, event store, host registry | — |
 | P3 | `nosh-sys`: Windows paths, processes, jobs, git, artifacts, backups | — |
 | P4 | Domain: graph, scheduler, research control, episodes, threads | — |

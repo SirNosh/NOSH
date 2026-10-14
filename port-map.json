@@ -3,8 +3,12 @@
   "tsBranch": "agent/optimize-harness-and-project-intake",
   "crates": {
     "nosh-wire": {
-      "synced": null,
-      "paths": ["packages/core/src", "packages/wire/src", "fixtures/schemas"],
+      "synced": "3fd5f6c852e83a00d66a8ebd0c96f6c89ce39a86",
+      "paths": [
+        "packages/core/src",
+        "packages/wire/src",
+        "fixtures/schemas"
+      ],
       "strict": [
         "packages/wire/src/domain-records.ts",
         "packages/wire/src/events.ts",
@@ -15,50 +19,86 @@
     },
     "nosh-store": {
       "synced": null,
-      "paths": ["packages/persistence/src"],
-      "strict": ["packages/persistence/src/database.ts", "packages/persistence/src/event-store.ts"]
+      "paths": [
+        "packages/persistence/src"
+      ],
+      "strict": [
+        "packages/persistence/src/database.ts",
+        "packages/persistence/src/event-store.ts"
+      ]
     },
     "nosh-sys": {
       "synced": null,
-      "paths": ["packages/git-workspaces/src", "packages/jobs/src", "packages/evidence/src/project.ts"],
+      "paths": [
+        "packages/git-workspaces/src",
+        "packages/jobs/src",
+        "packages/evidence/src/project.ts"
+      ],
       "strict": []
     },
     "nosh-research": {
       "synced": null,
       "paths": [
-        "packages/graph/src", "packages/scheduler/src", "packages/evidence/src", "packages/jobs/src",
-        "packages/templates/src", "packages/skills/src", "packages/episodes/src", "packages/threads/src",
-        "packages/agent-runtime/src", "apps/noshd/src/research-control.ts"
+        "packages/graph/src",
+        "packages/scheduler/src",
+        "packages/evidence/src",
+        "packages/jobs/src",
+        "packages/templates/src",
+        "packages/skills/src",
+        "packages/episodes/src",
+        "packages/threads/src",
+        "packages/agent-runtime/src",
+        "apps/noshd/src/research-control.ts"
       ],
       "strict": []
     },
     "nosh-agent": {
       "synced": null,
-      "paths": ["packages/pi-adapter/src", "pi-package"],
-      "strict": ["packages/pi-adapter/src/terminal-output.ts", "docs/protocols/terminal-output.md"]
+      "paths": [
+        "packages/pi-adapter/src",
+        "pi-package"
+      ],
+      "strict": [
+        "packages/pi-adapter/src/terminal-output.ts",
+        "docs/protocols/terminal-output.md"
+      ]
     },
     "nosh-orchestration": {
       "synced": null,
       "paths": [
-        "packages/orchestration-runtime/src", "apps/noshd/src/mission-supervisor.ts",
-        "apps/noshd/src/direction-supervisor.ts", "apps/noshd/src/autoresearch-supervisor.ts"
+        "packages/orchestration-runtime/src",
+        "apps/noshd/src/mission-supervisor.ts",
+        "apps/noshd/src/direction-supervisor.ts",
+        "apps/noshd/src/autoresearch-supervisor.ts"
       ],
       "strict": []
     },
     "nosh-server": {
       "synced": null,
-      "paths": ["apps/noshd/src", "docs/api.md"],
+      "paths": [
+        "apps/noshd/src",
+        "docs/api.md"
+      ],
       "strict": []
     },
     "nosh-tui": {
       "synced": null,
-      "paths": ["apps/tui/src"],
+      "paths": [
+        "apps/tui/src"
+      ],
       "strict": []
     },
     "nosh": {
       "synced": null,
-      "paths": ["apps/cli/src", "apps/launcher", "scripts/package-npm.mjs", ".github/workflows/release.yml"],
-      "strict": ["apps/launcher/lib.mjs"]
+      "paths": [
+        "apps/cli/src",
+        "apps/launcher",
+        "scripts/package-npm.mjs",
+        ".github/workflows/release.yml"
+      ],
+      "strict": [
+        "apps/launcher/lib.mjs"
+      ]
     }
   }
 }

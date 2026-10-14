@@ -1,0 +1,108 @@
+{
+  "$comment": "Hand-written conformance cases. scripts/sync-schemas.mjs runs each through the TypeScript validator or canonicalizer and writes the verdicts to schemas/vectors.json; it throws if TypeScript disagrees with 'expect'. A record case starts from fixture '<schema>/<base>.json' (base defaults to full.valid), keeps only 'pick' keys if given, applies 'delete' then 'set' (JSON Pointers), serializes, then applies 'rawReplace' to the JSON text. expect: accept | custom (rejected only by zod refinements) | reject (rejected by the schema).",
+  "records": [
+    { "name": "event: fixture", "schema": "event", "expect": "accept" },
+    { "name": "event: missing.invalid fixture", "schema": "event", "base": "missing.invalid", "expect": "reject" },
+    { "name": "event: unknown.invalid fixture", "schema": "event", "base": "unknown.invalid", "expect": "reject" },
+    { "name": "task-packet: missing.invalid fixture", "schema": "task-packet", "base": "missing.invalid", "expect": "reject" },
+    { "name": "task-packet: unknown.invalid fixture", "schema": "task-packet", "base": "unknown.invalid", "expect": "reject" },
+    { "name": "review-verdict: missing.invalid fixture", "schema": "review-verdict", "base": "missing.invalid", "expect": "reject" },
+    { "name": "review-verdict: unknown.invalid fixture", "schema": "review-verdict", "base": "unknown.invalid", "expect": "reject" },
+    { "name": "runtime-instruction: missing.invalid fixture", "schema": "runtime-instruction", "base": "missing.invalid", "expect": "reject" },
+    { "name": "runtime-instruction: unknown.invalid fixture", "schema": "runtime-instruction", "base": "unknown.invalid", "expect": "reject" },
+    { "name": "evidence: missing.invalid fixture", "schema": "evidence", "base": "missing.invalid", "expect": "reject" },
+    { "name": "evidence: unknown.invalid fixture", "schema": "evidence", "base": "unknown.invalid", "expect": "reject" },
+    { "name": "episode: missing.invalid fixture", "schema": "episode", "base": "missing.invalid", "expect": "reject" },
+    { "name": "episode: unknown.invalid fixture", "schema": "episode", "base": "unknown.invalid", "expect": "reject" },
+    { "name": "event: ephemeral with a sequence", "schema": "event", "set": { "/retention": "ephemeral" }, "expect": "custom" },
+    { "name": "event: ephemeral without a sequence", "schema": "event", "set": { "/retention": "ephemeral", "/sequence": null }, "expect": "accept" },
+    { "name": "event: persistent without a sequence", "schema": "event", "set": { "/sequence": null }, "expect": "custom" },
+    { "name": "event: sequence written as 1.0", "schema": "event", "rawReplace": ["\"sequence\":1", "\"sequence\":1.0"], "expect": "accept" },
+    { "name": "event: fractional sequence", "schema": "event", "set": { "/sequence": 1.5 }, "expect": "reject" },
+    { "name": "event: timestamp without milliseconds", "schema": "event", "set": { "/timestamp": "2026-07-17T00:00:00Z" }, "expect": "reject" },
+    { "name": "event: timestamp with four fractional digits", "schema": "event", "set": { "/timestamp": "2026-07-17T00:00:00.0000Z" }, "expect": "reject" },
+    { "name": "event: timestamp with offset", "schema": "event", "set": { "/timestamp": "2026-07-17T00:00:00.000+05:30" }, "expect": "accept" },
+    { "name": "event: timestamp with colonless offset", "schema": "event", "set": { "/timestamp": "2026-07-17T00:00:00.000-0400" }, "expect": "accept" },
+    { "name": "event: timestamp on a non-leap Feb 29", "schema": "event", "set": { "/timestamp": "2023-02-29T00:00:00.000Z" }, "expect": "reject" },
+    { "name": "event: timestamp on a leap Feb 29", "schema": "event", "set": { "/timestamp": "2024-02-29T00:00:00.000Z" }, "expect": "accept" },
+    { "name": "event: zod's repeatable seconds group", "schema": "event", "set": { "/timestamp": "2026-07-17T00:00:00.000:00.000Z" }, "expect": "accept" },
+    { "name": "event: type with a non-ASCII letter", "schema": "event", "set": { "/type": "agent.stärted" }, "expect": "reject" },
+
+    { "name": "evidence: user-created naming an agent", "schema": "evidence", "set": { "/createdBy": "user" }, "expect": "custom" },
+    { "name": "evidence: user-created without an agent", "schema": "evidence", "set": { "/createdBy": "user", "/createdByAgentId": null }, "expect": "accept" },
+    { "name": "evidence: unreviewed naming a review", "schema": "evidence", "set": { "/quality/status": "unreviewed" }, "expect": "custom" },
+    { "name": "evidence: unreviewed without a review", "schema": "evidence", "set": { "/quality/status": "unreviewed", "/quality/reviewId": null }, "expect": "accept" },
+    { "name": "evidence: reviewed without a review", "schema": "evidence", "set": { "/quality/reviewId": null }, "expect": "custom" },
+    { "name": "evidence: 4000 UTF-16 units of emoji", "schema": "evidence", "set": { "/statement": { "$repeat": ["😀", 2000] } }, "expect": "accept" },
+    { "name": "evidence: 4002 UTF-16 units of emoji (2001 code points)", "schema": "evidence", "set": { "/statement": { "$repeat": ["😀", 2001] } }, "expect": "reject" },
+    { "name": "evidence: empty statement", "schema": "evidence", "set": { "/statement": "" }, "expect": "reject" },
+
+    { "name": "claim: no evidence and no limitation", "schema": "claim", "set": { "/supportingEvidenceIds": [], "/contradictingEvidenceIds": [], "/qualifyingEvidenceIds": [], "/limitations": [] }, "expect": "custom" },
+    { "name": "claim: only a limitation", "schema": "claim", "set": { "/supportingEvidenceIds": [], "/contradictingEvidenceIds": [], "/qualifyingEvidenceIds": [] }, "expect": "accept" },
+
+    { "name": "mission completion: unresolved claim", "schema": "mission-completion-packet", "set": { "/claimAudit/unresolvedClaimIds": ["clm_00000000000000000000000000000000"] }, "expect": "custom" },
+    { "name": "mission completion: open defect", "schema": "mission-completion-packet", "set": { "/openDefectIds": ["ref_1"] }, "expect": "custom" },
+    { "name": "direction closure: open defect", "schema": "direction-closure-packet", "set": { "/openDefectIds": ["ref_1"] }, "expect": "custom" },
+
+    { "name": "episode: trace runs backwards", "schema": "episode", "set": { "/trace/firstSequence": 2 }, "expect": "custom" },
+    { "name": "episode: omitted fact confidence defaults to medium", "schema": "episode", "delete": ["/facts/0/confidence"], "expect": "accept" },
+    { "name": "episode draft: omitted fact confidence defaults to medium", "schema": "episode-draft", "delete": ["/facts/0/confidence"], "expect": "accept" },
+
+    { "name": "task failure: same approach forbidden, premise given", "schema": "task-failure", "set": { "/sameApproachAllowed": false }, "expect": "accept" },
+    { "name": "task failure: same approach forbidden, no premise", "schema": "task-failure", "set": { "/sameApproachAllowed": false, "/changedPremiseRequired": null }, "expect": "custom" },
+    { "name": "task failure: branch with ..", "schema": "task-failure", "set": { "/workState/branch": "a..b" }, "expect": "custom" },
+
+    { "name": "task packet: branch ending .lock", "schema": "task-packet", "set": { "/workspace/branch": "feature/x.lock" }, "expect": "custom" },
+    { "name": "task packet: branch with //", "schema": "task-packet", "set": { "/workspace/branch": "feat//x" }, "expect": "custom" },
+    { "name": "task packet: branch ending /", "schema": "task-packet", "set": { "/workspace/branch": "feat/" }, "expect": "custom" },
+    { "name": "task packet: branch ending .", "schema": "task-packet", "set": { "/workspace/branch": "feat." }, "expect": "custom" },
+    { "name": "task packet: branch with a dot-segment", "schema": "task-packet", "set": { "/workspace/branch": "a/.b" }, "expect": "custom" },
+    { "name": "task packet: branch starting with a dot", "schema": "task-packet", "set": { "/workspace/branch": ".hidden" }, "expect": "reject" },
+    { "name": "task packet: safe nested branch", "schema": "task-packet", "set": { "/workspace/branch": "nosh/mission-1.2_x" }, "expect": "accept" },
+    { "name": "task packet: version with Arabic-Indic digits", "schema": "task-packet", "set": { "/templateVersion": "١.٠.٠" }, "expect": "reject" },
+    { "name": "task packet: relative response schema URL", "schema": "task-packet", "set": { "/responseSchema": "schemas/x" }, "expect": "reject" },
+    { "name": "task packet: absolute response schema URL", "schema": "task-packet", "set": { "/responseSchema": "https://nosh.dev/schemas/x/v1" }, "expect": "accept" },
+
+    { "name": "librarian: real date range", "schema": "librarian-completion", "set": { "/searchCoverage/dateRange/from": "2024-02-29", "/searchCoverage/dateRange/to": "2026-12-31" }, "expect": "accept" },
+    { "name": "librarian: impossible date", "schema": "librarian-completion", "set": { "/searchCoverage/dateRange/from": "2023-02-29" }, "expect": "reject" },
+    { "name": "librarian: bad source URL", "schema": "librarian-completion", "set": { "/sources/0/canonicalUrl": "not a url" }, "expect": "reject" },
+
+    { "name": "review request: reviewer is a producer", "schema": "review-request", "set": { "/reviewerAgentId": "agt_00000000000000000000000000000000" }, "expect": "custom" },
+
+    { "name": "review verdict: fixture", "schema": "review-verdict", "expect": "accept" },
+    { "name": "review verdict: REVISE with nothing failing", "schema": "review-verdict", "set": { "/defects": [] }, "expect": "custom" },
+    { "name": "review verdict: PASS with a blocking defect", "schema": "review-verdict", "set": { "/verdict": "PASS" }, "expect": "custom" },
+    { "name": "review verdict: clean PASS", "schema": "review-verdict", "set": { "/verdict": "PASS", "/defects": [] }, "expect": "accept" },
+    { "name": "review verdict: PASS without independence", "schema": "review-verdict", "set": { "/verdict": "PASS", "/defects": [], "/independenceCheck": "fail" }, "expect": "custom" },
+    { "name": "review verdict: PASS missing inputs", "schema": "review-verdict", "set": { "/verdict": "PASS", "/defects": [], "/missingRequiredInputs": ["ref_1"] }, "expect": "custom" },
+    { "name": "review verdict: PASS with a failed required criterion", "schema": "review-verdict", "set": { "/verdict": "PASS", "/defects": [], "/criteria/0/status": "FAIL" }, "expect": "custom" },
+    { "name": "review verdict: PASS with a failed optional criterion", "schema": "review-verdict", "set": { "/verdict": "PASS", "/defects": [], "/criteria/0/status": "FAIL", "/criteria/0/required": false }, "expect": "accept" },
+    { "name": "review verdict: PASS with a failed criterion of unstated requiredness", "schema": "review-verdict", "set": { "/verdict": "PASS", "/defects": [], "/criteria/0/status": "INCONCLUSIVE" }, "delete": ["/criteria/0/required"], "expect": "custom" },
+
+    { "name": "skill manifest: program mode without a program", "schema": "skill-manifest", "set": { "/executionMode": "program" }, "expect": "custom" },
+    { "name": "skill manifest: prompt mode with a program", "schema": "skill-manifest", "set": { "/programId": "prg_00000000000000000000000000000000" }, "expect": "custom" },
+
+    { "name": "mission director: research direction spawn without decisionUse (the schema already requires it)", "schema": "mission-director-cycle", "delete": ["/spawn/decisionUse"], "expect": "reject" },
+
+    { "name": "runtime instruction: THREAD_OPEN branch with ..", "schema": "runtime-instruction", "set": { "/taskWorkspace/branch": "x..y" }, "expect": "custom" },
+    { "name": "runtime instruction: await all", "schema": "runtime-instruction", "pick": ["$schema", "schemaVersion", "instructionId", "projectId", "idempotencyKey", "proposedByAgentId", "issuedAt"], "set": { "/operation": "THREAD_AWAIT", "/threadIds": ["thr_00000000000000000000000000000000", "thr_11111111111111111111111111111111"], "/policy": "all", "/minimumCount": null, "/deadline": null }, "expect": "accept" },
+    { "name": "runtime instruction: await duplicate threads", "schema": "runtime-instruction", "pick": ["$schema", "schemaVersion", "instructionId", "projectId", "idempotencyKey", "proposedByAgentId", "issuedAt"], "set": { "/operation": "THREAD_AWAIT", "/threadIds": ["thr_00000000000000000000000000000000", "thr_00000000000000000000000000000000"], "/policy": "all", "/minimumCount": null, "/deadline": null }, "expect": "custom" },
+    { "name": "runtime instruction: minimum_count without a count", "schema": "runtime-instruction", "pick": ["$schema", "schemaVersion", "instructionId", "projectId", "idempotencyKey", "proposedByAgentId", "issuedAt"], "set": { "/operation": "THREAD_AWAIT", "/threadIds": ["thr_00000000000000000000000000000000", "thr_11111111111111111111111111111111"], "/policy": "minimum_count", "/minimumCount": null, "/deadline": null }, "expect": "custom" },
+    { "name": "runtime instruction: minimum_count above the thread count", "schema": "runtime-instruction", "pick": ["$schema", "schemaVersion", "instructionId", "projectId", "idempotencyKey", "proposedByAgentId", "issuedAt"], "set": { "/operation": "THREAD_AWAIT", "/threadIds": ["thr_00000000000000000000000000000000", "thr_11111111111111111111111111111111"], "/policy": "minimum_count", "/minimumCount": 3, "/deadline": null }, "expect": "custom" },
+    { "name": "runtime instruction: minimum_count equal to the thread count", "schema": "runtime-instruction", "pick": ["$schema", "schemaVersion", "instructionId", "projectId", "idempotencyKey", "proposedByAgentId", "issuedAt"], "set": { "/operation": "THREAD_AWAIT", "/threadIds": ["thr_00000000000000000000000000000000", "thr_11111111111111111111111111111111"], "/policy": "minimum_count", "/minimumCount": 2, "/deadline": null }, "expect": "accept" },
+    { "name": "runtime instruction: deadline policy without a deadline", "schema": "runtime-instruction", "pick": ["$schema", "schemaVersion", "instructionId", "projectId", "idempotencyKey", "proposedByAgentId", "issuedAt"], "set": { "/operation": "THREAD_AWAIT", "/threadIds": ["thr_00000000000000000000000000000000"], "/policy": "deadline", "/minimumCount": null, "/deadline": null }, "expect": "custom" },
+    { "name": "runtime instruction: STOP naming nothing", "schema": "runtime-instruction", "pick": ["$schema", "schemaVersion", "instructionId", "projectId", "idempotencyKey", "proposedByAgentId", "issuedAt"], "set": { "/operation": "STOP", "/threadId": null, "/programId": null, "/reason": "done" }, "expect": "custom" },
+    { "name": "runtime instruction: STOP naming a thread", "schema": "runtime-instruction", "pick": ["$schema", "schemaVersion", "instructionId", "projectId", "idempotencyKey", "proposedByAgentId", "issuedAt"], "set": { "/operation": "STOP", "/threadId": "thr_00000000000000000000000000000000", "/programId": null, "/reason": "done" }, "expect": "accept" },
+
+    { "name": "orchestration program: step branch with ..", "schema": "orchestration-program", "set": { "/steps/0/instruction/taskWorkspace/branch": "x..y" }, "expect": "custom" },
+    { "name": "orchestration program: step awaits duplicate threads", "schema": "orchestration-program", "set": { "/steps/0/instruction": { "operation": "THREAD_AWAIT", "threadIds": ["thr_00000000000000000000000000000000", "thr_00000000000000000000000000000000"], "policy": "all", "minimumCount": null, "deadline": null } }, "expect": "custom" }
+  ],
+  "canonical": [
+    "{\"b\":1,\"a\":2,\"c\":{\"z\":null,\"y\":[3,2,1]}}",
+    "{\"\\uFFFD\":1,\"\\uD83D\\uDE00\":2,\"é\":3,\"z\":4,\"Z\":5,\"\":6,\"\\u00e9a\":7}",
+    "[1.0,-0,-0.0,0.1,1e21,1e20,1e-7,1e-6,123e-20,0.30000000000000004,100,1E2]",
+    "[9007199254740993,18446744073709551615,123456789012345678901234567890,-1.5e300,5e-324,1.7976931348623157e308,1e23]",
+    "\"\\u0000\\u001f\\b\\f\\n\\r\\t\\u007f\\u2028\\u2029\\\"\\\\/é😀\"",
+    "{\"a\":{\"a\":{\"a\":[]}},\"b\":{},\"c\":[true,false,null]}"
+  ]
+}

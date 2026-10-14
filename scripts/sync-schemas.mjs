@@ -1,11 +1,17 @@
 #!/usr/bin/env node
 // Copies the TypeScript wire JSON Schemas and golden fixtures into conformance/schemas,
 // recording the source commit in conformance/schemas/SOURCE.json.
-// --check exits 1 if the vendored copy differs from the TypeScript tree (line endings ignored).
+// Syncing also writes conformance/schemas/refinements.json from the built TypeScript registry
+// (packages/wire/dist): the zod refinements, defaults, and date formats that the generated JSON
+// Schemas cannot express, with each refinement's location and source text.
+// --check exits 1 if the vendored schemas or fixtures differ from the TypeScript tree (line endings
+// ignored). It does not rebuild refinements.json; the strict paths in port-map.json cover those sources.
 // The TypeScript tree is --ts-root, else NOSH_TS_ROOT, else the parent of this worktree.
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const rustRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -55,6 +61,146 @@ if (check) {
   const head = spawnSync("git", ["-C", tsRoot, "rev-parse", "HEAD"], { encoding: "utf8", windowsHide: true });
   if (head.status !== 0) throw new Error(head.stderr);
   writeFileSync(join(vendored, "SOURCE.json"), `${JSON.stringify({ commit: head.stdout.trim() }, null, 2)}\n`);
+  const refinements = await extractRefinements();
+  writeFileSync(join(vendored, "refinements.json"), `${JSON.stringify(refinements, null, 2)}\n`);
+  console.log(`recorded ${refinements.refinements.length} refinement locations and ${refinements.defaults.length} defaults`);
+  const vectors = await buildVectors();
+  writeFileSync(join(vendored, "vectors.json"), `${JSON.stringify(vectors, null, 2)}\n`);
+  console.log(`recorded TypeScript verdicts for ${vectors.records.length} record cases and ${vectors.canonical.length} canonical-JSON cases`);
+}
+
+// Runs conformance/cases.json through the TypeScript validator and canonicalizer.
+async function buildVectors() {
+  const dist = join(tsRoot, "packages", "wire", "dist");
+  const { validateRecord } = await import(pathToFileURL(join(dist, "registry.js")).href);
+  const { canonicalJson, sha256 } = await import(pathToFileURL(join(dist, "json.js")).href);
+  const cases = JSON.parse(readFileSync(join(rustRoot, "conformance", "cases.json"), "utf8"));
+  const records = cases.records.map((c) => {
+    let record = JSON.parse(readFileSync(join(tsRoot, "fixtures", "schemas", c.schema, `${c.base ?? "full.valid"}.json`), "utf8"));
+    if (c.pick) record = Object.fromEntries(c.pick.map((key) => [key, record[key]]));
+    for (const pointer of c.delete ?? []) {
+      const [parent, key] = locate(record, pointer);
+      delete parent[key];
+    }
+    for (const [pointer, value] of Object.entries(c.set ?? {})) {
+      const [parent, key] = locate(record, pointer);
+      parent[key] = value?.$repeat ? value.$repeat[0].repeat(value.$repeat[1]) : value;
+    }
+    let input = JSON.stringify(record);
+    if (c.rawReplace) {
+      const [from, to] = c.rawReplace;
+      if (input.split(from).length !== 2) throw new Error(`${c.name}: rawReplace must match exactly once`);
+      input = input.replace(from, to);
+    }
+    const result = validateRecord(`https://nosh.dev/schemas/${c.schema}/v1`, JSON.parse(input));
+    const outcome = result.ok ? "accept" : result.errors.every((issue) => issue.code === "custom") ? "custom" : "reject";
+    if (outcome !== c.expect) throw new Error(`${c.name}: TypeScript says ${outcome}, case expects ${c.expect}: ${JSON.stringify(result.errors ?? null)}`);
+    return { name: c.name, schema: c.schema, input, outcome, ...(result.ok ? { value: result.value } : { issues: result.errors }) };
+  });
+  const canonical = cases.canonical.map((input) => {
+    const value = JSON.parse(input);
+    return { input, canonical: canonicalJson(value), sha256: sha256(value) };
+  });
+  return { records, canonical };
+}
+
+function locate(root, pointer) {
+  const parts = pointer.split("/").slice(1).map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~"));
+  const key = parts.pop();
+  let parent = root;
+  for (const part of parts) {
+    if (parent?.[part] === undefined) throw new Error(`no ${part} on the way to ${pointer}`);
+    parent = parent[part];
+  }
+  return [parent, key];
+}
+
+async function extractRefinements() {
+  const wire = join(tsRoot, "packages", "wire");
+  const registryPath = join(wire, "dist", "registry.js");
+  if (!existsSync(registryPath)) throw new Error(`${registryPath} is missing; run corepack pnpm build in the TypeScript tree`);
+  const newestSource = Math.max(...listFiles(join(wire, "src")).filter((f) => f.endsWith(".ts")).map((f) => statSync(join(wire, "src", f)).mtimeMs));
+  if (newestSource > statSync(registryPath).mtimeMs) throw new Error("packages/wire/dist is older than its sources; run corepack pnpm build in the TypeScript tree");
+  const { schemaFor, schemaUris } = await import(pathToFileURL(registryPath).href);
+  const { datetimeRegex } = await import(pathToFileURL(createRequire(join(wire, "package.json")).resolve("zod")).href);
+
+  const out = { formats: {}, refinements: [], defaults: [] };
+  const datetimeArgs = new Set();
+  const wrappers = new Set();
+  const stringChecks = new Set(["min", "max", "regex", "datetime", "date", "url"]);
+  const numberChecks = new Set(["int", "min", "max", "finite"]);
+  for (const uri of schemaUris()) {
+    const schema = /\/schemas\/([^/]+)\/v1$/.exec(uri)[1];
+    walk(schemaFor(uri), [], [], new Set());
+    // Mirrors zod's parse: a refinement or default inside a discriminated-union branch applies only
+    // when the discriminator selects that branch ("when").
+    function walk(node, path, when, lazyParents) {
+      const def = node._def;
+      switch (def.typeName) {
+        case "ZodEffects": {
+          if (def.effect.type !== "refinement") throw new Error(`${schema} /${path.join("/")}: unsupported zod effect ${def.effect.type}`);
+          const source = def.effect.refinement.toString();
+          // .refine(check) hides check inside zod's generic wrapper, so its source cannot tell checks apart.
+          if (source.includes("const result = check(val)")) wrappers.add(def.effect.refinement);
+          out.refinements.push({ schema, path, when, rule: createHash("sha256").update(source).digest("hex"), source });
+          return walk(def.schema, path, when, lazyParents);
+        }
+        case "ZodObject":
+          for (const [key, value] of Object.entries(def.shape())) walk(value, [...path, key], when, lazyParents);
+          return;
+        case "ZodArray":
+          return walk(def.type, [...path, "*"], when, lazyParents);
+        case "ZodRecord":
+          return walk(def.valueType, [...path, "*"], when, lazyParents);
+        case "ZodOptional":
+        case "ZodNullable":
+          return walk(def.innerType, path, when, lazyParents);
+        case "ZodDefault":
+          out.defaults.push({ schema, path, when, value: def.defaultValue() });
+          return walk(def.innerType, path, when, lazyParents);
+        case "ZodDiscriminatedUnion":
+          for (const option of def.options) {
+            walk(option, path, [...when, { path, key: def.discriminator, equals: option._def.shape()[def.discriminator]._def.value }], lazyParents);
+          }
+          return;
+        case "ZodUnion":
+          // Branch-dependent refinements in a plain union would need zod's first-match semantics.
+          for (const option of def.options) {
+            const before = out.refinements.length + out.defaults.length;
+            walk(option, path, when, lazyParents);
+            if (out.refinements.length + out.defaults.length !== before) throw new Error(`${schema} /${path.join("/")}: refinement inside a plain union branch is not supported`);
+          }
+          return;
+        case "ZodLazy":
+          if (lazyParents.has(node)) return; // recursive JSON values hold no refinements
+          return walk(def.getter(), path, when, new Set([...lazyParents, node]));
+        case "ZodString":
+          for (const c of def.checks) {
+            if (!stringChecks.has(c.kind)) throw new Error(`${schema} /${path.join("/")}: unsupported string check ${c.kind}`);
+            if (c.kind === "datetime") datetimeArgs.add(JSON.stringify({ offset: c.offset, precision: c.precision, local: c.local }));
+          }
+          return;
+        case "ZodNumber":
+          for (const c of def.checks) if (!numberChecks.has(c.kind)) throw new Error(`${schema} /${path.join("/")}: unsupported number check ${c.kind}`);
+          return;
+        case "ZodLiteral":
+        case "ZodEnum":
+        case "ZodBoolean":
+        case "ZodNull":
+          return;
+        default:
+          throw new Error(`${schema} /${path.join("/")}: unsupported zod type ${def.typeName}`);
+      }
+    }
+  }
+  if (wrappers.size > 1) throw new Error("more than one .refine() check exists; extend sync-schemas.mjs to tell them apart");
+  if (datetimeArgs.size !== 1) throw new Error(`expected one datetime variant, found ${[...datetimeArgs].join(", ")}`);
+  const datetime = datetimeRegex(JSON.parse([...datetimeArgs][0])).source;
+  // zod's .date() uses ^<date>$, where <date> is the prefix of the datetime regex before "T".
+  const date = `^${datetime.slice(1, datetime.indexOf("T([01]"))}$`;
+  if (!new RegExp(date).test("2024-02-29") || new RegExp(date).test("2023-02-29")) throw new Error("could not derive zod's date regex");
+  out.formats = { "date-time": datetime, date };
+  return out;
 }
 
 function option(flag) {

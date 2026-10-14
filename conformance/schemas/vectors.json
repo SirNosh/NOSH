@@ -1,0 +1,1879 @@
+{
+  "records": [
+    {
+      "name": "event: fixture",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":\"evt_00000000000000000000000000000000\",\"correlationId\":\"sample\",\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"persistent\",\"schemaVersion\":1,\"scope\":{\"agentId\":\"agt_00000000000000000000000000000000\",\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"jobId\":\"job_00000000000000000000000000000000\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":\"run_00000000000000000000000000000000\"},\"sequence\":1,\"source\":\"sample\",\"timestamp\":\"2026-07-17T00:00:00.000Z\",\"type\":\"event.valid\"}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/event/v1",
+        "schemaVersion": 1,
+        "retention": "persistent",
+        "type": "event.valid",
+        "source": "sample",
+        "scope": {
+          "projectId": "prj_00000000000000000000000000000000",
+          "missionId": "mis_00000000000000000000000000000000",
+          "directionId": "dir_00000000000000000000000000000000",
+          "autoresearchId": "ar_00000000000000000000000000000000",
+          "experimentId": "exp_00000000000000000000000000000000",
+          "runId": "run_00000000000000000000000000000000",
+          "jobId": "job_00000000000000000000000000000000",
+          "agentId": "agt_00000000000000000000000000000000"
+        },
+        "correlationId": "sample",
+        "causationId": "evt_00000000000000000000000000000000",
+        "payload": null,
+        "eventId": "evt_00000000000000000000000000000000",
+        "sequence": 1,
+        "timestamp": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "event: missing.invalid fixture",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":null,\"correlationId\":null,\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"persistent\",\"scope\":{\"agentId\":null,\"autoresearchId\":null,\"directionId\":null,\"experimentId\":null,\"jobId\":null,\"missionId\":null,\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":null},\"sequence\":1,\"source\":\"sample\",\"timestamp\":\"2026-07-17T00:00:00.000Z\",\"type\":\"event.valid\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/schemaVersion",
+          "code": "invalid_literal",
+          "message": "Invalid literal value, expected 1"
+        }
+      ]
+    },
+    {
+      "name": "event: unknown.invalid fixture",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":null,\"correlationId\":null,\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"persistent\",\"schemaVersion\":1,\"scope\":{\"agentId\":null,\"autoresearchId\":null,\"directionId\":null,\"experimentId\":null,\"jobId\":null,\"missionId\":null,\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":null},\"sequence\":1,\"source\":\"sample\",\"timestamp\":\"2026-07-17T00:00:00.000Z\",\"type\":\"event.valid\",\"unknownField\":true}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/unknownField",
+          "code": "unrecognized_keys",
+          "message": "Unrecognized key: unknownField"
+        }
+      ]
+    },
+    {
+      "name": "task-packet: missing.invalid fixture",
+      "schema": "task-packet",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/task-packet/v1\",\"acceptanceCriteria\":[],\"assignedAgentId\":\"agt_00000000000000000000000000000000\",\"assignedRole\":\"librarian_researcher\",\"attempt\":1,\"budget\":{\"deadline\":\"2026-07-17T00:00:00.000Z\",\"maximumModelTokens\":1,\"maximumRepairAttempts\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"goalStack\":{\"directionQuestionId\":null,\"directionQuestionSummary\":null,\"missionCriterionIds\":[],\"missionCriterionSummary\":\"sample\",\"nodeObjective\":\"sample\",\"projectGoalId\":\"prj_00000000000000000000000000000000\",\"projectGoalSummary\":\"sample\"},\"inScope\":[],\"inputArtifactIds\":[],\"inputEvidenceIds\":[],\"instructions\":[],\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"issuedBy\":\"nosh\",\"lease\":{\"expiresAt\":\"2026-07-17T00:00:00.000Z\",\"heartbeatSeconds\":1,\"leaseId\":\"ref_1\"},\"observedVersions\":{},\"outOfScope\":[],\"permissions\":{\"allowedToolIds\":[],\"delegation\":\"request_only\",\"gitCommit\":true,\"gitPush\":true,\"network\":\"disabled\",\"networkAllowlist\":[\"example.org\"],\"subprocess\":\"disabled\"},\"progressPolicy\":{\"emitOnAnomaly\":true,\"emitOnBlocker\":true,\"emitOnFirstDurableDelta\":true,\"maximumSilentSeconds\":1,\"milestoneIntervalSeconds\":1},\"requiredOutputs\":[],\"responseSchema\":\"https://example.com/resource\",\"scope\":{\"autoresearchId\":null,\"directionId\":null,\"experimentId\":null,\"graphNodeId\":\"ref_1\",\"missionId\":null,\"projectId\":\"prj_00000000000000000000000000000000\"},\"taskId\":\"tsk_00000000000000000000000000000000\",\"taskType\":\"ref_1\",\"templateVersion\":\"1.0.0\",\"whyNow\":\"sample\",\"workspace\":{\"branch\":\"sample\",\"protectedScopes\":[],\"startingCommit\":\"0000000000000000000000000000000000000000\",\"worktreeId\":\"ref_1\",\"writeScopes\":[]}}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/schemaVersion",
+          "code": "invalid_literal",
+          "message": "Invalid literal value, expected 1"
+        }
+      ]
+    },
+    {
+      "name": "task-packet: unknown.invalid fixture",
+      "schema": "task-packet",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/task-packet/v1\",\"acceptanceCriteria\":[],\"assignedAgentId\":\"agt_00000000000000000000000000000000\",\"assignedRole\":\"librarian_researcher\",\"attempt\":1,\"budget\":{\"deadline\":\"2026-07-17T00:00:00.000Z\",\"maximumModelTokens\":1,\"maximumRepairAttempts\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"goalStack\":{\"directionQuestionId\":null,\"directionQuestionSummary\":null,\"missionCriterionIds\":[],\"missionCriterionSummary\":\"sample\",\"nodeObjective\":\"sample\",\"projectGoalId\":\"prj_00000000000000000000000000000000\",\"projectGoalSummary\":\"sample\"},\"inScope\":[],\"inputArtifactIds\":[],\"inputEvidenceIds\":[],\"instructions\":[],\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"issuedBy\":\"nosh\",\"lease\":{\"expiresAt\":\"2026-07-17T00:00:00.000Z\",\"heartbeatSeconds\":1,\"leaseId\":\"ref_1\"},\"observedVersions\":{},\"outOfScope\":[],\"permissions\":{\"allowedToolIds\":[],\"delegation\":\"request_only\",\"gitCommit\":true,\"gitPush\":true,\"network\":\"disabled\",\"networkAllowlist\":[\"example.org\"],\"subprocess\":\"disabled\"},\"progressPolicy\":{\"emitOnAnomaly\":true,\"emitOnBlocker\":true,\"emitOnFirstDurableDelta\":true,\"maximumSilentSeconds\":1,\"milestoneIntervalSeconds\":1},\"requiredOutputs\":[],\"responseSchema\":\"https://example.com/resource\",\"schemaVersion\":1,\"scope\":{\"autoresearchId\":null,\"directionId\":null,\"experimentId\":null,\"graphNodeId\":\"ref_1\",\"missionId\":null,\"projectId\":\"prj_00000000000000000000000000000000\"},\"taskId\":\"tsk_00000000000000000000000000000000\",\"taskType\":\"ref_1\",\"templateVersion\":\"1.0.0\",\"unknownField\":true,\"whyNow\":\"sample\",\"workspace\":{\"branch\":\"sample\",\"protectedScopes\":[],\"startingCommit\":\"0000000000000000000000000000000000000000\",\"worktreeId\":\"ref_1\",\"writeScopes\":[]}}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/unknownField",
+          "code": "unrecognized_keys",
+          "message": "Unrecognized key: unknownField"
+        }
+      ]
+    },
+    {
+      "name": "review-verdict: missing.invalid fixture",
+      "schema": "review-verdict",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/review-verdict/v1\",\"criteria\":[{\"confidence\":\"low\",\"criterionId\":\"ref_1\",\"defectIds\":[],\"evidenceRefs\":[],\"finding\":\"sample\",\"status\":\"PASS\"}],\"defects\":[],\"independenceCheck\":\"pass\",\"missingRequiredInputs\":[],\"recommendedGraphAction\":\"ref_1\",\"recommendedPromotion\":\"promote\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"reviewRequestId\":\"rev_00000000000000000000000000000000\",\"reviewType\":\"task\",\"reviewedArtifactIds\":[],\"reviewedEvidenceIds\":[],\"reviewerAgentId\":\"agt_00000000000000000000000000000000\",\"scientificIntegrityFlags\":[],\"submittedAt\":\"2026-07-17T00:00:00.000Z\",\"summary\":\"sample\",\"target\":{\"targetId\":\"ref_1\",\"targetType\":\"ref_1\",\"targetVersion\":1},\"templateVersion\":\"1.0.0\",\"verdict\":\"PASS\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/schemaVersion",
+          "code": "invalid_literal",
+          "message": "Invalid literal value, expected 1"
+        }
+      ]
+    },
+    {
+      "name": "review-verdict: unknown.invalid fixture",
+      "schema": "review-verdict",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/review-verdict/v1\",\"criteria\":[{\"confidence\":\"low\",\"criterionId\":\"ref_1\",\"defectIds\":[],\"evidenceRefs\":[],\"finding\":\"sample\",\"status\":\"PASS\"}],\"defects\":[],\"independenceCheck\":\"pass\",\"missingRequiredInputs\":[],\"recommendedGraphAction\":\"ref_1\",\"recommendedPromotion\":\"promote\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"reviewRequestId\":\"rev_00000000000000000000000000000000\",\"reviewType\":\"task\",\"reviewedArtifactIds\":[],\"reviewedEvidenceIds\":[],\"reviewerAgentId\":\"agt_00000000000000000000000000000000\",\"schemaVersion\":1,\"scientificIntegrityFlags\":[],\"submittedAt\":\"2026-07-17T00:00:00.000Z\",\"summary\":\"sample\",\"target\":{\"targetId\":\"ref_1\",\"targetType\":\"ref_1\",\"targetVersion\":1},\"templateVersion\":\"1.0.0\",\"unknownField\":true,\"verdict\":\"PASS\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/unknownField",
+          "code": "unrecognized_keys",
+          "message": "Unrecognized key: unknownField"
+        }
+      ]
+    },
+    {
+      "name": "runtime-instruction: missing.invalid fixture",
+      "schema": "runtime-instruction",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/runtime-instruction/v1\",\"budget\":{\"maximumModelTokens\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"capabilities\":[],\"executionMode\":\"background\",\"idempotencyKey\":\"samplexxxxxxxxxx\",\"initialAgentId\":null,\"inputRefs\":[],\"instructionId\":\"ins_00000000000000000000000000000000\",\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"ownerScope\":{\"autoresearchId\":null,\"directionId\":null,\"experimentId\":null,\"graphNodeId\":null,\"missionId\":null},\"parentThreadId\":null,\"projectId\":\"prj_00000000000000000000000000000000\",\"proposedByAgentId\":null,\"purpose\":\"sample\",\"role\":\"nosh\",\"schemaVersion\":1,\"skillIds\":[],\"taskId\":\"tsk_00000000000000000000000000000000\",\"threadId\":\"thr_00000000000000000000000000000000\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/operation",
+          "code": "invalid_union_discriminator",
+          "message": "Invalid discriminator value. Expected 'THREAD_OPEN' | 'THREAD_STEP' | 'THREAD_FORK' | 'THREAD_AWAIT' | 'THREAD_COMPOSE' | 'THREAD_PAUSE' | 'THREAD_CANCEL' | 'SKILL_APPLY' | 'DIRECT_ACTION' | 'STOP'"
+        }
+      ]
+    },
+    {
+      "name": "runtime-instruction: unknown.invalid fixture",
+      "schema": "runtime-instruction",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/runtime-instruction/v1\",\"budget\":{\"maximumModelTokens\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"capabilities\":[],\"executionMode\":\"background\",\"idempotencyKey\":\"samplexxxxxxxxxx\",\"initialAgentId\":null,\"inputRefs\":[],\"instructionId\":\"ins_00000000000000000000000000000000\",\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"operation\":\"THREAD_OPEN\",\"ownerScope\":{\"autoresearchId\":null,\"directionId\":null,\"experimentId\":null,\"graphNodeId\":null,\"missionId\":null},\"parentThreadId\":null,\"projectId\":\"prj_00000000000000000000000000000000\",\"proposedByAgentId\":null,\"purpose\":\"sample\",\"role\":\"nosh\",\"schemaVersion\":1,\"skillIds\":[],\"taskId\":\"tsk_00000000000000000000000000000000\",\"threadId\":\"thr_00000000000000000000000000000000\",\"unknownField\":true}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/unknownField",
+          "code": "unrecognized_keys",
+          "message": "Unrecognized key: unknownField"
+        }
+      ]
+    },
+    {
+      "name": "evidence: missing.invalid fixture",
+      "schema": "evidence",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/evidence/v1\",\"createdAt\":\"2026-07-17T00:00:00.000Z\",\"createdBy\":\"user\",\"createdByAgentId\":null,\"evaluationContractHash\":null,\"evidenceId\":\"evd_00000000000000000000000000000000\",\"evidenceType\":\"ref_1\",\"polarity\":\"supports\",\"projectId\":\"prj_00000000000000000000000000000000\",\"quality\":{\"confidence\":\"low\",\"reviewId\":null,\"status\":\"unreviewed\"},\"scopeLimitations\":[],\"sourceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"statement\":\"sample\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/schemaVersion",
+          "code": "invalid_literal",
+          "message": "Invalid literal value, expected 1"
+        }
+      ]
+    },
+    {
+      "name": "evidence: unknown.invalid fixture",
+      "schema": "evidence",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/evidence/v1\",\"createdAt\":\"2026-07-17T00:00:00.000Z\",\"createdBy\":\"user\",\"createdByAgentId\":null,\"evaluationContractHash\":null,\"evidenceId\":\"evd_00000000000000000000000000000000\",\"evidenceType\":\"ref_1\",\"polarity\":\"supports\",\"projectId\":\"prj_00000000000000000000000000000000\",\"quality\":{\"confidence\":\"low\",\"reviewId\":null,\"status\":\"unreviewed\"},\"schemaVersion\":1,\"scopeLimitations\":[],\"sourceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"statement\":\"sample\",\"unknownField\":true}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/unknownField",
+          "code": "unrecognized_keys",
+          "message": "Unrecognized key: unknownField"
+        }
+      ]
+    },
+    {
+      "name": "episode: missing.invalid fixture",
+      "schema": "episode",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/episode/v1\",\"artifactIds\":[],\"changedFiles\":[],\"completedAt\":\"2026-07-17T00:00:00.000Z\",\"contextInputRefs\":[],\"decisions\":[],\"episodeHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"episodeId\":\"epi_00000000000000000000000000000000\",\"episodeType\":\"ref_1\",\"evidenceIds\":[],\"facts\":[],\"instructionId\":\"ins_00000000000000000000000000000000\",\"objective\":\"sample\",\"projectId\":\"prj_00000000000000000000000000000000\",\"recommendedNextActions\":[],\"startedAt\":\"2026-07-17T00:00:00.000Z\",\"status\":\"completed\",\"stepNumber\":1,\"summary\":\"sample\",\"threadId\":\"thr_00000000000000000000000000000000\",\"trace\":{\"firstSequence\":1,\"lastSequence\":1},\"unresolvedQuestions\":[],\"usage\":{\"modelTokens\":1,\"toolCalls\":1,\"wallClockSeconds\":1}}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/schemaVersion",
+          "code": "invalid_literal",
+          "message": "Invalid literal value, expected 1"
+        }
+      ]
+    },
+    {
+      "name": "episode: unknown.invalid fixture",
+      "schema": "episode",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/episode/v1\",\"artifactIds\":[],\"changedFiles\":[],\"completedAt\":\"2026-07-17T00:00:00.000Z\",\"contextInputRefs\":[],\"decisions\":[],\"episodeHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"episodeId\":\"epi_00000000000000000000000000000000\",\"episodeType\":\"ref_1\",\"evidenceIds\":[],\"facts\":[],\"instructionId\":\"ins_00000000000000000000000000000000\",\"objective\":\"sample\",\"projectId\":\"prj_00000000000000000000000000000000\",\"recommendedNextActions\":[],\"schemaVersion\":1,\"startedAt\":\"2026-07-17T00:00:00.000Z\",\"status\":\"completed\",\"stepNumber\":1,\"summary\":\"sample\",\"threadId\":\"thr_00000000000000000000000000000000\",\"trace\":{\"firstSequence\":1,\"lastSequence\":1},\"unknownField\":true,\"unresolvedQuestions\":[],\"usage\":{\"modelTokens\":1,\"toolCalls\":1,\"wallClockSeconds\":1}}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/unknownField",
+          "code": "unrecognized_keys",
+          "message": "Unrecognized key: unknownField"
+        }
+      ]
+    },
+    {
+      "name": "event: ephemeral with a sequence",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":\"evt_00000000000000000000000000000000\",\"correlationId\":\"sample\",\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"ephemeral\",\"schemaVersion\":1,\"scope\":{\"agentId\":\"agt_00000000000000000000000000000000\",\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"jobId\":\"job_00000000000000000000000000000000\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":\"run_00000000000000000000000000000000\"},\"sequence\":1,\"source\":\"sample\",\"timestamp\":\"2026-07-17T00:00:00.000Z\",\"type\":\"event.valid\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/sequence",
+          "code": "custom",
+          "message": "ephemeral events cannot have a sequence"
+        }
+      ]
+    },
+    {
+      "name": "event: ephemeral without a sequence",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":\"evt_00000000000000000000000000000000\",\"correlationId\":\"sample\",\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"ephemeral\",\"schemaVersion\":1,\"scope\":{\"agentId\":\"agt_00000000000000000000000000000000\",\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"jobId\":\"job_00000000000000000000000000000000\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":\"run_00000000000000000000000000000000\"},\"sequence\":null,\"source\":\"sample\",\"timestamp\":\"2026-07-17T00:00:00.000Z\",\"type\":\"event.valid\"}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/event/v1",
+        "schemaVersion": 1,
+        "retention": "ephemeral",
+        "type": "event.valid",
+        "source": "sample",
+        "scope": {
+          "projectId": "prj_00000000000000000000000000000000",
+          "missionId": "mis_00000000000000000000000000000000",
+          "directionId": "dir_00000000000000000000000000000000",
+          "autoresearchId": "ar_00000000000000000000000000000000",
+          "experimentId": "exp_00000000000000000000000000000000",
+          "runId": "run_00000000000000000000000000000000",
+          "jobId": "job_00000000000000000000000000000000",
+          "agentId": "agt_00000000000000000000000000000000"
+        },
+        "correlationId": "sample",
+        "causationId": "evt_00000000000000000000000000000000",
+        "payload": null,
+        "eventId": "evt_00000000000000000000000000000000",
+        "sequence": null,
+        "timestamp": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "event: persistent without a sequence",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":\"evt_00000000000000000000000000000000\",\"correlationId\":\"sample\",\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"persistent\",\"schemaVersion\":1,\"scope\":{\"agentId\":\"agt_00000000000000000000000000000000\",\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"jobId\":\"job_00000000000000000000000000000000\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":\"run_00000000000000000000000000000000\"},\"sequence\":null,\"source\":\"sample\",\"timestamp\":\"2026-07-17T00:00:00.000Z\",\"type\":\"event.valid\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/sequence",
+          "code": "custom",
+          "message": "persistent events require a sequence"
+        }
+      ]
+    },
+    {
+      "name": "event: sequence written as 1.0",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":\"evt_00000000000000000000000000000000\",\"correlationId\":\"sample\",\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"persistent\",\"schemaVersion\":1,\"scope\":{\"agentId\":\"agt_00000000000000000000000000000000\",\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"jobId\":\"job_00000000000000000000000000000000\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":\"run_00000000000000000000000000000000\"},\"sequence\":1.0,\"source\":\"sample\",\"timestamp\":\"2026-07-17T00:00:00.000Z\",\"type\":\"event.valid\"}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/event/v1",
+        "schemaVersion": 1,
+        "retention": "persistent",
+        "type": "event.valid",
+        "source": "sample",
+        "scope": {
+          "projectId": "prj_00000000000000000000000000000000",
+          "missionId": "mis_00000000000000000000000000000000",
+          "directionId": "dir_00000000000000000000000000000000",
+          "autoresearchId": "ar_00000000000000000000000000000000",
+          "experimentId": "exp_00000000000000000000000000000000",
+          "runId": "run_00000000000000000000000000000000",
+          "jobId": "job_00000000000000000000000000000000",
+          "agentId": "agt_00000000000000000000000000000000"
+        },
+        "correlationId": "sample",
+        "causationId": "evt_00000000000000000000000000000000",
+        "payload": null,
+        "eventId": "evt_00000000000000000000000000000000",
+        "sequence": 1,
+        "timestamp": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "event: fractional sequence",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":\"evt_00000000000000000000000000000000\",\"correlationId\":\"sample\",\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"persistent\",\"schemaVersion\":1,\"scope\":{\"agentId\":\"agt_00000000000000000000000000000000\",\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"jobId\":\"job_00000000000000000000000000000000\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":\"run_00000000000000000000000000000000\"},\"sequence\":1.5,\"source\":\"sample\",\"timestamp\":\"2026-07-17T00:00:00.000Z\",\"type\":\"event.valid\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/sequence",
+          "code": "invalid_type",
+          "message": "Expected integer, received float"
+        }
+      ]
+    },
+    {
+      "name": "event: timestamp without milliseconds",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":\"evt_00000000000000000000000000000000\",\"correlationId\":\"sample\",\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"persistent\",\"schemaVersion\":1,\"scope\":{\"agentId\":\"agt_00000000000000000000000000000000\",\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"jobId\":\"job_00000000000000000000000000000000\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":\"run_00000000000000000000000000000000\"},\"sequence\":1,\"source\":\"sample\",\"timestamp\":\"2026-07-17T00:00:00Z\",\"type\":\"event.valid\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/timestamp",
+          "code": "invalid_string",
+          "message": "Invalid datetime"
+        }
+      ]
+    },
+    {
+      "name": "event: timestamp with four fractional digits",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":\"evt_00000000000000000000000000000000\",\"correlationId\":\"sample\",\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"persistent\",\"schemaVersion\":1,\"scope\":{\"agentId\":\"agt_00000000000000000000000000000000\",\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"jobId\":\"job_00000000000000000000000000000000\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":\"run_00000000000000000000000000000000\"},\"sequence\":1,\"source\":\"sample\",\"timestamp\":\"2026-07-17T00:00:00.0000Z\",\"type\":\"event.valid\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/timestamp",
+          "code": "invalid_string",
+          "message": "Invalid datetime"
+        }
+      ]
+    },
+    {
+      "name": "event: timestamp with offset",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":\"evt_00000000000000000000000000000000\",\"correlationId\":\"sample\",\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"persistent\",\"schemaVersion\":1,\"scope\":{\"agentId\":\"agt_00000000000000000000000000000000\",\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"jobId\":\"job_00000000000000000000000000000000\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":\"run_00000000000000000000000000000000\"},\"sequence\":1,\"source\":\"sample\",\"timestamp\":\"2026-07-17T00:00:00.000+05:30\",\"type\":\"event.valid\"}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/event/v1",
+        "schemaVersion": 1,
+        "retention": "persistent",
+        "type": "event.valid",
+        "source": "sample",
+        "scope": {
+          "projectId": "prj_00000000000000000000000000000000",
+          "missionId": "mis_00000000000000000000000000000000",
+          "directionId": "dir_00000000000000000000000000000000",
+          "autoresearchId": "ar_00000000000000000000000000000000",
+          "experimentId": "exp_00000000000000000000000000000000",
+          "runId": "run_00000000000000000000000000000000",
+          "jobId": "job_00000000000000000000000000000000",
+          "agentId": "agt_00000000000000000000000000000000"
+        },
+        "correlationId": "sample",
+        "causationId": "evt_00000000000000000000000000000000",
+        "payload": null,
+        "eventId": "evt_00000000000000000000000000000000",
+        "sequence": 1,
+        "timestamp": "2026-07-17T00:00:00.000+05:30"
+      }
+    },
+    {
+      "name": "event: timestamp with colonless offset",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":\"evt_00000000000000000000000000000000\",\"correlationId\":\"sample\",\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"persistent\",\"schemaVersion\":1,\"scope\":{\"agentId\":\"agt_00000000000000000000000000000000\",\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"jobId\":\"job_00000000000000000000000000000000\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":\"run_00000000000000000000000000000000\"},\"sequence\":1,\"source\":\"sample\",\"timestamp\":\"2026-07-17T00:00:00.000-0400\",\"type\":\"event.valid\"}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/event/v1",
+        "schemaVersion": 1,
+        "retention": "persistent",
+        "type": "event.valid",
+        "source": "sample",
+        "scope": {
+          "projectId": "prj_00000000000000000000000000000000",
+          "missionId": "mis_00000000000000000000000000000000",
+          "directionId": "dir_00000000000000000000000000000000",
+          "autoresearchId": "ar_00000000000000000000000000000000",
+          "experimentId": "exp_00000000000000000000000000000000",
+          "runId": "run_00000000000000000000000000000000",
+          "jobId": "job_00000000000000000000000000000000",
+          "agentId": "agt_00000000000000000000000000000000"
+        },
+        "correlationId": "sample",
+        "causationId": "evt_00000000000000000000000000000000",
+        "payload": null,
+        "eventId": "evt_00000000000000000000000000000000",
+        "sequence": 1,
+        "timestamp": "2026-07-17T00:00:00.000-0400"
+      }
+    },
+    {
+      "name": "event: timestamp on a non-leap Feb 29",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":\"evt_00000000000000000000000000000000\",\"correlationId\":\"sample\",\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"persistent\",\"schemaVersion\":1,\"scope\":{\"agentId\":\"agt_00000000000000000000000000000000\",\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"jobId\":\"job_00000000000000000000000000000000\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":\"run_00000000000000000000000000000000\"},\"sequence\":1,\"source\":\"sample\",\"timestamp\":\"2023-02-29T00:00:00.000Z\",\"type\":\"event.valid\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/timestamp",
+          "code": "invalid_string",
+          "message": "Invalid datetime"
+        }
+      ]
+    },
+    {
+      "name": "event: timestamp on a leap Feb 29",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":\"evt_00000000000000000000000000000000\",\"correlationId\":\"sample\",\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"persistent\",\"schemaVersion\":1,\"scope\":{\"agentId\":\"agt_00000000000000000000000000000000\",\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"jobId\":\"job_00000000000000000000000000000000\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":\"run_00000000000000000000000000000000\"},\"sequence\":1,\"source\":\"sample\",\"timestamp\":\"2024-02-29T00:00:00.000Z\",\"type\":\"event.valid\"}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/event/v1",
+        "schemaVersion": 1,
+        "retention": "persistent",
+        "type": "event.valid",
+        "source": "sample",
+        "scope": {
+          "projectId": "prj_00000000000000000000000000000000",
+          "missionId": "mis_00000000000000000000000000000000",
+          "directionId": "dir_00000000000000000000000000000000",
+          "autoresearchId": "ar_00000000000000000000000000000000",
+          "experimentId": "exp_00000000000000000000000000000000",
+          "runId": "run_00000000000000000000000000000000",
+          "jobId": "job_00000000000000000000000000000000",
+          "agentId": "agt_00000000000000000000000000000000"
+        },
+        "correlationId": "sample",
+        "causationId": "evt_00000000000000000000000000000000",
+        "payload": null,
+        "eventId": "evt_00000000000000000000000000000000",
+        "sequence": 1,
+        "timestamp": "2024-02-29T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "event: zod's repeatable seconds group",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":\"evt_00000000000000000000000000000000\",\"correlationId\":\"sample\",\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"persistent\",\"schemaVersion\":1,\"scope\":{\"agentId\":\"agt_00000000000000000000000000000000\",\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"jobId\":\"job_00000000000000000000000000000000\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":\"run_00000000000000000000000000000000\"},\"sequence\":1,\"source\":\"sample\",\"timestamp\":\"2026-07-17T00:00:00.000:00.000Z\",\"type\":\"event.valid\"}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/event/v1",
+        "schemaVersion": 1,
+        "retention": "persistent",
+        "type": "event.valid",
+        "source": "sample",
+        "scope": {
+          "projectId": "prj_00000000000000000000000000000000",
+          "missionId": "mis_00000000000000000000000000000000",
+          "directionId": "dir_00000000000000000000000000000000",
+          "autoresearchId": "ar_00000000000000000000000000000000",
+          "experimentId": "exp_00000000000000000000000000000000",
+          "runId": "run_00000000000000000000000000000000",
+          "jobId": "job_00000000000000000000000000000000",
+          "agentId": "agt_00000000000000000000000000000000"
+        },
+        "correlationId": "sample",
+        "causationId": "evt_00000000000000000000000000000000",
+        "payload": null,
+        "eventId": "evt_00000000000000000000000000000000",
+        "sequence": 1,
+        "timestamp": "2026-07-17T00:00:00.000:00.000Z"
+      }
+    },
+    {
+      "name": "event: type with a non-ASCII letter",
+      "schema": "event",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/event/v1\",\"causationId\":\"evt_00000000000000000000000000000000\",\"correlationId\":\"sample\",\"eventId\":\"evt_00000000000000000000000000000000\",\"payload\":null,\"retention\":\"persistent\",\"schemaVersion\":1,\"scope\":{\"agentId\":\"agt_00000000000000000000000000000000\",\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"jobId\":\"job_00000000000000000000000000000000\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"runId\":\"run_00000000000000000000000000000000\"},\"sequence\":1,\"source\":\"sample\",\"timestamp\":\"2026-07-17T00:00:00.000Z\",\"type\":\"agent.stärted\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/type",
+          "code": "invalid_string",
+          "message": "Invalid"
+        }
+      ]
+    },
+    {
+      "name": "evidence: user-created naming an agent",
+      "schema": "evidence",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/evidence/v1\",\"createdAt\":\"2026-07-17T00:00:00.000Z\",\"createdBy\":\"user\",\"createdByAgentId\":\"agt_00000000000000000000000000000000\",\"evaluationContractHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"evidenceId\":\"evd_00000000000000000000000000000000\",\"evidenceType\":\"ref_1\",\"polarity\":\"supports\",\"projectId\":\"prj_00000000000000000000000000000000\",\"quality\":{\"confidence\":\"low\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"status\":\"reviewed\"},\"schemaVersion\":1,\"scopeLimitations\":[\"sample\"],\"sourceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"statement\":\"sample\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/createdByAgentId",
+          "code": "custom",
+          "message": "createdByAgentId must be present exactly for agent-created evidence"
+        }
+      ]
+    },
+    {
+      "name": "evidence: user-created without an agent",
+      "schema": "evidence",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/evidence/v1\",\"createdAt\":\"2026-07-17T00:00:00.000Z\",\"createdBy\":\"user\",\"createdByAgentId\":null,\"evaluationContractHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"evidenceId\":\"evd_00000000000000000000000000000000\",\"evidenceType\":\"ref_1\",\"polarity\":\"supports\",\"projectId\":\"prj_00000000000000000000000000000000\",\"quality\":{\"confidence\":\"low\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"status\":\"reviewed\"},\"schemaVersion\":1,\"scopeLimitations\":[\"sample\"],\"sourceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"statement\":\"sample\"}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/evidence/v1",
+        "schemaVersion": 1,
+        "evidenceId": "evd_00000000000000000000000000000000",
+        "projectId": "prj_00000000000000000000000000000000",
+        "evidenceType": "ref_1",
+        "statement": "sample",
+        "polarity": "supports",
+        "sourceRefs": [
+          {
+            "refType": "ref_1",
+            "refId": "ref_1",
+            "locator": "sample"
+          }
+        ],
+        "evaluationContractHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "scopeLimitations": [
+          "sample"
+        ],
+        "quality": {
+          "status": "reviewed",
+          "reviewId": "rev_00000000000000000000000000000000",
+          "confidence": "low"
+        },
+        "createdBy": "user",
+        "createdByAgentId": null,
+        "createdAt": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "evidence: unreviewed naming a review",
+      "schema": "evidence",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/evidence/v1\",\"createdAt\":\"2026-07-17T00:00:00.000Z\",\"createdBy\":\"agent\",\"createdByAgentId\":\"agt_00000000000000000000000000000000\",\"evaluationContractHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"evidenceId\":\"evd_00000000000000000000000000000000\",\"evidenceType\":\"ref_1\",\"polarity\":\"supports\",\"projectId\":\"prj_00000000000000000000000000000000\",\"quality\":{\"confidence\":\"low\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"status\":\"unreviewed\"},\"schemaVersion\":1,\"scopeLimitations\":[\"sample\"],\"sourceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"statement\":\"sample\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/quality/reviewId",
+          "code": "custom",
+          "message": "unreviewed Evidence must not name a Review"
+        }
+      ]
+    },
+    {
+      "name": "evidence: unreviewed without a review",
+      "schema": "evidence",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/evidence/v1\",\"createdAt\":\"2026-07-17T00:00:00.000Z\",\"createdBy\":\"agent\",\"createdByAgentId\":\"agt_00000000000000000000000000000000\",\"evaluationContractHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"evidenceId\":\"evd_00000000000000000000000000000000\",\"evidenceType\":\"ref_1\",\"polarity\":\"supports\",\"projectId\":\"prj_00000000000000000000000000000000\",\"quality\":{\"confidence\":\"low\",\"reviewId\":null,\"status\":\"unreviewed\"},\"schemaVersion\":1,\"scopeLimitations\":[\"sample\"],\"sourceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"statement\":\"sample\"}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/evidence/v1",
+        "schemaVersion": 1,
+        "evidenceId": "evd_00000000000000000000000000000000",
+        "projectId": "prj_00000000000000000000000000000000",
+        "evidenceType": "ref_1",
+        "statement": "sample",
+        "polarity": "supports",
+        "sourceRefs": [
+          {
+            "refType": "ref_1",
+            "refId": "ref_1",
+            "locator": "sample"
+          }
+        ],
+        "evaluationContractHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "scopeLimitations": [
+          "sample"
+        ],
+        "quality": {
+          "status": "unreviewed",
+          "reviewId": null,
+          "confidence": "low"
+        },
+        "createdBy": "agent",
+        "createdByAgentId": "agt_00000000000000000000000000000000",
+        "createdAt": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "evidence: reviewed without a review",
+      "schema": "evidence",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/evidence/v1\",\"createdAt\":\"2026-07-17T00:00:00.000Z\",\"createdBy\":\"agent\",\"createdByAgentId\":\"agt_00000000000000000000000000000000\",\"evaluationContractHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"evidenceId\":\"evd_00000000000000000000000000000000\",\"evidenceType\":\"ref_1\",\"polarity\":\"supports\",\"projectId\":\"prj_00000000000000000000000000000000\",\"quality\":{\"confidence\":\"low\",\"reviewId\":null,\"status\":\"reviewed\"},\"schemaVersion\":1,\"scopeLimitations\":[\"sample\"],\"sourceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"statement\":\"sample\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/quality/reviewId",
+          "code": "custom",
+          "message": "reviewed or rejected Evidence must name a Review"
+        }
+      ]
+    },
+    {
+      "name": "evidence: 4000 UTF-16 units of emoji",
+      "schema": "evidence",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/evidence/v1\",\"createdAt\":\"2026-07-17T00:00:00.000Z\",\"createdBy\":\"agent\",\"createdByAgentId\":\"agt_00000000000000000000000000000000\",\"evaluationContractHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"evidenceId\":\"evd_00000000000000000000000000000000\",\"evidenceType\":\"ref_1\",\"polarity\":\"supports\",\"projectId\":\"prj_00000000000000000000000000000000\",\"quality\":{\"confidence\":\"low\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"status\":\"reviewed\"},\"schemaVersion\":1,\"scopeLimitations\":[\"sample\"],\"sourceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"statement\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/evidence/v1",
+        "schemaVersion": 1,
+        "evidenceId": "evd_00000000000000000000000000000000",
+        "projectId": "prj_00000000000000000000000000000000",
+        "evidenceType": "ref_1",
+        "statement": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        "polarity": "supports",
+        "sourceRefs": [
+          {
+            "refType": "ref_1",
+            "refId": "ref_1",
+            "locator": "sample"
+          }
+        ],
+        "evaluationContractHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "scopeLimitations": [
+          "sample"
+        ],
+        "quality": {
+          "status": "reviewed",
+          "reviewId": "rev_00000000000000000000000000000000",
+          "confidence": "low"
+        },
+        "createdBy": "agent",
+        "createdByAgentId": "agt_00000000000000000000000000000000",
+        "createdAt": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "evidence: 4002 UTF-16 units of emoji (2001 code points)",
+      "schema": "evidence",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/evidence/v1\",\"createdAt\":\"2026-07-17T00:00:00.000Z\",\"createdBy\":\"agent\",\"createdByAgentId\":\"agt_00000000000000000000000000000000\",\"evaluationContractHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"evidenceId\":\"evd_00000000000000000000000000000000\",\"evidenceType\":\"ref_1\",\"polarity\":\"supports\",\"projectId\":\"prj_00000000000000000000000000000000\",\"quality\":{\"confidence\":\"low\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"status\":\"reviewed\"},\"schemaVersion\":1,\"scopeLimitations\":[\"sample\"],\"sourceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"statement\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/statement",
+          "code": "too_big",
+          "message": "String must contain at most 4000 character(s)"
+        }
+      ]
+    },
+    {
+      "name": "evidence: empty statement",
+      "schema": "evidence",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/evidence/v1\",\"createdAt\":\"2026-07-17T00:00:00.000Z\",\"createdBy\":\"agent\",\"createdByAgentId\":\"agt_00000000000000000000000000000000\",\"evaluationContractHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"evidenceId\":\"evd_00000000000000000000000000000000\",\"evidenceType\":\"ref_1\",\"polarity\":\"supports\",\"projectId\":\"prj_00000000000000000000000000000000\",\"quality\":{\"confidence\":\"low\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"status\":\"reviewed\"},\"schemaVersion\":1,\"scopeLimitations\":[\"sample\"],\"sourceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"statement\":\"\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/statement",
+          "code": "too_small",
+          "message": "String must contain at least 1 character(s)"
+        }
+      ]
+    },
+    {
+      "name": "claim: no evidence and no limitation",
+      "schema": "claim",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/claim/v1\",\"claimId\":\"clm_00000000000000000000000000000000\",\"claimType\":\"ref_1\",\"claimVersion\":1,\"contradictingEvidenceIds\":[],\"limitations\":[],\"paperLocations\":[\"sample\"],\"projectId\":\"prj_00000000000000000000000000000000\",\"qualifyingEvidenceIds\":[],\"requiredReviewId\":\"rev_00000000000000000000000000000000\",\"schemaVersion\":1,\"status\":\"hypothesis\",\"supersedesClaimVersion\":1,\"supportingEvidenceIds\":[],\"text\":\"sample\",\"updatedAt\":\"2026-07-17T00:00:00.000Z\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/limitations",
+          "code": "custom",
+          "message": "Claim must have evidence or an explicit limitation"
+        }
+      ]
+    },
+    {
+      "name": "claim: only a limitation",
+      "schema": "claim",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/claim/v1\",\"claimId\":\"clm_00000000000000000000000000000000\",\"claimType\":\"ref_1\",\"claimVersion\":1,\"contradictingEvidenceIds\":[],\"limitations\":[\"sample\"],\"paperLocations\":[\"sample\"],\"projectId\":\"prj_00000000000000000000000000000000\",\"qualifyingEvidenceIds\":[],\"requiredReviewId\":\"rev_00000000000000000000000000000000\",\"schemaVersion\":1,\"status\":\"hypothesis\",\"supersedesClaimVersion\":1,\"supportingEvidenceIds\":[],\"text\":\"sample\",\"updatedAt\":\"2026-07-17T00:00:00.000Z\"}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/claim/v1",
+        "schemaVersion": 1,
+        "claimId": "clm_00000000000000000000000000000000",
+        "projectId": "prj_00000000000000000000000000000000",
+        "claimVersion": 1,
+        "text": "sample",
+        "claimType": "ref_1",
+        "status": "hypothesis",
+        "supportingEvidenceIds": [],
+        "contradictingEvidenceIds": [],
+        "qualifyingEvidenceIds": [],
+        "limitations": [
+          "sample"
+        ],
+        "paperLocations": [
+          "sample"
+        ],
+        "requiredReviewId": "rev_00000000000000000000000000000000",
+        "supersedesClaimVersion": 1,
+        "updatedAt": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "mission completion: unresolved claim",
+      "schema": "mission-completion-packet",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/mission-completion-packet/v1\",\"budgetReconciliation\":{\"item\":null},\"builtAt\":\"2026-07-17T00:00:00.000Z\",\"claimAudit\":{\"contradictedClaimIds\":[\"clm_00000000000000000000000000000000\"],\"qualifiedClaimIds\":[\"clm_00000000000000000000000000000000\"],\"supportedClaimIds\":[\"clm_00000000000000000000000000000000\"],\"unresolvedClaimIds\":[\"clm_00000000000000000000000000000000\"]},\"completionAttempt\":1,\"criteria\":[{\"item\":null}],\"deliverableArtifactIds\":[\"art_00000000000000000000000000000000\"],\"deterministicPreReview\":{\"status\":\"pass\",\"validatorRunIds\":[\"run_00000000000000000000000000000000\"]},\"directorSummaryArtifactId\":\"art_00000000000000000000000000000000\",\"graphVersion\":1,\"missionId\":\"mis_00000000000000000000000000000000\",\"objectiveVersion\":1,\"openDefectIds\":[],\"policyExceptions\":[\"ref_1\"],\"reproducibilityManifestArtifactId\":\"art_00000000000000000000000000000000\",\"requiredNodeDisposition\":[{\"item\":null}],\"schemaVersion\":1}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/openDefectIds",
+          "code": "custom",
+          "message": "Mission completion cannot contain unresolved claims or defects"
+        }
+      ]
+    },
+    {
+      "name": "mission completion: open defect",
+      "schema": "mission-completion-packet",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/mission-completion-packet/v1\",\"budgetReconciliation\":{\"item\":null},\"builtAt\":\"2026-07-17T00:00:00.000Z\",\"claimAudit\":{\"contradictedClaimIds\":[\"clm_00000000000000000000000000000000\"],\"qualifiedClaimIds\":[\"clm_00000000000000000000000000000000\"],\"supportedClaimIds\":[\"clm_00000000000000000000000000000000\"],\"unresolvedClaimIds\":[]},\"completionAttempt\":1,\"criteria\":[{\"item\":null}],\"deliverableArtifactIds\":[\"art_00000000000000000000000000000000\"],\"deterministicPreReview\":{\"status\":\"pass\",\"validatorRunIds\":[\"run_00000000000000000000000000000000\"]},\"directorSummaryArtifactId\":\"art_00000000000000000000000000000000\",\"graphVersion\":1,\"missionId\":\"mis_00000000000000000000000000000000\",\"objectiveVersion\":1,\"openDefectIds\":[\"ref_1\"],\"policyExceptions\":[\"ref_1\"],\"reproducibilityManifestArtifactId\":\"art_00000000000000000000000000000000\",\"requiredNodeDisposition\":[{\"item\":null}],\"schemaVersion\":1}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/openDefectIds",
+          "code": "custom",
+          "message": "Mission completion cannot contain unresolved claims or defects"
+        }
+      ]
+    },
+    {
+      "name": "direction closure: open defect",
+      "schema": "direction-closure-packet",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/direction-closure-packet/v1\",\"acceptedExperimentIds\":[\"exp_00000000000000000000000000000000\"],\"answer\":\"sample\",\"autoresearchCompletionPacketIds\":[\"ar_00000000000000000000000000000000\"],\"builtAt\":\"2026-07-17T00:00:00.000Z\",\"claimEffects\":[{\"item\":null}],\"closureAttempt\":1,\"deterministicPreReview\":{\"status\":\"pass\",\"validatorRunIds\":[\"run_00000000000000000000000000000000\"]},\"directionId\":\"dir_00000000000000000000000000000000\",\"evaluationContractHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"evidenceIds\":[\"evd_00000000000000000000000000000000\"],\"failedHypothesisFingerprintIds\":[\"ref_1\"],\"graphVersion\":1,\"inconclusiveExperimentIds\":[\"exp_00000000000000000000000000000000\"],\"limitations\":[\"sample\"],\"openDefectIds\":[\"ref_1\"],\"questionDisposition\":\"supported\",\"rejectedExperimentIds\":[\"exp_00000000000000000000000000000000\"],\"reproducibilityManifestArtifactId\":\"art_00000000000000000000000000000000\",\"schemaVersion\":1,\"synthesisArtifactId\":\"art_00000000000000000000000000000000\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/openDefectIds",
+          "code": "custom",
+          "message": "Direction closure cannot contain open defects"
+        }
+      ]
+    },
+    {
+      "name": "episode: trace runs backwards",
+      "schema": "episode",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/episode/v1\",\"artifactIds\":[\"art_00000000000000000000000000000000\"],\"changedFiles\":[\"sample\"],\"completedAt\":\"2026-07-17T00:00:00.000Z\",\"contextInputRefs\":[\"ref_1\"],\"decisions\":[{\"evidenceRefs\":[\"ref_1\"],\"rationale\":\"sample\",\"statement\":\"sample\"}],\"episodeHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"episodeId\":\"epi_00000000000000000000000000000000\",\"episodeType\":\"ref_1\",\"evidenceIds\":[\"evd_00000000000000000000000000000000\"],\"facts\":[{\"confidence\":\"low\",\"evidenceRefs\":[\"ref_1\"],\"statement\":\"sample\"}],\"instructionId\":\"ins_00000000000000000000000000000000\",\"objective\":\"sample\",\"projectId\":\"prj_00000000000000000000000000000000\",\"recommendedNextActions\":[{\"objective\":\"sample\",\"operation\":\"THREAD_OPEN\"}],\"schemaVersion\":1,\"startedAt\":\"2026-07-17T00:00:00.000Z\",\"status\":\"completed\",\"stepNumber\":1,\"summary\":\"sample\",\"threadId\":\"thr_00000000000000000000000000000000\",\"trace\":{\"firstSequence\":2,\"lastSequence\":1},\"unresolvedQuestions\":[\"sample\"],\"usage\":{\"modelTokens\":1,\"toolCalls\":1,\"wallClockSeconds\":1}}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/trace/lastSequence",
+          "code": "custom",
+          "message": "lastSequence must not precede firstSequence"
+        }
+      ]
+    },
+    {
+      "name": "episode: omitted fact confidence defaults to medium",
+      "schema": "episode",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/episode/v1\",\"artifactIds\":[\"art_00000000000000000000000000000000\"],\"changedFiles\":[\"sample\"],\"completedAt\":\"2026-07-17T00:00:00.000Z\",\"contextInputRefs\":[\"ref_1\"],\"decisions\":[{\"evidenceRefs\":[\"ref_1\"],\"rationale\":\"sample\",\"statement\":\"sample\"}],\"episodeHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"episodeId\":\"epi_00000000000000000000000000000000\",\"episodeType\":\"ref_1\",\"evidenceIds\":[\"evd_00000000000000000000000000000000\"],\"facts\":[{\"evidenceRefs\":[\"ref_1\"],\"statement\":\"sample\"}],\"instructionId\":\"ins_00000000000000000000000000000000\",\"objective\":\"sample\",\"projectId\":\"prj_00000000000000000000000000000000\",\"recommendedNextActions\":[{\"objective\":\"sample\",\"operation\":\"THREAD_OPEN\"}],\"schemaVersion\":1,\"startedAt\":\"2026-07-17T00:00:00.000Z\",\"status\":\"completed\",\"stepNumber\":1,\"summary\":\"sample\",\"threadId\":\"thr_00000000000000000000000000000000\",\"trace\":{\"firstSequence\":1,\"lastSequence\":1},\"unresolvedQuestions\":[\"sample\"],\"usage\":{\"modelTokens\":1,\"toolCalls\":1,\"wallClockSeconds\":1}}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/episode/v1",
+        "schemaVersion": 1,
+        "episodeId": "epi_00000000000000000000000000000000",
+        "projectId": "prj_00000000000000000000000000000000",
+        "threadId": "thr_00000000000000000000000000000000",
+        "instructionId": "ins_00000000000000000000000000000000",
+        "stepNumber": 1,
+        "episodeType": "ref_1",
+        "objective": "sample",
+        "status": "completed",
+        "summary": "sample",
+        "facts": [
+          {
+            "statement": "sample",
+            "evidenceRefs": [
+              "ref_1"
+            ],
+            "confidence": "medium"
+          }
+        ],
+        "decisions": [
+          {
+            "statement": "sample",
+            "rationale": "sample",
+            "evidenceRefs": [
+              "ref_1"
+            ]
+          }
+        ],
+        "artifactIds": [
+          "art_00000000000000000000000000000000"
+        ],
+        "evidenceIds": [
+          "evd_00000000000000000000000000000000"
+        ],
+        "changedFiles": [
+          "sample"
+        ],
+        "unresolvedQuestions": [
+          "sample"
+        ],
+        "recommendedNextActions": [
+          {
+            "operation": "THREAD_OPEN",
+            "objective": "sample"
+          }
+        ],
+        "contextInputRefs": [
+          "ref_1"
+        ],
+        "trace": {
+          "firstSequence": 1,
+          "lastSequence": 1
+        },
+        "usage": {
+          "toolCalls": 1,
+          "modelTokens": 1,
+          "wallClockSeconds": 1
+        },
+        "startedAt": "2026-07-17T00:00:00.000Z",
+        "completedAt": "2026-07-17T00:00:00.000Z",
+        "episodeHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "name": "episode draft: omitted fact confidence defaults to medium",
+      "schema": "episode-draft",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/episode-draft/v1\",\"artifactIds\":[\"art_00000000000000000000000000000000\"],\"changedFiles\":[\"sample\"],\"decisions\":[{\"evidenceRefs\":[\"ref_1\"],\"rationale\":\"sample\",\"statement\":\"sample\"}],\"episodeType\":\"ref_1\",\"evidenceIds\":[\"evd_00000000000000000000000000000000\"],\"facts\":[{\"evidenceRefs\":[\"ref_1\"],\"statement\":\"sample\"}],\"recommendedNextActions\":[{\"objective\":\"sample\",\"operation\":\"THREAD_OPEN\"}],\"schemaVersion\":1,\"summary\":\"sample\",\"unresolvedQuestions\":[\"sample\"]}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/episode-draft/v1",
+        "schemaVersion": 1,
+        "episodeType": "ref_1",
+        "summary": "sample",
+        "facts": [
+          {
+            "statement": "sample",
+            "evidenceRefs": [
+              "ref_1"
+            ],
+            "confidence": "medium"
+          }
+        ],
+        "decisions": [
+          {
+            "statement": "sample",
+            "rationale": "sample",
+            "evidenceRefs": [
+              "ref_1"
+            ]
+          }
+        ],
+        "artifactIds": [
+          "art_00000000000000000000000000000000"
+        ],
+        "evidenceIds": [
+          "evd_00000000000000000000000000000000"
+        ],
+        "changedFiles": [
+          "sample"
+        ],
+        "unresolvedQuestions": [
+          "sample"
+        ],
+        "recommendedNextActions": [
+          {
+            "operation": "THREAD_OPEN",
+            "objective": "sample"
+          }
+        ]
+      }
+    },
+    {
+      "name": "task failure: same approach forbidden, premise given",
+      "schema": "task-failure",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/task-failure/v1\",\"artifactIdsWorthRetaining\":[\"art_00000000000000000000000000000000\"],\"attempt\":1,\"attemptedResolutionFingerprints\":[\"sha256:0000000000000000000000000000000000000000000000000000000000000000\"],\"changedPremiseRequired\":\"sample\",\"diagnosticArtifactIds\":[\"art_00000000000000000000000000000000\"],\"failedValidatorIds\":[\"ref_1\"],\"failureCode\":\"ref_1\",\"phase\":\"ref_1\",\"recommendedDisposition\":\"retry_transient\",\"reportedAt\":\"2026-07-17T00:00:00.000Z\",\"retriable\":true,\"sameApproachAllowed\":false,\"schemaVersion\":1,\"summary\":\"sample\",\"taskId\":\"tsk_00000000000000000000000000000000\",\"workState\":{\"activeJobIds\":[\"job_00000000000000000000000000000000\"],\"branch\":\"sample\",\"endingCommit\":\"0000000000000000000000000000000000000000\",\"startingCommit\":\"0000000000000000000000000000000000000000\",\"uncommittedChanges\":true}}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/task-failure/v1",
+        "schemaVersion": 1,
+        "taskId": "tsk_00000000000000000000000000000000",
+        "attempt": 1,
+        "failureCode": "ref_1",
+        "phase": "ref_1",
+        "summary": "sample",
+        "diagnosticArtifactIds": [
+          "art_00000000000000000000000000000000"
+        ],
+        "failedValidatorIds": [
+          "ref_1"
+        ],
+        "workState": {
+          "branch": "sample",
+          "startingCommit": "0000000000000000000000000000000000000000",
+          "endingCommit": "0000000000000000000000000000000000000000",
+          "uncommittedChanges": true,
+          "activeJobIds": [
+            "job_00000000000000000000000000000000"
+          ]
+        },
+        "attemptedResolutionFingerprints": [
+          "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        ],
+        "retriable": true,
+        "sameApproachAllowed": false,
+        "changedPremiseRequired": "sample",
+        "recommendedDisposition": "retry_transient",
+        "artifactIdsWorthRetaining": [
+          "art_00000000000000000000000000000000"
+        ],
+        "reportedAt": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "task failure: same approach forbidden, no premise",
+      "schema": "task-failure",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/task-failure/v1\",\"artifactIdsWorthRetaining\":[\"art_00000000000000000000000000000000\"],\"attempt\":1,\"attemptedResolutionFingerprints\":[\"sha256:0000000000000000000000000000000000000000000000000000000000000000\"],\"changedPremiseRequired\":null,\"diagnosticArtifactIds\":[\"art_00000000000000000000000000000000\"],\"failedValidatorIds\":[\"ref_1\"],\"failureCode\":\"ref_1\",\"phase\":\"ref_1\",\"recommendedDisposition\":\"retry_transient\",\"reportedAt\":\"2026-07-17T00:00:00.000Z\",\"retriable\":true,\"sameApproachAllowed\":false,\"schemaVersion\":1,\"summary\":\"sample\",\"taskId\":\"tsk_00000000000000000000000000000000\",\"workState\":{\"activeJobIds\":[\"job_00000000000000000000000000000000\"],\"branch\":\"sample\",\"endingCommit\":\"0000000000000000000000000000000000000000\",\"startingCommit\":\"0000000000000000000000000000000000000000\",\"uncommittedChanges\":true}}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/changedPremiseRequired",
+          "code": "custom",
+          "message": "a changed premise is required when the same approach is forbidden"
+        }
+      ]
+    },
+    {
+      "name": "task failure: branch with ..",
+      "schema": "task-failure",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/task-failure/v1\",\"artifactIdsWorthRetaining\":[\"art_00000000000000000000000000000000\"],\"attempt\":1,\"attemptedResolutionFingerprints\":[\"sha256:0000000000000000000000000000000000000000000000000000000000000000\"],\"changedPremiseRequired\":\"sample\",\"diagnosticArtifactIds\":[\"art_00000000000000000000000000000000\"],\"failedValidatorIds\":[\"ref_1\"],\"failureCode\":\"ref_1\",\"phase\":\"ref_1\",\"recommendedDisposition\":\"retry_transient\",\"reportedAt\":\"2026-07-17T00:00:00.000Z\",\"retriable\":true,\"sameApproachAllowed\":true,\"schemaVersion\":1,\"summary\":\"sample\",\"taskId\":\"tsk_00000000000000000000000000000000\",\"workState\":{\"activeJobIds\":[\"job_00000000000000000000000000000000\"],\"branch\":\"a..b\",\"endingCommit\":\"0000000000000000000000000000000000000000\",\"startingCommit\":\"0000000000000000000000000000000000000000\",\"uncommittedChanges\":true}}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/workState/branch",
+          "code": "custom",
+          "message": "must be a safe Git branch name"
+        }
+      ]
+    },
+    {
+      "name": "task packet: branch ending .lock",
+      "schema": "task-packet",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/task-packet/v1\",\"acceptanceCriteria\":[{\"criterionId\":\"ref_1\",\"required\":true,\"reviewRubricIds\":[\"rev_00000000000000000000000000000000\"],\"statement\":\"sample\",\"validatorIds\":[\"ref_1\"]}],\"assignedAgentId\":\"agt_00000000000000000000000000000000\",\"assignedRole\":\"librarian_researcher\",\"attempt\":1,\"budget\":{\"deadline\":\"2026-07-17T00:00:00.000Z\",\"maximumModelTokens\":1,\"maximumRepairAttempts\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"goalStack\":{\"directionQuestionId\":\"dir_00000000000000000000000000000000\",\"directionQuestionSummary\":\"sample\",\"missionCriterionIds\":[\"mis_00000000000000000000000000000000\"],\"missionCriterionSummary\":\"sample\",\"nodeObjective\":\"sample\",\"projectGoalId\":\"prj_00000000000000000000000000000000\",\"projectGoalSummary\":\"sample\"},\"inScope\":[\"sample\"],\"inputArtifactIds\":[\"art_00000000000000000000000000000000\"],\"inputEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"instructions\":[\"sample\"],\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"issuedBy\":\"nosh\",\"lease\":{\"expiresAt\":\"2026-07-17T00:00:00.000Z\",\"heartbeatSeconds\":1,\"leaseId\":\"ref_1\"},\"observedVersions\":{\"item\":1},\"outOfScope\":[\"sample\"],\"permissions\":{\"allowedToolIds\":[\"ref_1\"],\"delegation\":\"request_only\",\"gitCommit\":true,\"gitPush\":true,\"network\":\"disabled\",\"networkAllowlist\":[\"example.org\"],\"subprocess\":\"disabled\"},\"progressPolicy\":{\"emitOnAnomaly\":true,\"emitOnBlocker\":true,\"emitOnFirstDurableDelta\":true,\"maximumSilentSeconds\":1,\"milestoneIntervalSeconds\":1},\"requiredOutputs\":[{\"kind\":\"ref_1\",\"outputId\":\"ref_1\",\"required\":true}],\"responseSchema\":\"https://example.com/resource\",\"schemaVersion\":1,\"scope\":{\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"graphNodeId\":\"ref_1\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\"},\"taskId\":\"tsk_00000000000000000000000000000000\",\"taskType\":\"ref_1\",\"templateVersion\":\"1.0.0\",\"whyNow\":\"sample\",\"workspace\":{\"branch\":\"feature/x.lock\",\"protectedScopes\":[\"sample\"],\"startingCommit\":\"0000000000000000000000000000000000000000\",\"worktreeId\":\"ref_1\",\"writeScopes\":[\"sample\"]}}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/workspace/branch",
+          "code": "custom",
+          "message": "must be a safe Git branch name"
+        }
+      ]
+    },
+    {
+      "name": "task packet: branch with //",
+      "schema": "task-packet",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/task-packet/v1\",\"acceptanceCriteria\":[{\"criterionId\":\"ref_1\",\"required\":true,\"reviewRubricIds\":[\"rev_00000000000000000000000000000000\"],\"statement\":\"sample\",\"validatorIds\":[\"ref_1\"]}],\"assignedAgentId\":\"agt_00000000000000000000000000000000\",\"assignedRole\":\"librarian_researcher\",\"attempt\":1,\"budget\":{\"deadline\":\"2026-07-17T00:00:00.000Z\",\"maximumModelTokens\":1,\"maximumRepairAttempts\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"goalStack\":{\"directionQuestionId\":\"dir_00000000000000000000000000000000\",\"directionQuestionSummary\":\"sample\",\"missionCriterionIds\":[\"mis_00000000000000000000000000000000\"],\"missionCriterionSummary\":\"sample\",\"nodeObjective\":\"sample\",\"projectGoalId\":\"prj_00000000000000000000000000000000\",\"projectGoalSummary\":\"sample\"},\"inScope\":[\"sample\"],\"inputArtifactIds\":[\"art_00000000000000000000000000000000\"],\"inputEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"instructions\":[\"sample\"],\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"issuedBy\":\"nosh\",\"lease\":{\"expiresAt\":\"2026-07-17T00:00:00.000Z\",\"heartbeatSeconds\":1,\"leaseId\":\"ref_1\"},\"observedVersions\":{\"item\":1},\"outOfScope\":[\"sample\"],\"permissions\":{\"allowedToolIds\":[\"ref_1\"],\"delegation\":\"request_only\",\"gitCommit\":true,\"gitPush\":true,\"network\":\"disabled\",\"networkAllowlist\":[\"example.org\"],\"subprocess\":\"disabled\"},\"progressPolicy\":{\"emitOnAnomaly\":true,\"emitOnBlocker\":true,\"emitOnFirstDurableDelta\":true,\"maximumSilentSeconds\":1,\"milestoneIntervalSeconds\":1},\"requiredOutputs\":[{\"kind\":\"ref_1\",\"outputId\":\"ref_1\",\"required\":true}],\"responseSchema\":\"https://example.com/resource\",\"schemaVersion\":1,\"scope\":{\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"graphNodeId\":\"ref_1\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\"},\"taskId\":\"tsk_00000000000000000000000000000000\",\"taskType\":\"ref_1\",\"templateVersion\":\"1.0.0\",\"whyNow\":\"sample\",\"workspace\":{\"branch\":\"feat//x\",\"protectedScopes\":[\"sample\"],\"startingCommit\":\"0000000000000000000000000000000000000000\",\"worktreeId\":\"ref_1\",\"writeScopes\":[\"sample\"]}}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/workspace/branch",
+          "code": "custom",
+          "message": "must be a safe Git branch name"
+        }
+      ]
+    },
+    {
+      "name": "task packet: branch ending /",
+      "schema": "task-packet",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/task-packet/v1\",\"acceptanceCriteria\":[{\"criterionId\":\"ref_1\",\"required\":true,\"reviewRubricIds\":[\"rev_00000000000000000000000000000000\"],\"statement\":\"sample\",\"validatorIds\":[\"ref_1\"]}],\"assignedAgentId\":\"agt_00000000000000000000000000000000\",\"assignedRole\":\"librarian_researcher\",\"attempt\":1,\"budget\":{\"deadline\":\"2026-07-17T00:00:00.000Z\",\"maximumModelTokens\":1,\"maximumRepairAttempts\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"goalStack\":{\"directionQuestionId\":\"dir_00000000000000000000000000000000\",\"directionQuestionSummary\":\"sample\",\"missionCriterionIds\":[\"mis_00000000000000000000000000000000\"],\"missionCriterionSummary\":\"sample\",\"nodeObjective\":\"sample\",\"projectGoalId\":\"prj_00000000000000000000000000000000\",\"projectGoalSummary\":\"sample\"},\"inScope\":[\"sample\"],\"inputArtifactIds\":[\"art_00000000000000000000000000000000\"],\"inputEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"instructions\":[\"sample\"],\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"issuedBy\":\"nosh\",\"lease\":{\"expiresAt\":\"2026-07-17T00:00:00.000Z\",\"heartbeatSeconds\":1,\"leaseId\":\"ref_1\"},\"observedVersions\":{\"item\":1},\"outOfScope\":[\"sample\"],\"permissions\":{\"allowedToolIds\":[\"ref_1\"],\"delegation\":\"request_only\",\"gitCommit\":true,\"gitPush\":true,\"network\":\"disabled\",\"networkAllowlist\":[\"example.org\"],\"subprocess\":\"disabled\"},\"progressPolicy\":{\"emitOnAnomaly\":true,\"emitOnBlocker\":true,\"emitOnFirstDurableDelta\":true,\"maximumSilentSeconds\":1,\"milestoneIntervalSeconds\":1},\"requiredOutputs\":[{\"kind\":\"ref_1\",\"outputId\":\"ref_1\",\"required\":true}],\"responseSchema\":\"https://example.com/resource\",\"schemaVersion\":1,\"scope\":{\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"graphNodeId\":\"ref_1\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\"},\"taskId\":\"tsk_00000000000000000000000000000000\",\"taskType\":\"ref_1\",\"templateVersion\":\"1.0.0\",\"whyNow\":\"sample\",\"workspace\":{\"branch\":\"feat/\",\"protectedScopes\":[\"sample\"],\"startingCommit\":\"0000000000000000000000000000000000000000\",\"worktreeId\":\"ref_1\",\"writeScopes\":[\"sample\"]}}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/workspace/branch",
+          "code": "custom",
+          "message": "must be a safe Git branch name"
+        }
+      ]
+    },
+    {
+      "name": "task packet: branch ending .",
+      "schema": "task-packet",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/task-packet/v1\",\"acceptanceCriteria\":[{\"criterionId\":\"ref_1\",\"required\":true,\"reviewRubricIds\":[\"rev_00000000000000000000000000000000\"],\"statement\":\"sample\",\"validatorIds\":[\"ref_1\"]}],\"assignedAgentId\":\"agt_00000000000000000000000000000000\",\"assignedRole\":\"librarian_researcher\",\"attempt\":1,\"budget\":{\"deadline\":\"2026-07-17T00:00:00.000Z\",\"maximumModelTokens\":1,\"maximumRepairAttempts\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"goalStack\":{\"directionQuestionId\":\"dir_00000000000000000000000000000000\",\"directionQuestionSummary\":\"sample\",\"missionCriterionIds\":[\"mis_00000000000000000000000000000000\"],\"missionCriterionSummary\":\"sample\",\"nodeObjective\":\"sample\",\"projectGoalId\":\"prj_00000000000000000000000000000000\",\"projectGoalSummary\":\"sample\"},\"inScope\":[\"sample\"],\"inputArtifactIds\":[\"art_00000000000000000000000000000000\"],\"inputEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"instructions\":[\"sample\"],\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"issuedBy\":\"nosh\",\"lease\":{\"expiresAt\":\"2026-07-17T00:00:00.000Z\",\"heartbeatSeconds\":1,\"leaseId\":\"ref_1\"},\"observedVersions\":{\"item\":1},\"outOfScope\":[\"sample\"],\"permissions\":{\"allowedToolIds\":[\"ref_1\"],\"delegation\":\"request_only\",\"gitCommit\":true,\"gitPush\":true,\"network\":\"disabled\",\"networkAllowlist\":[\"example.org\"],\"subprocess\":\"disabled\"},\"progressPolicy\":{\"emitOnAnomaly\":true,\"emitOnBlocker\":true,\"emitOnFirstDurableDelta\":true,\"maximumSilentSeconds\":1,\"milestoneIntervalSeconds\":1},\"requiredOutputs\":[{\"kind\":\"ref_1\",\"outputId\":\"ref_1\",\"required\":true}],\"responseSchema\":\"https://example.com/resource\",\"schemaVersion\":1,\"scope\":{\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"graphNodeId\":\"ref_1\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\"},\"taskId\":\"tsk_00000000000000000000000000000000\",\"taskType\":\"ref_1\",\"templateVersion\":\"1.0.0\",\"whyNow\":\"sample\",\"workspace\":{\"branch\":\"feat.\",\"protectedScopes\":[\"sample\"],\"startingCommit\":\"0000000000000000000000000000000000000000\",\"worktreeId\":\"ref_1\",\"writeScopes\":[\"sample\"]}}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/workspace/branch",
+          "code": "custom",
+          "message": "must be a safe Git branch name"
+        }
+      ]
+    },
+    {
+      "name": "task packet: branch with a dot-segment",
+      "schema": "task-packet",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/task-packet/v1\",\"acceptanceCriteria\":[{\"criterionId\":\"ref_1\",\"required\":true,\"reviewRubricIds\":[\"rev_00000000000000000000000000000000\"],\"statement\":\"sample\",\"validatorIds\":[\"ref_1\"]}],\"assignedAgentId\":\"agt_00000000000000000000000000000000\",\"assignedRole\":\"librarian_researcher\",\"attempt\":1,\"budget\":{\"deadline\":\"2026-07-17T00:00:00.000Z\",\"maximumModelTokens\":1,\"maximumRepairAttempts\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"goalStack\":{\"directionQuestionId\":\"dir_00000000000000000000000000000000\",\"directionQuestionSummary\":\"sample\",\"missionCriterionIds\":[\"mis_00000000000000000000000000000000\"],\"missionCriterionSummary\":\"sample\",\"nodeObjective\":\"sample\",\"projectGoalId\":\"prj_00000000000000000000000000000000\",\"projectGoalSummary\":\"sample\"},\"inScope\":[\"sample\"],\"inputArtifactIds\":[\"art_00000000000000000000000000000000\"],\"inputEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"instructions\":[\"sample\"],\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"issuedBy\":\"nosh\",\"lease\":{\"expiresAt\":\"2026-07-17T00:00:00.000Z\",\"heartbeatSeconds\":1,\"leaseId\":\"ref_1\"},\"observedVersions\":{\"item\":1},\"outOfScope\":[\"sample\"],\"permissions\":{\"allowedToolIds\":[\"ref_1\"],\"delegation\":\"request_only\",\"gitCommit\":true,\"gitPush\":true,\"network\":\"disabled\",\"networkAllowlist\":[\"example.org\"],\"subprocess\":\"disabled\"},\"progressPolicy\":{\"emitOnAnomaly\":true,\"emitOnBlocker\":true,\"emitOnFirstDurableDelta\":true,\"maximumSilentSeconds\":1,\"milestoneIntervalSeconds\":1},\"requiredOutputs\":[{\"kind\":\"ref_1\",\"outputId\":\"ref_1\",\"required\":true}],\"responseSchema\":\"https://example.com/resource\",\"schemaVersion\":1,\"scope\":{\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"graphNodeId\":\"ref_1\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\"},\"taskId\":\"tsk_00000000000000000000000000000000\",\"taskType\":\"ref_1\",\"templateVersion\":\"1.0.0\",\"whyNow\":\"sample\",\"workspace\":{\"branch\":\"a/.b\",\"protectedScopes\":[\"sample\"],\"startingCommit\":\"0000000000000000000000000000000000000000\",\"worktreeId\":\"ref_1\",\"writeScopes\":[\"sample\"]}}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/workspace/branch",
+          "code": "custom",
+          "message": "must be a safe Git branch name"
+        }
+      ]
+    },
+    {
+      "name": "task packet: branch starting with a dot",
+      "schema": "task-packet",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/task-packet/v1\",\"acceptanceCriteria\":[{\"criterionId\":\"ref_1\",\"required\":true,\"reviewRubricIds\":[\"rev_00000000000000000000000000000000\"],\"statement\":\"sample\",\"validatorIds\":[\"ref_1\"]}],\"assignedAgentId\":\"agt_00000000000000000000000000000000\",\"assignedRole\":\"librarian_researcher\",\"attempt\":1,\"budget\":{\"deadline\":\"2026-07-17T00:00:00.000Z\",\"maximumModelTokens\":1,\"maximumRepairAttempts\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"goalStack\":{\"directionQuestionId\":\"dir_00000000000000000000000000000000\",\"directionQuestionSummary\":\"sample\",\"missionCriterionIds\":[\"mis_00000000000000000000000000000000\"],\"missionCriterionSummary\":\"sample\",\"nodeObjective\":\"sample\",\"projectGoalId\":\"prj_00000000000000000000000000000000\",\"projectGoalSummary\":\"sample\"},\"inScope\":[\"sample\"],\"inputArtifactIds\":[\"art_00000000000000000000000000000000\"],\"inputEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"instructions\":[\"sample\"],\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"issuedBy\":\"nosh\",\"lease\":{\"expiresAt\":\"2026-07-17T00:00:00.000Z\",\"heartbeatSeconds\":1,\"leaseId\":\"ref_1\"},\"observedVersions\":{\"item\":1},\"outOfScope\":[\"sample\"],\"permissions\":{\"allowedToolIds\":[\"ref_1\"],\"delegation\":\"request_only\",\"gitCommit\":true,\"gitPush\":true,\"network\":\"disabled\",\"networkAllowlist\":[\"example.org\"],\"subprocess\":\"disabled\"},\"progressPolicy\":{\"emitOnAnomaly\":true,\"emitOnBlocker\":true,\"emitOnFirstDurableDelta\":true,\"maximumSilentSeconds\":1,\"milestoneIntervalSeconds\":1},\"requiredOutputs\":[{\"kind\":\"ref_1\",\"outputId\":\"ref_1\",\"required\":true}],\"responseSchema\":\"https://example.com/resource\",\"schemaVersion\":1,\"scope\":{\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"graphNodeId\":\"ref_1\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\"},\"taskId\":\"tsk_00000000000000000000000000000000\",\"taskType\":\"ref_1\",\"templateVersion\":\"1.0.0\",\"whyNow\":\"sample\",\"workspace\":{\"branch\":\".hidden\",\"protectedScopes\":[\"sample\"],\"startingCommit\":\"0000000000000000000000000000000000000000\",\"worktreeId\":\"ref_1\",\"writeScopes\":[\"sample\"]}}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/workspace/branch",
+          "code": "invalid_string",
+          "message": "Invalid"
+        },
+        {
+          "pointer": "/workspace/branch",
+          "code": "custom",
+          "message": "must be a safe Git branch name"
+        }
+      ]
+    },
+    {
+      "name": "task packet: safe nested branch",
+      "schema": "task-packet",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/task-packet/v1\",\"acceptanceCriteria\":[{\"criterionId\":\"ref_1\",\"required\":true,\"reviewRubricIds\":[\"rev_00000000000000000000000000000000\"],\"statement\":\"sample\",\"validatorIds\":[\"ref_1\"]}],\"assignedAgentId\":\"agt_00000000000000000000000000000000\",\"assignedRole\":\"librarian_researcher\",\"attempt\":1,\"budget\":{\"deadline\":\"2026-07-17T00:00:00.000Z\",\"maximumModelTokens\":1,\"maximumRepairAttempts\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"goalStack\":{\"directionQuestionId\":\"dir_00000000000000000000000000000000\",\"directionQuestionSummary\":\"sample\",\"missionCriterionIds\":[\"mis_00000000000000000000000000000000\"],\"missionCriterionSummary\":\"sample\",\"nodeObjective\":\"sample\",\"projectGoalId\":\"prj_00000000000000000000000000000000\",\"projectGoalSummary\":\"sample\"},\"inScope\":[\"sample\"],\"inputArtifactIds\":[\"art_00000000000000000000000000000000\"],\"inputEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"instructions\":[\"sample\"],\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"issuedBy\":\"nosh\",\"lease\":{\"expiresAt\":\"2026-07-17T00:00:00.000Z\",\"heartbeatSeconds\":1,\"leaseId\":\"ref_1\"},\"observedVersions\":{\"item\":1},\"outOfScope\":[\"sample\"],\"permissions\":{\"allowedToolIds\":[\"ref_1\"],\"delegation\":\"request_only\",\"gitCommit\":true,\"gitPush\":true,\"network\":\"disabled\",\"networkAllowlist\":[\"example.org\"],\"subprocess\":\"disabled\"},\"progressPolicy\":{\"emitOnAnomaly\":true,\"emitOnBlocker\":true,\"emitOnFirstDurableDelta\":true,\"maximumSilentSeconds\":1,\"milestoneIntervalSeconds\":1},\"requiredOutputs\":[{\"kind\":\"ref_1\",\"outputId\":\"ref_1\",\"required\":true}],\"responseSchema\":\"https://example.com/resource\",\"schemaVersion\":1,\"scope\":{\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"graphNodeId\":\"ref_1\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\"},\"taskId\":\"tsk_00000000000000000000000000000000\",\"taskType\":\"ref_1\",\"templateVersion\":\"1.0.0\",\"whyNow\":\"sample\",\"workspace\":{\"branch\":\"nosh/mission-1.2_x\",\"protectedScopes\":[\"sample\"],\"startingCommit\":\"0000000000000000000000000000000000000000\",\"worktreeId\":\"ref_1\",\"writeScopes\":[\"sample\"]}}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/task-packet/v1",
+        "schemaVersion": 1,
+        "templateVersion": "1.0.0",
+        "taskId": "tsk_00000000000000000000000000000000",
+        "attempt": 1,
+        "taskType": "ref_1",
+        "assignedRole": "librarian_researcher",
+        "assignedAgentId": "agt_00000000000000000000000000000000",
+        "scope": {
+          "projectId": "prj_00000000000000000000000000000000",
+          "missionId": "mis_00000000000000000000000000000000",
+          "directionId": "dir_00000000000000000000000000000000",
+          "autoresearchId": "ar_00000000000000000000000000000000",
+          "experimentId": "exp_00000000000000000000000000000000",
+          "graphNodeId": "ref_1"
+        },
+        "goalStack": {
+          "projectGoalId": "prj_00000000000000000000000000000000",
+          "projectGoalSummary": "sample",
+          "missionCriterionIds": [
+            "mis_00000000000000000000000000000000"
+          ],
+          "missionCriterionSummary": "sample",
+          "directionQuestionId": "dir_00000000000000000000000000000000",
+          "directionQuestionSummary": "sample",
+          "nodeObjective": "sample"
+        },
+        "whyNow": "sample",
+        "instructions": [
+          "sample"
+        ],
+        "inScope": [
+          "sample"
+        ],
+        "outOfScope": [
+          "sample"
+        ],
+        "inputArtifactIds": [
+          "art_00000000000000000000000000000000"
+        ],
+        "inputEvidenceIds": [
+          "evd_00000000000000000000000000000000"
+        ],
+        "requiredOutputs": [
+          {
+            "outputId": "ref_1",
+            "kind": "ref_1",
+            "required": true
+          }
+        ],
+        "acceptanceCriteria": [
+          {
+            "criterionId": "ref_1",
+            "statement": "sample",
+            "validatorIds": [
+              "ref_1"
+            ],
+            "reviewRubricIds": [
+              "rev_00000000000000000000000000000000"
+            ],
+            "required": true
+          }
+        ],
+        "workspace": {
+          "worktreeId": "ref_1",
+          "branch": "nosh/mission-1.2_x",
+          "startingCommit": "0000000000000000000000000000000000000000",
+          "writeScopes": [
+            "sample"
+          ],
+          "protectedScopes": [
+            "sample"
+          ]
+        },
+        "permissions": {
+          "network": "disabled",
+          "subprocess": "disabled",
+          "gitCommit": true,
+          "gitPush": true,
+          "delegation": "request_only",
+          "networkAllowlist": [
+            "example.org"
+          ],
+          "allowedToolIds": [
+            "ref_1"
+          ]
+        },
+        "budget": {
+          "deadline": "2026-07-17T00:00:00.000Z",
+          "maximumWallClockSeconds": 1,
+          "maximumModelTokens": 1,
+          "maximumToolCalls": 1,
+          "maximumRepairAttempts": 1
+        },
+        "progressPolicy": {
+          "milestoneIntervalSeconds": 1,
+          "emitOnFirstDurableDelta": true,
+          "emitOnBlocker": true,
+          "emitOnAnomaly": true,
+          "maximumSilentSeconds": 1
+        },
+        "responseSchema": "https://example.com/resource",
+        "observedVersions": {
+          "item": 1
+        },
+        "lease": {
+          "leaseId": "ref_1",
+          "expiresAt": "2026-07-17T00:00:00.000Z",
+          "heartbeatSeconds": 1
+        },
+        "issuedBy": "nosh",
+        "issuedAt": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "task packet: version with Arabic-Indic digits",
+      "schema": "task-packet",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/task-packet/v1\",\"acceptanceCriteria\":[{\"criterionId\":\"ref_1\",\"required\":true,\"reviewRubricIds\":[\"rev_00000000000000000000000000000000\"],\"statement\":\"sample\",\"validatorIds\":[\"ref_1\"]}],\"assignedAgentId\":\"agt_00000000000000000000000000000000\",\"assignedRole\":\"librarian_researcher\",\"attempt\":1,\"budget\":{\"deadline\":\"2026-07-17T00:00:00.000Z\",\"maximumModelTokens\":1,\"maximumRepairAttempts\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"goalStack\":{\"directionQuestionId\":\"dir_00000000000000000000000000000000\",\"directionQuestionSummary\":\"sample\",\"missionCriterionIds\":[\"mis_00000000000000000000000000000000\"],\"missionCriterionSummary\":\"sample\",\"nodeObjective\":\"sample\",\"projectGoalId\":\"prj_00000000000000000000000000000000\",\"projectGoalSummary\":\"sample\"},\"inScope\":[\"sample\"],\"inputArtifactIds\":[\"art_00000000000000000000000000000000\"],\"inputEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"instructions\":[\"sample\"],\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"issuedBy\":\"nosh\",\"lease\":{\"expiresAt\":\"2026-07-17T00:00:00.000Z\",\"heartbeatSeconds\":1,\"leaseId\":\"ref_1\"},\"observedVersions\":{\"item\":1},\"outOfScope\":[\"sample\"],\"permissions\":{\"allowedToolIds\":[\"ref_1\"],\"delegation\":\"request_only\",\"gitCommit\":true,\"gitPush\":true,\"network\":\"disabled\",\"networkAllowlist\":[\"example.org\"],\"subprocess\":\"disabled\"},\"progressPolicy\":{\"emitOnAnomaly\":true,\"emitOnBlocker\":true,\"emitOnFirstDurableDelta\":true,\"maximumSilentSeconds\":1,\"milestoneIntervalSeconds\":1},\"requiredOutputs\":[{\"kind\":\"ref_1\",\"outputId\":\"ref_1\",\"required\":true}],\"responseSchema\":\"https://example.com/resource\",\"schemaVersion\":1,\"scope\":{\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"graphNodeId\":\"ref_1\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\"},\"taskId\":\"tsk_00000000000000000000000000000000\",\"taskType\":\"ref_1\",\"templateVersion\":\"١.٠.٠\",\"whyNow\":\"sample\",\"workspace\":{\"branch\":\"sample\",\"protectedScopes\":[\"sample\"],\"startingCommit\":\"0000000000000000000000000000000000000000\",\"worktreeId\":\"ref_1\",\"writeScopes\":[\"sample\"]}}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/templateVersion",
+          "code": "invalid_string",
+          "message": "Invalid"
+        }
+      ]
+    },
+    {
+      "name": "task packet: relative response schema URL",
+      "schema": "task-packet",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/task-packet/v1\",\"acceptanceCriteria\":[{\"criterionId\":\"ref_1\",\"required\":true,\"reviewRubricIds\":[\"rev_00000000000000000000000000000000\"],\"statement\":\"sample\",\"validatorIds\":[\"ref_1\"]}],\"assignedAgentId\":\"agt_00000000000000000000000000000000\",\"assignedRole\":\"librarian_researcher\",\"attempt\":1,\"budget\":{\"deadline\":\"2026-07-17T00:00:00.000Z\",\"maximumModelTokens\":1,\"maximumRepairAttempts\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"goalStack\":{\"directionQuestionId\":\"dir_00000000000000000000000000000000\",\"directionQuestionSummary\":\"sample\",\"missionCriterionIds\":[\"mis_00000000000000000000000000000000\"],\"missionCriterionSummary\":\"sample\",\"nodeObjective\":\"sample\",\"projectGoalId\":\"prj_00000000000000000000000000000000\",\"projectGoalSummary\":\"sample\"},\"inScope\":[\"sample\"],\"inputArtifactIds\":[\"art_00000000000000000000000000000000\"],\"inputEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"instructions\":[\"sample\"],\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"issuedBy\":\"nosh\",\"lease\":{\"expiresAt\":\"2026-07-17T00:00:00.000Z\",\"heartbeatSeconds\":1,\"leaseId\":\"ref_1\"},\"observedVersions\":{\"item\":1},\"outOfScope\":[\"sample\"],\"permissions\":{\"allowedToolIds\":[\"ref_1\"],\"delegation\":\"request_only\",\"gitCommit\":true,\"gitPush\":true,\"network\":\"disabled\",\"networkAllowlist\":[\"example.org\"],\"subprocess\":\"disabled\"},\"progressPolicy\":{\"emitOnAnomaly\":true,\"emitOnBlocker\":true,\"emitOnFirstDurableDelta\":true,\"maximumSilentSeconds\":1,\"milestoneIntervalSeconds\":1},\"requiredOutputs\":[{\"kind\":\"ref_1\",\"outputId\":\"ref_1\",\"required\":true}],\"responseSchema\":\"schemas/x\",\"schemaVersion\":1,\"scope\":{\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"graphNodeId\":\"ref_1\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\"},\"taskId\":\"tsk_00000000000000000000000000000000\",\"taskType\":\"ref_1\",\"templateVersion\":\"1.0.0\",\"whyNow\":\"sample\",\"workspace\":{\"branch\":\"sample\",\"protectedScopes\":[\"sample\"],\"startingCommit\":\"0000000000000000000000000000000000000000\",\"worktreeId\":\"ref_1\",\"writeScopes\":[\"sample\"]}}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/responseSchema",
+          "code": "invalid_string",
+          "message": "Invalid url"
+        }
+      ]
+    },
+    {
+      "name": "task packet: absolute response schema URL",
+      "schema": "task-packet",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/task-packet/v1\",\"acceptanceCriteria\":[{\"criterionId\":\"ref_1\",\"required\":true,\"reviewRubricIds\":[\"rev_00000000000000000000000000000000\"],\"statement\":\"sample\",\"validatorIds\":[\"ref_1\"]}],\"assignedAgentId\":\"agt_00000000000000000000000000000000\",\"assignedRole\":\"librarian_researcher\",\"attempt\":1,\"budget\":{\"deadline\":\"2026-07-17T00:00:00.000Z\",\"maximumModelTokens\":1,\"maximumRepairAttempts\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"goalStack\":{\"directionQuestionId\":\"dir_00000000000000000000000000000000\",\"directionQuestionSummary\":\"sample\",\"missionCriterionIds\":[\"mis_00000000000000000000000000000000\"],\"missionCriterionSummary\":\"sample\",\"nodeObjective\":\"sample\",\"projectGoalId\":\"prj_00000000000000000000000000000000\",\"projectGoalSummary\":\"sample\"},\"inScope\":[\"sample\"],\"inputArtifactIds\":[\"art_00000000000000000000000000000000\"],\"inputEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"instructions\":[\"sample\"],\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"issuedBy\":\"nosh\",\"lease\":{\"expiresAt\":\"2026-07-17T00:00:00.000Z\",\"heartbeatSeconds\":1,\"leaseId\":\"ref_1\"},\"observedVersions\":{\"item\":1},\"outOfScope\":[\"sample\"],\"permissions\":{\"allowedToolIds\":[\"ref_1\"],\"delegation\":\"request_only\",\"gitCommit\":true,\"gitPush\":true,\"network\":\"disabled\",\"networkAllowlist\":[\"example.org\"],\"subprocess\":\"disabled\"},\"progressPolicy\":{\"emitOnAnomaly\":true,\"emitOnBlocker\":true,\"emitOnFirstDurableDelta\":true,\"maximumSilentSeconds\":1,\"milestoneIntervalSeconds\":1},\"requiredOutputs\":[{\"kind\":\"ref_1\",\"outputId\":\"ref_1\",\"required\":true}],\"responseSchema\":\"https://nosh.dev/schemas/x/v1\",\"schemaVersion\":1,\"scope\":{\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"graphNodeId\":\"ref_1\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\"},\"taskId\":\"tsk_00000000000000000000000000000000\",\"taskType\":\"ref_1\",\"templateVersion\":\"1.0.0\",\"whyNow\":\"sample\",\"workspace\":{\"branch\":\"sample\",\"protectedScopes\":[\"sample\"],\"startingCommit\":\"0000000000000000000000000000000000000000\",\"worktreeId\":\"ref_1\",\"writeScopes\":[\"sample\"]}}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/task-packet/v1",
+        "schemaVersion": 1,
+        "templateVersion": "1.0.0",
+        "taskId": "tsk_00000000000000000000000000000000",
+        "attempt": 1,
+        "taskType": "ref_1",
+        "assignedRole": "librarian_researcher",
+        "assignedAgentId": "agt_00000000000000000000000000000000",
+        "scope": {
+          "projectId": "prj_00000000000000000000000000000000",
+          "missionId": "mis_00000000000000000000000000000000",
+          "directionId": "dir_00000000000000000000000000000000",
+          "autoresearchId": "ar_00000000000000000000000000000000",
+          "experimentId": "exp_00000000000000000000000000000000",
+          "graphNodeId": "ref_1"
+        },
+        "goalStack": {
+          "projectGoalId": "prj_00000000000000000000000000000000",
+          "projectGoalSummary": "sample",
+          "missionCriterionIds": [
+            "mis_00000000000000000000000000000000"
+          ],
+          "missionCriterionSummary": "sample",
+          "directionQuestionId": "dir_00000000000000000000000000000000",
+          "directionQuestionSummary": "sample",
+          "nodeObjective": "sample"
+        },
+        "whyNow": "sample",
+        "instructions": [
+          "sample"
+        ],
+        "inScope": [
+          "sample"
+        ],
+        "outOfScope": [
+          "sample"
+        ],
+        "inputArtifactIds": [
+          "art_00000000000000000000000000000000"
+        ],
+        "inputEvidenceIds": [
+          "evd_00000000000000000000000000000000"
+        ],
+        "requiredOutputs": [
+          {
+            "outputId": "ref_1",
+            "kind": "ref_1",
+            "required": true
+          }
+        ],
+        "acceptanceCriteria": [
+          {
+            "criterionId": "ref_1",
+            "statement": "sample",
+            "validatorIds": [
+              "ref_1"
+            ],
+            "reviewRubricIds": [
+              "rev_00000000000000000000000000000000"
+            ],
+            "required": true
+          }
+        ],
+        "workspace": {
+          "worktreeId": "ref_1",
+          "branch": "sample",
+          "startingCommit": "0000000000000000000000000000000000000000",
+          "writeScopes": [
+            "sample"
+          ],
+          "protectedScopes": [
+            "sample"
+          ]
+        },
+        "permissions": {
+          "network": "disabled",
+          "subprocess": "disabled",
+          "gitCommit": true,
+          "gitPush": true,
+          "delegation": "request_only",
+          "networkAllowlist": [
+            "example.org"
+          ],
+          "allowedToolIds": [
+            "ref_1"
+          ]
+        },
+        "budget": {
+          "deadline": "2026-07-17T00:00:00.000Z",
+          "maximumWallClockSeconds": 1,
+          "maximumModelTokens": 1,
+          "maximumToolCalls": 1,
+          "maximumRepairAttempts": 1
+        },
+        "progressPolicy": {
+          "milestoneIntervalSeconds": 1,
+          "emitOnFirstDurableDelta": true,
+          "emitOnBlocker": true,
+          "emitOnAnomaly": true,
+          "maximumSilentSeconds": 1
+        },
+        "responseSchema": "https://nosh.dev/schemas/x/v1",
+        "observedVersions": {
+          "item": 1
+        },
+        "lease": {
+          "leaseId": "ref_1",
+          "expiresAt": "2026-07-17T00:00:00.000Z",
+          "heartbeatSeconds": 1
+        },
+        "issuedBy": "nosh",
+        "issuedAt": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "librarian: real date range",
+      "schema": "librarian-completion",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/librarian-completion/v1\",\"bibliographyArtifactId\":\"art_00000000000000000000000000000000\",\"candidateClaimEffects\":[null],\"contradictions\":[null],\"evaluationDifferences\":[null],\"findings\":[{\"confidence\":\"low\",\"findingId\":\"ref_1\",\"noveltyImplication\":\"sample\",\"statement\":\"sample\",\"support\":[{\"artifactId\":\"art_00000000000000000000000000000000\",\"locator\":\"sample\",\"sourceId\":\"ref_1\"}]}],\"knowledgeGaps\":[\"sample\"],\"readyForReview\":true,\"reportArtifactId\":\"art_00000000000000000000000000000000\",\"researchQuestion\":\"sample\",\"schemaVersion\":1,\"searchCoverage\":{\"databases\":[\"sample\"],\"dateRange\":{\"from\":\"2024-02-29\",\"to\":\"2026-12-31\"},\"exclusionCriteria\":[\"sample\"],\"inclusionCriteria\":[\"sample\"],\"language\":[\"sample\"],\"queries\":[\"sample\"]},\"sources\":[{\"accessedAt\":\"2026-07-17T00:00:00.000Z\",\"artifactId\":\"art_00000000000000000000000000000000\",\"authors\":[\"sample\"],\"canonicalUrl\":\"https://example.com/resource\",\"persistentId\":\"sample\",\"primarySource\":true,\"publicationDate\":\"2026-07-17\",\"relevance\":\"sample\",\"sourceId\":\"ref_1\",\"sourceType\":\"ref_1\",\"title\":\"sample\",\"version\":\"1.0.0\"}],\"taskOutcome\":\"completed\"}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/librarian-completion/v1",
+        "schemaVersion": 1,
+        "taskOutcome": "completed",
+        "researchQuestion": "sample",
+        "searchCoverage": {
+          "databases": [
+            "sample"
+          ],
+          "queries": [
+            "sample"
+          ],
+          "dateRange": {
+            "from": "2024-02-29",
+            "to": "2026-12-31"
+          },
+          "language": [
+            "sample"
+          ],
+          "inclusionCriteria": [
+            "sample"
+          ],
+          "exclusionCriteria": [
+            "sample"
+          ]
+        },
+        "sources": [
+          {
+            "sourceId": "ref_1",
+            "sourceType": "ref_1",
+            "title": "sample",
+            "authors": [
+              "sample"
+            ],
+            "publicationDate": "2026-07-17",
+            "canonicalUrl": "https://example.com/resource",
+            "persistentId": "sample",
+            "version": "1.0.0",
+            "primarySource": true,
+            "accessedAt": "2026-07-17T00:00:00.000Z",
+            "artifactId": "art_00000000000000000000000000000000",
+            "relevance": "sample"
+          }
+        ],
+        "findings": [
+          {
+            "findingId": "ref_1",
+            "statement": "sample",
+            "support": [
+              {
+                "sourceId": "ref_1",
+                "locator": "sample",
+                "artifactId": "art_00000000000000000000000000000000"
+              }
+            ],
+            "confidence": "low",
+            "noveltyImplication": "sample"
+          }
+        ],
+        "contradictions": [
+          null
+        ],
+        "evaluationDifferences": [
+          null
+        ],
+        "knowledgeGaps": [
+          "sample"
+        ],
+        "candidateClaimEffects": [
+          null
+        ],
+        "bibliographyArtifactId": "art_00000000000000000000000000000000",
+        "reportArtifactId": "art_00000000000000000000000000000000",
+        "readyForReview": true
+      }
+    },
+    {
+      "name": "librarian: impossible date",
+      "schema": "librarian-completion",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/librarian-completion/v1\",\"bibliographyArtifactId\":\"art_00000000000000000000000000000000\",\"candidateClaimEffects\":[null],\"contradictions\":[null],\"evaluationDifferences\":[null],\"findings\":[{\"confidence\":\"low\",\"findingId\":\"ref_1\",\"noveltyImplication\":\"sample\",\"statement\":\"sample\",\"support\":[{\"artifactId\":\"art_00000000000000000000000000000000\",\"locator\":\"sample\",\"sourceId\":\"ref_1\"}]}],\"knowledgeGaps\":[\"sample\"],\"readyForReview\":true,\"reportArtifactId\":\"art_00000000000000000000000000000000\",\"researchQuestion\":\"sample\",\"schemaVersion\":1,\"searchCoverage\":{\"databases\":[\"sample\"],\"dateRange\":{\"from\":\"2023-02-29\",\"to\":\"2026-07-17\"},\"exclusionCriteria\":[\"sample\"],\"inclusionCriteria\":[\"sample\"],\"language\":[\"sample\"],\"queries\":[\"sample\"]},\"sources\":[{\"accessedAt\":\"2026-07-17T00:00:00.000Z\",\"artifactId\":\"art_00000000000000000000000000000000\",\"authors\":[\"sample\"],\"canonicalUrl\":\"https://example.com/resource\",\"persistentId\":\"sample\",\"primarySource\":true,\"publicationDate\":\"2026-07-17\",\"relevance\":\"sample\",\"sourceId\":\"ref_1\",\"sourceType\":\"ref_1\",\"title\":\"sample\",\"version\":\"1.0.0\"}],\"taskOutcome\":\"completed\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/searchCoverage/dateRange/from",
+          "code": "invalid_string",
+          "message": "Invalid date"
+        }
+      ]
+    },
+    {
+      "name": "librarian: bad source URL",
+      "schema": "librarian-completion",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/librarian-completion/v1\",\"bibliographyArtifactId\":\"art_00000000000000000000000000000000\",\"candidateClaimEffects\":[null],\"contradictions\":[null],\"evaluationDifferences\":[null],\"findings\":[{\"confidence\":\"low\",\"findingId\":\"ref_1\",\"noveltyImplication\":\"sample\",\"statement\":\"sample\",\"support\":[{\"artifactId\":\"art_00000000000000000000000000000000\",\"locator\":\"sample\",\"sourceId\":\"ref_1\"}]}],\"knowledgeGaps\":[\"sample\"],\"readyForReview\":true,\"reportArtifactId\":\"art_00000000000000000000000000000000\",\"researchQuestion\":\"sample\",\"schemaVersion\":1,\"searchCoverage\":{\"databases\":[\"sample\"],\"dateRange\":{\"from\":\"2026-07-17\",\"to\":\"2026-07-17\"},\"exclusionCriteria\":[\"sample\"],\"inclusionCriteria\":[\"sample\"],\"language\":[\"sample\"],\"queries\":[\"sample\"]},\"sources\":[{\"accessedAt\":\"2026-07-17T00:00:00.000Z\",\"artifactId\":\"art_00000000000000000000000000000000\",\"authors\":[\"sample\"],\"canonicalUrl\":\"not a url\",\"persistentId\":\"sample\",\"primarySource\":true,\"publicationDate\":\"2026-07-17\",\"relevance\":\"sample\",\"sourceId\":\"ref_1\",\"sourceType\":\"ref_1\",\"title\":\"sample\",\"version\":\"1.0.0\"}],\"taskOutcome\":\"completed\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/sources/0/canonicalUrl",
+          "code": "invalid_string",
+          "message": "Invalid url"
+        }
+      ]
+    },
+    {
+      "name": "review request: reviewer is a producer",
+      "schema": "review-request",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/review-request/v1\",\"allowedVerdicts\":[\"PASS\"],\"contractRefs\":[{\"hash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"id\":\"ref_1\",\"kind\":\"ref_1\"}],\"criteria\":[{\"criterionId\":\"ref_1\",\"required\":true,\"severityIfFailed\":\"blocking\",\"statement\":\"sample\"}],\"deterministicPostflight\":{\"status\":\"pass\",\"validatorRunIds\":[\"run_00000000000000000000000000000000\"]},\"independenceCheck\":\"pass\",\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"producerAgentIds\":[\"agt_00000000000000000000000000000000\"],\"requiredArtifactIds\":[\"art_00000000000000000000000000000000\"],\"requiredEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"reviewId\":\"rev_00000000000000000000000000000000\",\"reviewRequestId\":\"rev_00000000000000000000000000000000\",\"reviewType\":\"task\",\"reviewerAgentId\":\"agt_00000000000000000000000000000000\",\"schemaVersion\":1,\"scope\":{\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"missionId\":\"mis_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\"},\"target\":{\"targetId\":\"ref_1\",\"targetType\":\"ref_1\",\"targetVersion\":1}}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/reviewerAgentId",
+          "code": "custom",
+          "message": "reviewer must be independent from every producer"
+        }
+      ]
+    },
+    {
+      "name": "review verdict: fixture",
+      "schema": "review-verdict",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/review-verdict/v1\",\"criteria\":[{\"confidence\":\"low\",\"criterionId\":\"ref_1\",\"defectIds\":[\"ref_1\"],\"evidenceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"finding\":\"sample\",\"required\":true,\"status\":\"PASS\"}],\"defects\":[{\"acceptanceTest\":{\"expected\":\"sample\",\"validatorId\":\"ref_1\"},\"blocking\":true,\"category\":\"ref_1\",\"criterionIds\":[\"ref_1\"],\"defectId\":\"ref_1\",\"description\":\"sample\",\"evidenceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"requiredRemediation\":\"sample\",\"severity\":\"blocking\",\"suggestedOwnerRole\":\"librarian_researcher\",\"title\":\"sample\"}],\"independenceCheck\":\"pass\",\"missingRequiredInputs\":[],\"recommendedGraphAction\":\"ref_1\",\"recommendedPromotion\":\"promote\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"reviewRequestId\":\"rev_00000000000000000000000000000000\",\"reviewType\":\"task\",\"reviewedArtifactIds\":[\"art_00000000000000000000000000000000\"],\"reviewedEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"reviewerAgentId\":\"agt_00000000000000000000000000000000\",\"schemaVersion\":1,\"scientificIntegrityFlags\":[\"sample\"],\"submittedAt\":\"2026-07-17T00:00:00.000Z\",\"summary\":\"sample\",\"target\":{\"targetId\":\"ref_1\",\"targetType\":\"ref_1\",\"targetVersion\":1},\"templateVersion\":\"1.0.0\",\"verdict\":\"REVISE\"}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/review-verdict/v1",
+        "schemaVersion": 1,
+        "templateVersion": "1.0.0",
+        "reviewId": "rev_00000000000000000000000000000000",
+        "reviewRequestId": "rev_00000000000000000000000000000000",
+        "reviewType": "task",
+        "target": {
+          "targetType": "ref_1",
+          "targetId": "ref_1",
+          "targetVersion": 1
+        },
+        "reviewerAgentId": "agt_00000000000000000000000000000000",
+        "independenceCheck": "pass",
+        "verdict": "REVISE",
+        "summary": "sample",
+        "criteria": [
+          {
+            "criterionId": "ref_1",
+            "required": true,
+            "status": "PASS",
+            "finding": "sample",
+            "evidenceRefs": [
+              {
+                "refType": "ref_1",
+                "refId": "ref_1",
+                "locator": "sample"
+              }
+            ],
+            "confidence": "low",
+            "defectIds": [
+              "ref_1"
+            ]
+          }
+        ],
+        "defects": [
+          {
+            "defectId": "ref_1",
+            "severity": "blocking",
+            "category": "ref_1",
+            "title": "sample",
+            "description": "sample",
+            "criterionIds": [
+              "ref_1"
+            ],
+            "evidenceRefs": [
+              {
+                "refType": "ref_1",
+                "refId": "ref_1",
+                "locator": "sample"
+              }
+            ],
+            "requiredRemediation": "sample",
+            "acceptanceTest": {
+              "validatorId": "ref_1",
+              "expected": "sample"
+            },
+            "suggestedOwnerRole": "librarian_researcher",
+            "blocking": true
+          }
+        ],
+        "missingRequiredInputs": [],
+        "scientificIntegrityFlags": [
+          "sample"
+        ],
+        "recommendedGraphAction": "ref_1",
+        "recommendedPromotion": "promote",
+        "reviewedArtifactIds": [
+          "art_00000000000000000000000000000000"
+        ],
+        "reviewedEvidenceIds": [
+          "evd_00000000000000000000000000000000"
+        ],
+        "submittedAt": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "review verdict: REVISE with nothing failing",
+      "schema": "review-verdict",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/review-verdict/v1\",\"criteria\":[{\"confidence\":\"low\",\"criterionId\":\"ref_1\",\"defectIds\":[\"ref_1\"],\"evidenceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"finding\":\"sample\",\"required\":true,\"status\":\"PASS\"}],\"defects\":[],\"independenceCheck\":\"pass\",\"missingRequiredInputs\":[],\"recommendedGraphAction\":\"ref_1\",\"recommendedPromotion\":\"promote\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"reviewRequestId\":\"rev_00000000000000000000000000000000\",\"reviewType\":\"task\",\"reviewedArtifactIds\":[\"art_00000000000000000000000000000000\"],\"reviewedEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"reviewerAgentId\":\"agt_00000000000000000000000000000000\",\"schemaVersion\":1,\"scientificIntegrityFlags\":[\"sample\"],\"submittedAt\":\"2026-07-17T00:00:00.000Z\",\"summary\":\"sample\",\"target\":{\"targetId\":\"ref_1\",\"targetType\":\"ref_1\",\"targetVersion\":1},\"templateVersion\":\"1.0.0\",\"verdict\":\"REVISE\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/verdict",
+          "code": "custom",
+          "message": "REVISE needs a failing or inconclusive criterion or a recorded defect; when every criterion passes and no defect is open, the verdict is PASS"
+        }
+      ]
+    },
+    {
+      "name": "review verdict: PASS with a blocking defect",
+      "schema": "review-verdict",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/review-verdict/v1\",\"criteria\":[{\"confidence\":\"low\",\"criterionId\":\"ref_1\",\"defectIds\":[\"ref_1\"],\"evidenceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"finding\":\"sample\",\"required\":true,\"status\":\"PASS\"}],\"defects\":[{\"acceptanceTest\":{\"expected\":\"sample\",\"validatorId\":\"ref_1\"},\"blocking\":true,\"category\":\"ref_1\",\"criterionIds\":[\"ref_1\"],\"defectId\":\"ref_1\",\"description\":\"sample\",\"evidenceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"requiredRemediation\":\"sample\",\"severity\":\"blocking\",\"suggestedOwnerRole\":\"librarian_researcher\",\"title\":\"sample\"}],\"independenceCheck\":\"pass\",\"missingRequiredInputs\":[],\"recommendedGraphAction\":\"ref_1\",\"recommendedPromotion\":\"promote\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"reviewRequestId\":\"rev_00000000000000000000000000000000\",\"reviewType\":\"task\",\"reviewedArtifactIds\":[\"art_00000000000000000000000000000000\"],\"reviewedEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"reviewerAgentId\":\"agt_00000000000000000000000000000000\",\"schemaVersion\":1,\"scientificIntegrityFlags\":[\"sample\"],\"submittedAt\":\"2026-07-17T00:00:00.000Z\",\"summary\":\"sample\",\"target\":{\"targetId\":\"ref_1\",\"targetType\":\"ref_1\",\"targetVersion\":1},\"templateVersion\":\"1.0.0\",\"verdict\":\"PASS\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/defects",
+          "code": "custom",
+          "message": "PASS cannot contain an open blocking or major defect"
+        }
+      ]
+    },
+    {
+      "name": "review verdict: clean PASS",
+      "schema": "review-verdict",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/review-verdict/v1\",\"criteria\":[{\"confidence\":\"low\",\"criterionId\":\"ref_1\",\"defectIds\":[\"ref_1\"],\"evidenceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"finding\":\"sample\",\"required\":true,\"status\":\"PASS\"}],\"defects\":[],\"independenceCheck\":\"pass\",\"missingRequiredInputs\":[],\"recommendedGraphAction\":\"ref_1\",\"recommendedPromotion\":\"promote\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"reviewRequestId\":\"rev_00000000000000000000000000000000\",\"reviewType\":\"task\",\"reviewedArtifactIds\":[\"art_00000000000000000000000000000000\"],\"reviewedEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"reviewerAgentId\":\"agt_00000000000000000000000000000000\",\"schemaVersion\":1,\"scientificIntegrityFlags\":[\"sample\"],\"submittedAt\":\"2026-07-17T00:00:00.000Z\",\"summary\":\"sample\",\"target\":{\"targetId\":\"ref_1\",\"targetType\":\"ref_1\",\"targetVersion\":1},\"templateVersion\":\"1.0.0\",\"verdict\":\"PASS\"}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/review-verdict/v1",
+        "schemaVersion": 1,
+        "templateVersion": "1.0.0",
+        "reviewId": "rev_00000000000000000000000000000000",
+        "reviewRequestId": "rev_00000000000000000000000000000000",
+        "reviewType": "task",
+        "target": {
+          "targetType": "ref_1",
+          "targetId": "ref_1",
+          "targetVersion": 1
+        },
+        "reviewerAgentId": "agt_00000000000000000000000000000000",
+        "independenceCheck": "pass",
+        "verdict": "PASS",
+        "summary": "sample",
+        "criteria": [
+          {
+            "criterionId": "ref_1",
+            "required": true,
+            "status": "PASS",
+            "finding": "sample",
+            "evidenceRefs": [
+              {
+                "refType": "ref_1",
+                "refId": "ref_1",
+                "locator": "sample"
+              }
+            ],
+            "confidence": "low",
+            "defectIds": [
+              "ref_1"
+            ]
+          }
+        ],
+        "defects": [],
+        "missingRequiredInputs": [],
+        "scientificIntegrityFlags": [
+          "sample"
+        ],
+        "recommendedGraphAction": "ref_1",
+        "recommendedPromotion": "promote",
+        "reviewedArtifactIds": [
+          "art_00000000000000000000000000000000"
+        ],
+        "reviewedEvidenceIds": [
+          "evd_00000000000000000000000000000000"
+        ],
+        "submittedAt": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "review verdict: PASS without independence",
+      "schema": "review-verdict",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/review-verdict/v1\",\"criteria\":[{\"confidence\":\"low\",\"criterionId\":\"ref_1\",\"defectIds\":[\"ref_1\"],\"evidenceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"finding\":\"sample\",\"required\":true,\"status\":\"PASS\"}],\"defects\":[],\"independenceCheck\":\"fail\",\"missingRequiredInputs\":[],\"recommendedGraphAction\":\"ref_1\",\"recommendedPromotion\":\"promote\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"reviewRequestId\":\"rev_00000000000000000000000000000000\",\"reviewType\":\"task\",\"reviewedArtifactIds\":[\"art_00000000000000000000000000000000\"],\"reviewedEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"reviewerAgentId\":\"agt_00000000000000000000000000000000\",\"schemaVersion\":1,\"scientificIntegrityFlags\":[\"sample\"],\"submittedAt\":\"2026-07-17T00:00:00.000Z\",\"summary\":\"sample\",\"target\":{\"targetId\":\"ref_1\",\"targetType\":\"ref_1\",\"targetVersion\":1},\"templateVersion\":\"1.0.0\",\"verdict\":\"PASS\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/verdict",
+          "code": "custom",
+          "message": "PASS requires an independent reviewer"
+        }
+      ]
+    },
+    {
+      "name": "review verdict: PASS missing inputs",
+      "schema": "review-verdict",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/review-verdict/v1\",\"criteria\":[{\"confidence\":\"low\",\"criterionId\":\"ref_1\",\"defectIds\":[\"ref_1\"],\"evidenceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"finding\":\"sample\",\"required\":true,\"status\":\"PASS\"}],\"defects\":[],\"independenceCheck\":\"pass\",\"missingRequiredInputs\":[\"ref_1\"],\"recommendedGraphAction\":\"ref_1\",\"recommendedPromotion\":\"promote\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"reviewRequestId\":\"rev_00000000000000000000000000000000\",\"reviewType\":\"task\",\"reviewedArtifactIds\":[\"art_00000000000000000000000000000000\"],\"reviewedEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"reviewerAgentId\":\"agt_00000000000000000000000000000000\",\"schemaVersion\":1,\"scientificIntegrityFlags\":[\"sample\"],\"submittedAt\":\"2026-07-17T00:00:00.000Z\",\"summary\":\"sample\",\"target\":{\"targetId\":\"ref_1\",\"targetType\":\"ref_1\",\"targetVersion\":1},\"templateVersion\":\"1.0.0\",\"verdict\":\"PASS\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/missingRequiredInputs",
+          "code": "custom",
+          "message": "PASS cannot omit required inputs"
+        }
+      ]
+    },
+    {
+      "name": "review verdict: PASS with a failed required criterion",
+      "schema": "review-verdict",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/review-verdict/v1\",\"criteria\":[{\"confidence\":\"low\",\"criterionId\":\"ref_1\",\"defectIds\":[\"ref_1\"],\"evidenceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"finding\":\"sample\",\"required\":true,\"status\":\"FAIL\"}],\"defects\":[],\"independenceCheck\":\"pass\",\"missingRequiredInputs\":[],\"recommendedGraphAction\":\"ref_1\",\"recommendedPromotion\":\"promote\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"reviewRequestId\":\"rev_00000000000000000000000000000000\",\"reviewType\":\"task\",\"reviewedArtifactIds\":[\"art_00000000000000000000000000000000\"],\"reviewedEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"reviewerAgentId\":\"agt_00000000000000000000000000000000\",\"schemaVersion\":1,\"scientificIntegrityFlags\":[\"sample\"],\"submittedAt\":\"2026-07-17T00:00:00.000Z\",\"summary\":\"sample\",\"target\":{\"targetId\":\"ref_1\",\"targetType\":\"ref_1\",\"targetVersion\":1},\"templateVersion\":\"1.0.0\",\"verdict\":\"PASS\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/criteria",
+          "code": "custom",
+          "message": "PASS requires every required criterion to pass"
+        }
+      ]
+    },
+    {
+      "name": "review verdict: PASS with a failed optional criterion",
+      "schema": "review-verdict",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/review-verdict/v1\",\"criteria\":[{\"confidence\":\"low\",\"criterionId\":\"ref_1\",\"defectIds\":[\"ref_1\"],\"evidenceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"finding\":\"sample\",\"required\":false,\"status\":\"FAIL\"}],\"defects\":[],\"independenceCheck\":\"pass\",\"missingRequiredInputs\":[],\"recommendedGraphAction\":\"ref_1\",\"recommendedPromotion\":\"promote\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"reviewRequestId\":\"rev_00000000000000000000000000000000\",\"reviewType\":\"task\",\"reviewedArtifactIds\":[\"art_00000000000000000000000000000000\"],\"reviewedEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"reviewerAgentId\":\"agt_00000000000000000000000000000000\",\"schemaVersion\":1,\"scientificIntegrityFlags\":[\"sample\"],\"submittedAt\":\"2026-07-17T00:00:00.000Z\",\"summary\":\"sample\",\"target\":{\"targetId\":\"ref_1\",\"targetType\":\"ref_1\",\"targetVersion\":1},\"templateVersion\":\"1.0.0\",\"verdict\":\"PASS\"}",
+      "outcome": "accept",
+      "value": {
+        "$schema": "https://nosh.dev/schemas/review-verdict/v1",
+        "schemaVersion": 1,
+        "templateVersion": "1.0.0",
+        "reviewId": "rev_00000000000000000000000000000000",
+        "reviewRequestId": "rev_00000000000000000000000000000000",
+        "reviewType": "task",
+        "target": {
+          "targetType": "ref_1",
+          "targetId": "ref_1",
+          "targetVersion": 1
+        },
+        "reviewerAgentId": "agt_00000000000000000000000000000000",
+        "independenceCheck": "pass",
+        "verdict": "PASS",
+        "summary": "sample",
+        "criteria": [
+          {
+            "criterionId": "ref_1",
+            "required": false,
+            "status": "FAIL",
+            "finding": "sample",
+            "evidenceRefs": [
+              {
+                "refType": "ref_1",
+                "refId": "ref_1",
+                "locator": "sample"
+              }
+            ],
+            "confidence": "low",
+            "defectIds": [
+              "ref_1"
+            ]
+          }
+        ],
+        "defects": [],
+        "missingRequiredInputs": [],
+        "scientificIntegrityFlags": [
+          "sample"
+        ],
+        "recommendedGraphAction": "ref_1",
+        "recommendedPromotion": "promote",
+        "reviewedArtifactIds": [
+          "art_00000000000000000000000000000000"
+        ],
+        "reviewedEvidenceIds": [
+          "evd_00000000000000000000000000000000"
+        ],
+        "submittedAt": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "review verdict: PASS with a failed criterion of unstated requiredness",
+      "schema": "review-verdict",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/review-verdict/v1\",\"criteria\":[{\"confidence\":\"low\",\"criterionId\":\"ref_1\",\"defectIds\":[\"ref_1\"],\"evidenceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"finding\":\"sample\",\"status\":\"INCONCLUSIVE\"}],\"defects\":[],\"independenceCheck\":\"pass\",\"missingRequiredInputs\":[],\"recommendedGraphAction\":\"ref_1\",\"recommendedPromotion\":\"promote\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"reviewRequestId\":\"rev_00000000000000000000000000000000\",\"reviewType\":\"task\",\"reviewedArtifactIds\":[\"art_00000000000000000000000000000000\"],\"reviewedEvidenceIds\":[\"evd_00000000000000000000000000000000\"],\"reviewerAgentId\":\"agt_00000000000000000000000000000000\",\"schemaVersion\":1,\"scientificIntegrityFlags\":[\"sample\"],\"submittedAt\":\"2026-07-17T00:00:00.000Z\",\"summary\":\"sample\",\"target\":{\"targetId\":\"ref_1\",\"targetType\":\"ref_1\",\"targetVersion\":1},\"templateVersion\":\"1.0.0\",\"verdict\":\"PASS\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/criteria",
+          "code": "custom",
+          "message": "PASS requires every required criterion to pass"
+        }
+      ]
+    },
+    {
+      "name": "skill manifest: program mode without a program",
+      "schema": "skill-manifest",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/skill-manifest/v1\",\"activation\":{\"episodeTypes\":[\"ref_1\"],\"requiredCapabilities\":[\"ref_1\"],\"roles\":[\"nosh\"]},\"description\":\"sample\",\"executionMode\":\"program\",\"inputEpisodeTypes\":[\"ref_1\"],\"name\":\"ref_1\",\"outputEpisodeType\":\"ref_1\",\"permittedTools\":[\"sample\"],\"postflightChecks\":[\"ref_1\"],\"preflightChecks\":[\"ref_1\"],\"programId\":null,\"promptFragment\":\"sample\",\"schemaVersion\":1,\"skillId\":\"skl_00000000000000000000000000000000\",\"version\":\"1.0.0\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/programId",
+          "code": "custom",
+          "message": "program mode requires programId and prompt mode forbids it"
+        }
+      ]
+    },
+    {
+      "name": "skill manifest: prompt mode with a program",
+      "schema": "skill-manifest",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/skill-manifest/v1\",\"activation\":{\"episodeTypes\":[\"ref_1\"],\"requiredCapabilities\":[\"ref_1\"],\"roles\":[\"nosh\"]},\"description\":\"sample\",\"executionMode\":\"prompt\",\"inputEpisodeTypes\":[\"ref_1\"],\"name\":\"ref_1\",\"outputEpisodeType\":\"ref_1\",\"permittedTools\":[\"sample\"],\"postflightChecks\":[\"ref_1\"],\"preflightChecks\":[\"ref_1\"],\"programId\":\"prg_00000000000000000000000000000000\",\"promptFragment\":\"sample\",\"schemaVersion\":1,\"skillId\":\"skl_00000000000000000000000000000000\",\"version\":\"1.0.0\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/programId",
+          "code": "custom",
+          "message": "program mode requires programId and prompt mode forbids it"
+        }
+      ]
+    },
+    {
+      "name": "mission director: research direction spawn without decisionUse (the schema already requires it)",
+      "schema": "mission-director-cycle",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/mission-director-cycle/v1\",\"blockerIds\":[\"blk_00000000000000000000000000000000\"],\"budgetWarnings\":[\"sample\"],\"consumedEventRange\":{\"fromSequence\":1,\"toSequence\":1},\"createdTaskIds\":[\"tsk_00000000000000000000000000000000\"],\"cycleId\":\"ref_1\",\"decisions\":[{\"action\":\"ref_1\",\"reason\":\"sample\",\"targetId\":\"ref_1\"}],\"directorAgentId\":\"agt_00000000000000000000000000000000\",\"graphChangeProposalIds\":[\"ref_1\"],\"invokedAutoresearchIds\":[\"ar_00000000000000000000000000000000\"],\"invokedDirectionIds\":[\"dir_00000000000000000000000000000000\"],\"missionId\":\"mis_00000000000000000000000000000000\",\"nextWake\":{\"deadline\":\"2026-07-17T00:00:00.000Z\",\"type\":\"event\"},\"northStarCheck\":{\"criticalPathNodeIds\":[\"ref_1\"],\"currentWorkContributes\":true,\"missionObjective\":\"sample\",\"unsatisfiedCriterionIds\":[\"ref_1\"]},\"observedGraphVersion\":1,\"observedObjectiveVersion\":1,\"portfolioCheck\":{\"fairnessAction\":\"ref_1\",\"overfocusedNodeId\":\"ref_1\",\"readyNodeIds\":[\"ref_1\"],\"starvedNodeIds\":[\"ref_1\"]},\"schemaVersion\":1,\"spawn\":{\"evaluation\":{\"commandId\":\"cmd_00000000000000000000000000000000\",\"guardrails\":[{\"direction\":\"maximize\",\"name\":\"sample\",\"threshold\":1}],\"maximumNoProgressRounds\":1,\"primaryMetric\":{\"minimumEffect\":1,\"name\":\"sample\",\"objective\":\"maximize\"},\"resultPath\":\"sample\",\"target\":1},\"familyTags\":[\"sample\"],\"kind\":\"research_direction\",\"nodeId\":\"ref_1\",\"question\":\"sample\",\"scope\":[\"sample\"]},\"submittedAt\":\"2026-07-17T00:00:00.000Z\",\"userInputRequestId\":\"ref_1\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/spawn/decisionUse",
+          "code": "invalid_type",
+          "message": "Required: missing; expected string"
+        }
+      ]
+    },
+    {
+      "name": "runtime instruction: THREAD_OPEN branch with ..",
+      "schema": "runtime-instruction",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/runtime-instruction/v1\",\"budget\":{\"maximumModelTokens\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"capabilities\":[\"ref_1\"],\"executionMode\":\"background\",\"idempotencyKey\":\"samplexxxxxxxxxx\",\"initialAgentId\":\"agt_00000000000000000000000000000000\",\"inputRefs\":[\"ref_1\"],\"instructionId\":\"ins_00000000000000000000000000000000\",\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"operation\":\"THREAD_OPEN\",\"ownerScope\":{\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"graphNodeId\":\"ref_1\",\"missionId\":\"mis_00000000000000000000000000000000\"},\"parentThreadId\":\"thr_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"proposedByAgentId\":\"agt_00000000000000000000000000000000\",\"purpose\":\"sample\",\"role\":\"nosh\",\"schemaVersion\":1,\"skillIds\":[\"skl_00000000000000000000000000000000\"],\"taskId\":\"tsk_00000000000000000000000000000000\",\"taskPermissions\":{\"allowedToolIds\":[\"ref_1\"],\"delegation\":\"request_only\",\"gitCommit\":true,\"gitPush\":true,\"network\":\"disabled\",\"networkAllowlist\":[\"example.org\"],\"subprocess\":\"disabled\"},\"taskWorkspace\":{\"branch\":\"x..y\",\"protectedScopes\":[\"sample\"],\"startingCommit\":\"0000000000000000000000000000000000000000\",\"worktreeId\":\"ref_1\",\"writeScopes\":[\"sample\"]},\"threadId\":\"thr_00000000000000000000000000000000\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/taskWorkspace/branch",
+          "code": "custom",
+          "message": "must be a safe Git branch name"
+        }
+      ]
+    },
+    {
+      "name": "runtime instruction: await all",
+      "schema": "runtime-instruction",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/runtime-instruction/v1\",\"schemaVersion\":1,\"instructionId\":\"ins_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"idempotencyKey\":\"samplexxxxxxxxxx\",\"proposedByAgentId\":\"agt_00000000000000000000000000000000\",\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"operation\":\"THREAD_AWAIT\",\"threadIds\":[\"thr_00000000000000000000000000000000\",\"thr_11111111111111111111111111111111\"],\"policy\":\"all\",\"minimumCount\":null,\"deadline\":null}",
+      "outcome": "accept",
+      "value": {
+        "operation": "THREAD_AWAIT",
+        "threadIds": [
+          "thr_00000000000000000000000000000000",
+          "thr_11111111111111111111111111111111"
+        ],
+        "policy": "all",
+        "minimumCount": null,
+        "deadline": null,
+        "$schema": "https://nosh.dev/schemas/runtime-instruction/v1",
+        "schemaVersion": 1,
+        "instructionId": "ins_00000000000000000000000000000000",
+        "projectId": "prj_00000000000000000000000000000000",
+        "idempotencyKey": "samplexxxxxxxxxx",
+        "proposedByAgentId": "agt_00000000000000000000000000000000",
+        "issuedAt": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "runtime instruction: await duplicate threads",
+      "schema": "runtime-instruction",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/runtime-instruction/v1\",\"schemaVersion\":1,\"instructionId\":\"ins_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"idempotencyKey\":\"samplexxxxxxxxxx\",\"proposedByAgentId\":\"agt_00000000000000000000000000000000\",\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"operation\":\"THREAD_AWAIT\",\"threadIds\":[\"thr_00000000000000000000000000000000\",\"thr_00000000000000000000000000000000\"],\"policy\":\"all\",\"minimumCount\":null,\"deadline\":null}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/threadIds",
+          "code": "custom",
+          "message": "threadIds must be unique"
+        }
+      ]
+    },
+    {
+      "name": "runtime instruction: minimum_count without a count",
+      "schema": "runtime-instruction",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/runtime-instruction/v1\",\"schemaVersion\":1,\"instructionId\":\"ins_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"idempotencyKey\":\"samplexxxxxxxxxx\",\"proposedByAgentId\":\"agt_00000000000000000000000000000000\",\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"operation\":\"THREAD_AWAIT\",\"threadIds\":[\"thr_00000000000000000000000000000000\",\"thr_11111111111111111111111111111111\"],\"policy\":\"minimum_count\",\"minimumCount\":null,\"deadline\":null}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/minimumCount",
+          "code": "custom",
+          "message": "minimum_count requires a value no greater than threadIds.length"
+        }
+      ]
+    },
+    {
+      "name": "runtime instruction: minimum_count above the thread count",
+      "schema": "runtime-instruction",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/runtime-instruction/v1\",\"schemaVersion\":1,\"instructionId\":\"ins_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"idempotencyKey\":\"samplexxxxxxxxxx\",\"proposedByAgentId\":\"agt_00000000000000000000000000000000\",\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"operation\":\"THREAD_AWAIT\",\"threadIds\":[\"thr_00000000000000000000000000000000\",\"thr_11111111111111111111111111111111\"],\"policy\":\"minimum_count\",\"minimumCount\":3,\"deadline\":null}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/minimumCount",
+          "code": "custom",
+          "message": "minimum_count requires a value no greater than threadIds.length"
+        }
+      ]
+    },
+    {
+      "name": "runtime instruction: minimum_count equal to the thread count",
+      "schema": "runtime-instruction",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/runtime-instruction/v1\",\"schemaVersion\":1,\"instructionId\":\"ins_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"idempotencyKey\":\"samplexxxxxxxxxx\",\"proposedByAgentId\":\"agt_00000000000000000000000000000000\",\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"operation\":\"THREAD_AWAIT\",\"threadIds\":[\"thr_00000000000000000000000000000000\",\"thr_11111111111111111111111111111111\"],\"policy\":\"minimum_count\",\"minimumCount\":2,\"deadline\":null}",
+      "outcome": "accept",
+      "value": {
+        "operation": "THREAD_AWAIT",
+        "threadIds": [
+          "thr_00000000000000000000000000000000",
+          "thr_11111111111111111111111111111111"
+        ],
+        "policy": "minimum_count",
+        "minimumCount": 2,
+        "deadline": null,
+        "$schema": "https://nosh.dev/schemas/runtime-instruction/v1",
+        "schemaVersion": 1,
+        "instructionId": "ins_00000000000000000000000000000000",
+        "projectId": "prj_00000000000000000000000000000000",
+        "idempotencyKey": "samplexxxxxxxxxx",
+        "proposedByAgentId": "agt_00000000000000000000000000000000",
+        "issuedAt": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "runtime instruction: deadline policy without a deadline",
+      "schema": "runtime-instruction",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/runtime-instruction/v1\",\"schemaVersion\":1,\"instructionId\":\"ins_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"idempotencyKey\":\"samplexxxxxxxxxx\",\"proposedByAgentId\":\"agt_00000000000000000000000000000000\",\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"operation\":\"THREAD_AWAIT\",\"threadIds\":[\"thr_00000000000000000000000000000000\"],\"policy\":\"deadline\",\"minimumCount\":null,\"deadline\":null}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/deadline",
+          "code": "custom",
+          "message": "deadline policy requires deadline"
+        }
+      ]
+    },
+    {
+      "name": "runtime instruction: STOP naming nothing",
+      "schema": "runtime-instruction",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/runtime-instruction/v1\",\"schemaVersion\":1,\"instructionId\":\"ins_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"idempotencyKey\":\"samplexxxxxxxxxx\",\"proposedByAgentId\":\"agt_00000000000000000000000000000000\",\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"operation\":\"STOP\",\"threadId\":null,\"programId\":null,\"reason\":\"done\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/threadId",
+          "code": "custom",
+          "message": "STOP requires threadId or programId"
+        }
+      ]
+    },
+    {
+      "name": "runtime instruction: STOP naming a thread",
+      "schema": "runtime-instruction",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/runtime-instruction/v1\",\"schemaVersion\":1,\"instructionId\":\"ins_00000000000000000000000000000000\",\"projectId\":\"prj_00000000000000000000000000000000\",\"idempotencyKey\":\"samplexxxxxxxxxx\",\"proposedByAgentId\":\"agt_00000000000000000000000000000000\",\"issuedAt\":\"2026-07-17T00:00:00.000Z\",\"operation\":\"STOP\",\"threadId\":\"thr_00000000000000000000000000000000\",\"programId\":null,\"reason\":\"done\"}",
+      "outcome": "accept",
+      "value": {
+        "operation": "STOP",
+        "threadId": "thr_00000000000000000000000000000000",
+        "programId": null,
+        "reason": "done",
+        "$schema": "https://nosh.dev/schemas/runtime-instruction/v1",
+        "schemaVersion": 1,
+        "instructionId": "ins_00000000000000000000000000000000",
+        "projectId": "prj_00000000000000000000000000000000",
+        "idempotencyKey": "samplexxxxxxxxxx",
+        "proposedByAgentId": "agt_00000000000000000000000000000000",
+        "issuedAt": "2026-07-17T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "orchestration program: step branch with ..",
+      "schema": "orchestration-program",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/orchestration-program/v1\",\"maximumModelTokens\":1,\"maximumSteps\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1,\"name\":\"ref_1\",\"programId\":\"prg_00000000000000000000000000000000\",\"schemaVersion\":1,\"startStepId\":\"ref_1\",\"state\":{\"initial\":{\"item\":null},\"namespace\":\"ref_1\",\"schema\":{\"item\":\"string\"}},\"steps\":[{\"background\":true,\"failureStepId\":\"ref_1\",\"guard\":{\"operator\":\"exists\",\"ref\":\"sample\",\"value\":null},\"instruction\":{\"budget\":{\"maximumModelTokens\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1},\"capabilities\":[\"ref_1\"],\"executionMode\":\"background\",\"initialAgentId\":\"agt_00000000000000000000000000000000\",\"inputRefs\":[\"ref_1\"],\"operation\":\"THREAD_OPEN\",\"ownerScope\":{\"autoresearchId\":\"ar_00000000000000000000000000000000\",\"directionId\":\"dir_00000000000000000000000000000000\",\"experimentId\":\"exp_00000000000000000000000000000000\",\"graphNodeId\":\"ref_1\",\"missionId\":\"mis_00000000000000000000000000000000\"},\"parentThreadId\":\"thr_00000000000000000000000000000000\",\"purpose\":\"sample\",\"role\":\"nosh\",\"skillIds\":[\"skl_00000000000000000000000000000000\"],\"taskId\":\"tsk_00000000000000000000000000000000\",\"taskPermissions\":{\"allowedToolIds\":[\"ref_1\"],\"delegation\":\"request_only\",\"gitCommit\":true,\"gitPush\":true,\"network\":\"disabled\",\"networkAllowlist\":[\"example.org\"],\"subprocess\":\"disabled\"},\"taskWorkspace\":{\"branch\":\"x..y\",\"protectedScopes\":[\"sample\"],\"startingCommit\":\"0000000000000000000000000000000000000000\",\"worktreeId\":\"ref_1\",\"writeScopes\":[\"sample\"]},\"threadId\":\"thr_00000000000000000000000000000000\"},\"nextStepId\":\"ref_1\",\"outputStateKey\":\"sample\",\"stepId\":\"ref_1\"}],\"version\":\"1.0.0\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/steps/0/instruction/taskWorkspace/branch",
+          "code": "custom",
+          "message": "must be a safe Git branch name"
+        }
+      ]
+    },
+    {
+      "name": "orchestration program: step awaits duplicate threads",
+      "schema": "orchestration-program",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/orchestration-program/v1\",\"maximumModelTokens\":1,\"maximumSteps\":1,\"maximumToolCalls\":1,\"maximumWallClockSeconds\":1,\"name\":\"ref_1\",\"programId\":\"prg_00000000000000000000000000000000\",\"schemaVersion\":1,\"startStepId\":\"ref_1\",\"state\":{\"initial\":{\"item\":null},\"namespace\":\"ref_1\",\"schema\":{\"item\":\"string\"}},\"steps\":[{\"background\":true,\"failureStepId\":\"ref_1\",\"guard\":{\"operator\":\"exists\",\"ref\":\"sample\",\"value\":null},\"instruction\":{\"operation\":\"THREAD_AWAIT\",\"threadIds\":[\"thr_00000000000000000000000000000000\",\"thr_00000000000000000000000000000000\"],\"policy\":\"all\",\"minimumCount\":null,\"deadline\":null},\"nextStepId\":\"ref_1\",\"outputStateKey\":\"sample\",\"stepId\":\"ref_1\"}],\"version\":\"1.0.0\"}",
+      "outcome": "custom",
+      "issues": [
+        {
+          "pointer": "/steps/0/instruction/threadIds",
+          "code": "custom",
+          "message": "threadIds must be unique"
+        }
+      ]
+    }
+  ],
+  "canonical": [
+    {
+      "input": "{\"b\":1,\"a\":2,\"c\":{\"z\":null,\"y\":[3,2,1]}}",
+      "canonical": "{\"a\":2,\"b\":1,\"c\":{\"y\":[3,2,1],\"z\":null}}",
+      "sha256": "sha256:f61887915ffee348c34646e43f178baceff4558dbc76153076b67e87b532d706"
+    },
+    {
+      "input": "{\"\\uFFFD\":1,\"\\uD83D\\uDE00\":2,\"é\":3,\"z\":4,\"Z\":5,\"\":6,\"\\u00e9a\":7}",
+      "canonical": "{\"\":6,\"Z\":5,\"z\":4,\"é\":3,\"éa\":7,\"😀\":2,\"�\":1}",
+      "sha256": "sha256:95ebdb5f522f87fa18c8bbfad0ae5891d7a50db40401b8827f5c6eab4999f940"
+    },
+    {
+      "input": "[1.0,-0,-0.0,0.1,1e21,1e20,1e-7,1e-6,123e-20,0.30000000000000004,100,1E2]",
+      "canonical": "[1,0,0,0.1,1e+21,100000000000000000000,1e-7,0.000001,1.23e-18,0.30000000000000004,100,100]",
+      "sha256": "sha256:974878706b1acd575de4b0d48b48031b11c1a35f3fb44ae908f3a7775b00cdae"
+    },
+    {
+      "input": "[9007199254740993,18446744073709551615,123456789012345678901234567890,-1.5e300,5e-324,1.7976931348623157e308,1e23]",
+      "canonical": "[9007199254740992,18446744073709552000,1.2345678901234568e+29,-1.5e+300,5e-324,1.7976931348623157e+308,1e+23]",
+      "sha256": "sha256:dab81402b0dcd1a8bdffbea6548138c08a2e4891fc5ca35b3168bb510a7c3399"
+    },
+    {
+      "input": "\"\\u0000\\u001f\\b\\f\\n\\r\\t\\u007f\\u2028\\u2029\\\"\\\\/é😀\"",
+      "canonical": "\"\\u0000\\u001f\\b\\f\\n\\r\\t  \\\"\\\\/é😀\"",
+      "sha256": "sha256:df8b95aa04ee73a2111b3a9366ebde5318d588d15bd52ab67aa16021ed8ebfe5"
+    },
+    {
+      "input": "{\"a\":{\"a\":{\"a\":[]}},\"b\":{},\"c\":[true,false,null]}",
+      "canonical": "{\"a\":{\"a\":{\"a\":[]}},\"b\":{},\"c\":[true,false,null]}",
+      "sha256": "sha256:485ad1c1ae128e16427dc05c2c5616320fd21b1470573ca3658204966db7c20a"
+    }
+  ]
+}

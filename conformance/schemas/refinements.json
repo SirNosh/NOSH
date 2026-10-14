@@ -1,0 +1,265 @@
+{
+  "formats": {
+    "date-time": "^((\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-((0[13578]|1[02])-(0[1-9]|[12]\\d|3[01])|(0[469]|11)-(0[1-9]|[12]\\d|30)|(02)-(0[1-9]|1\\d|2[0-8])))T([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d\\.\\d{3})+(Z|([+-]\\d{2}:?\\d{2}))$",
+    "date": "^((\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-((0[13578]|1[02])-(0[1-9]|[12]\\d|3[01])|(0[469]|11)-(0[1-9]|[12]\\d|30)|(02)-(0[1-9]|1\\d|2[0-8])))$"
+  },
+  "refinements": [
+    {
+      "schema": "blocker",
+      "path": [
+        "safeState",
+        "branch"
+      ],
+      "when": [],
+      "rule": "eb1c928035abb0b1fb7df9d13bbab32c6a48d97924a6ce217ae9d04511f23ac4",
+      "source": "(val, ctx) => {\n            const result = check(val);\n            const setError = () => ctx.addIssue({\n                code: ZodIssueCode.custom,\n                ...getIssueProperties(val),\n            });\n            if (typeof Promise !== \"undefined\" && result instanceof Promise) {\n                return result.then((data) => {\n                    if (!data) {\n                        setError();\n                        return false;\n                    }\n                    else {\n                        return true;\n                    }\n                });\n            }\n            if (!result) {\n                setError();\n                return false;\n            }\n            else {\n                return true;\n            }\n        }"
+    },
+    {
+      "schema": "claim",
+      "path": [],
+      "when": [],
+      "rule": "d3fb3eb16c521dcf9a2ab480be3456043ebdb56f851ab13a8682fd489de59adc",
+      "source": "(record, context) => { if (!record.supportingEvidenceIds.length && !record.contradictingEvidenceIds.length && !record.qualifyingEvidenceIds.length && !record.limitations.length)\n    context.addIssue({ code: \"custom\", path: [\"limitations\"], message: \"Claim must have evidence or an explicit limitation\" }); }"
+    },
+    {
+      "schema": "direction-closure-packet",
+      "path": [],
+      "when": [],
+      "rule": "03e1a8ae8b62b8d9399f527a4c6cb9677b0ae524b6bf879483cafbd77bb91b19",
+      "source": "(record, context) => { if (record.openDefectIds.length)\n    context.addIssue({ code: \"custom\", path: [\"openDefectIds\"], message: \"Direction closure cannot contain open defects\" }); }"
+    },
+    {
+      "schema": "episode",
+      "path": [],
+      "when": [],
+      "rule": "65d30f4c82ddfdc1ad5ae50a470111857058c2b296b3ebb7203a8d4c8a796ab6",
+      "source": "(value, context) => { if (value.trace.lastSequence < value.trace.firstSequence)\n    context.addIssue({ code: \"custom\", path: [\"trace\", \"lastSequence\"], message: \"lastSequence must not precede firstSequence\" }); }"
+    },
+    {
+      "schema": "event",
+      "path": [],
+      "when": [],
+      "rule": "583ae6d460285b94e12e802cf4cfadb88f771804b82b53d6cd46e83951b10456",
+      "source": "(event, context) => {\n    if (event.retention === \"persistent\" && event.sequence === null) {\n        context.addIssue({ code: z.ZodIssueCode.custom, path: [\"sequence\"], message: \"persistent events require a sequence\" });\n    }\n    if (event.retention === \"ephemeral\" && event.sequence !== null) {\n        context.addIssue({ code: z.ZodIssueCode.custom, path: [\"sequence\"], message: \"ephemeral events cannot have a sequence\" });\n    }\n}"
+    },
+    {
+      "schema": "evidence",
+      "path": [],
+      "when": [],
+      "rule": "380112c50795da3c938dabcb0e8837bb742c6e30034315667218eca8e06d85a8",
+      "source": "(record, context) => {\n    if ((record.createdBy === \"agent\") !== (record.createdByAgentId !== null))\n        context.addIssue({ code: z.ZodIssueCode.custom, path: [\"createdByAgentId\"], message: \"createdByAgentId must be present exactly for agent-created evidence\" });\n    if (record.quality.status === \"unreviewed\" && record.quality.reviewId !== null)\n        context.addIssue({ code: z.ZodIssueCode.custom, path: [\"quality\", \"reviewId\"], message: \"unreviewed Evidence must not name a Review\" });\n    if (record.quality.status !== \"unreviewed\" && record.quality.reviewId === null)\n        context.addIssue({ code: z.ZodIssueCode.custom, path: [\"quality\", \"reviewId\"], message: \"reviewed or rejected Evidence must name a Review\" });\n}"
+    },
+    {
+      "schema": "execution-thread",
+      "path": [
+        "taskWorkspace",
+        "branch"
+      ],
+      "when": [],
+      "rule": "eb1c928035abb0b1fb7df9d13bbab32c6a48d97924a6ce217ae9d04511f23ac4",
+      "source": "(val, ctx) => {\n            const result = check(val);\n            const setError = () => ctx.addIssue({\n                code: ZodIssueCode.custom,\n                ...getIssueProperties(val),\n            });\n            if (typeof Promise !== \"undefined\" && result instanceof Promise) {\n                return result.then((data) => {\n                    if (!data) {\n                        setError();\n                        return false;\n                    }\n                    else {\n                        return true;\n                    }\n                });\n            }\n            if (!result) {\n                setError();\n                return false;\n            }\n            else {\n                return true;\n            }\n        }"
+    },
+    {
+      "schema": "general-worker-completion",
+      "path": [
+        "codeChanges",
+        "branch"
+      ],
+      "when": [],
+      "rule": "eb1c928035abb0b1fb7df9d13bbab32c6a48d97924a6ce217ae9d04511f23ac4",
+      "source": "(val, ctx) => {\n            const result = check(val);\n            const setError = () => ctx.addIssue({\n                code: ZodIssueCode.custom,\n                ...getIssueProperties(val),\n            });\n            if (typeof Promise !== \"undefined\" && result instanceof Promise) {\n                return result.then((data) => {\n                    if (!data) {\n                        setError();\n                        return false;\n                    }\n                    else {\n                        return true;\n                    }\n                });\n            }\n            if (!result) {\n                setError();\n                return false;\n            }\n            else {\n                return true;\n            }\n        }"
+    },
+    {
+      "schema": "handoff",
+      "path": [
+        "branch",
+        "name"
+      ],
+      "when": [],
+      "rule": "eb1c928035abb0b1fb7df9d13bbab32c6a48d97924a6ce217ae9d04511f23ac4",
+      "source": "(val, ctx) => {\n            const result = check(val);\n            const setError = () => ctx.addIssue({\n                code: ZodIssueCode.custom,\n                ...getIssueProperties(val),\n            });\n            if (typeof Promise !== \"undefined\" && result instanceof Promise) {\n                return result.then((data) => {\n                    if (!data) {\n                        setError();\n                        return false;\n                    }\n                    else {\n                        return true;\n                    }\n                });\n            }\n            if (!result) {\n                setError();\n                return false;\n            }\n            else {\n                return true;\n            }\n        }"
+    },
+    {
+      "schema": "mission-completion-packet",
+      "path": [],
+      "when": [],
+      "rule": "2c520951f3efbb0786974fce2e0637ee348db0ed5ca2c601ebdd9d08e4800997",
+      "source": "(record, context) => { if (record.claimAudit.unresolvedClaimIds.length || record.openDefectIds.length)\n    context.addIssue({ code: \"custom\", path: [\"openDefectIds\"], message: \"Mission completion cannot contain unresolved claims or defects\" }); }"
+    },
+    {
+      "schema": "mission-director-cycle",
+      "path": [
+        "spawn"
+      ],
+      "when": [],
+      "rule": "e67c1bb51ada975754dabc95a7c05092fd58ba784bcb9b155d4fa25548264831",
+      "source": "(value, context) => { if (value.kind === \"research_direction\" && !value.decisionUse)\n    context.addIssue({ code: z.ZodIssueCode.custom, path: [\"decisionUse\"], message: \"A research_direction spawn needs decisionUse: what the answer will decide\" }); }"
+    },
+    {
+      "schema": "orchestration-program",
+      "path": [
+        "steps",
+        "*",
+        "instruction"
+      ],
+      "when": [],
+      "rule": "07a27a1a92c9563084ec0ced3a8f64c1b2f05b9d6918e36c03e2406ea065cc91",
+      "source": "(value, context) => {\n    if (value.operation === \"THREAD_AWAIT\") {\n        const threadIds = value.threadIds ?? [];\n        if (new Set(threadIds).size !== threadIds.length)\n            context.addIssue({ code: \"custom\", path: [\"threadIds\"], message: \"threadIds must be unique\" });\n        if (value.policy === \"minimum_count\" && (value.minimumCount === null || value.minimumCount === undefined || value.minimumCount > threadIds.length))\n            context.addIssue({ code: \"custom\", path: [\"minimumCount\"], message: \"minimum_count requires a value no greater than threadIds.length\" });\n        if (value.policy === \"deadline\" && value.deadline === null)\n            context.addIssue({ code: \"custom\", path: [\"deadline\"], message: \"deadline policy requires deadline\" });\n    }\n    if (value.operation === \"STOP\" && value.threadId === null && value.programId === null)\n        context.addIssue({ code: \"custom\", path: [\"threadId\"], message: \"STOP requires threadId or programId\" });\n}"
+    },
+    {
+      "schema": "orchestration-program",
+      "path": [
+        "steps",
+        "*",
+        "instruction",
+        "taskWorkspace",
+        "branch"
+      ],
+      "when": [
+        {
+          "path": [
+            "steps",
+            "*",
+            "instruction"
+          ],
+          "key": "operation",
+          "equals": "THREAD_OPEN"
+        }
+      ],
+      "rule": "eb1c928035abb0b1fb7df9d13bbab32c6a48d97924a6ce217ae9d04511f23ac4",
+      "source": "(val, ctx) => {\n            const result = check(val);\n            const setError = () => ctx.addIssue({\n                code: ZodIssueCode.custom,\n                ...getIssueProperties(val),\n            });\n            if (typeof Promise !== \"undefined\" && result instanceof Promise) {\n                return result.then((data) => {\n                    if (!data) {\n                        setError();\n                        return false;\n                    }\n                    else {\n                        return true;\n                    }\n                });\n            }\n            if (!result) {\n                setError();\n                return false;\n            }\n            else {\n                return true;\n            }\n        }"
+    },
+    {
+      "schema": "orchestration-program",
+      "path": [
+        "steps",
+        "*",
+        "instruction",
+        "taskWorkspace",
+        "branch"
+      ],
+      "when": [
+        {
+          "path": [
+            "steps",
+            "*",
+            "instruction"
+          ],
+          "key": "operation",
+          "equals": "THREAD_FORK"
+        }
+      ],
+      "rule": "eb1c928035abb0b1fb7df9d13bbab32c6a48d97924a6ce217ae9d04511f23ac4",
+      "source": "(val, ctx) => {\n            const result = check(val);\n            const setError = () => ctx.addIssue({\n                code: ZodIssueCode.custom,\n                ...getIssueProperties(val),\n            });\n            if (typeof Promise !== \"undefined\" && result instanceof Promise) {\n                return result.then((data) => {\n                    if (!data) {\n                        setError();\n                        return false;\n                    }\n                    else {\n                        return true;\n                    }\n                });\n            }\n            if (!result) {\n                setError();\n                return false;\n            }\n            else {\n                return true;\n            }\n        }"
+    },
+    {
+      "schema": "review-request",
+      "path": [],
+      "when": [],
+      "rule": "d5e32e8564054a2f9b9ab4764c3bee174da53c9d975e3d6612c1efa101072290",
+      "source": "(value, context) => {\n    if (value.producerAgentIds.includes(value.reviewerAgentId))\n        context.addIssue({ code: \"custom\", path: [\"reviewerAgentId\"], message: \"reviewer must be independent from every producer\" });\n}"
+    },
+    {
+      "schema": "review-verdict",
+      "path": [],
+      "when": [],
+      "rule": "505a498e00f42d40ac4d308001084e2168873bcb02e674cb6e5c7fb33c9933af",
+      "source": "(value, context) => {\n    if ((value.verdict === \"REVISE\" || value.verdict === \"REDESIGN\") && !value.defects.length && value.criteria.every((criterion) => criterion.status === \"PASS\" || criterion.status === \"NOT_APPLICABLE\"))\n        context.addIssue({ code: \"custom\", path: [\"verdict\"], message: `${value.verdict} needs a failing or inconclusive criterion or a recorded defect; when every criterion passes and no defect is open, the verdict is PASS` });\n    if (value.verdict !== \"PASS\")\n        return;\n    if (value.independenceCheck !== \"pass\")\n        context.addIssue({ code: \"custom\", path: [\"verdict\"], message: \"PASS requires an independent reviewer\" });\n    if (value.missingRequiredInputs.length)\n        context.addIssue({ code: \"custom\", path: [\"missingRequiredInputs\"], message: \"PASS cannot omit required inputs\" });\n    if (value.criteria.some((criterion) => criterion.required !== false && (criterion.status === \"FAIL\" || criterion.status === \"INCONCLUSIVE\")))\n        context.addIssue({ code: \"custom\", path: [\"criteria\"], message: \"PASS requires every required criterion to pass\" });\n    if (value.defects.some((defect) => defect.blocking || defect.severity === \"blocking\" || defect.severity === \"major\"))\n        context.addIssue({ code: \"custom\", path: [\"defects\"], message: \"PASS cannot contain an open blocking or major defect\" });\n}"
+    },
+    {
+      "schema": "runtime-instruction",
+      "path": [],
+      "when": [],
+      "rule": "07a27a1a92c9563084ec0ced3a8f64c1b2f05b9d6918e36c03e2406ea065cc91",
+      "source": "(value, context) => {\n    if (value.operation === \"THREAD_AWAIT\") {\n        const threadIds = value.threadIds ?? [];\n        if (new Set(threadIds).size !== threadIds.length)\n            context.addIssue({ code: \"custom\", path: [\"threadIds\"], message: \"threadIds must be unique\" });\n        if (value.policy === \"minimum_count\" && (value.minimumCount === null || value.minimumCount === undefined || value.minimumCount > threadIds.length))\n            context.addIssue({ code: \"custom\", path: [\"minimumCount\"], message: \"minimum_count requires a value no greater than threadIds.length\" });\n        if (value.policy === \"deadline\" && value.deadline === null)\n            context.addIssue({ code: \"custom\", path: [\"deadline\"], message: \"deadline policy requires deadline\" });\n    }\n    if (value.operation === \"STOP\" && value.threadId === null && value.programId === null)\n        context.addIssue({ code: \"custom\", path: [\"threadId\"], message: \"STOP requires threadId or programId\" });\n}"
+    },
+    {
+      "schema": "runtime-instruction",
+      "path": [
+        "taskWorkspace",
+        "branch"
+      ],
+      "when": [
+        {
+          "path": [],
+          "key": "operation",
+          "equals": "THREAD_OPEN"
+        }
+      ],
+      "rule": "eb1c928035abb0b1fb7df9d13bbab32c6a48d97924a6ce217ae9d04511f23ac4",
+      "source": "(val, ctx) => {\n            const result = check(val);\n            const setError = () => ctx.addIssue({\n                code: ZodIssueCode.custom,\n                ...getIssueProperties(val),\n            });\n            if (typeof Promise !== \"undefined\" && result instanceof Promise) {\n                return result.then((data) => {\n                    if (!data) {\n                        setError();\n                        return false;\n                    }\n                    else {\n                        return true;\n                    }\n                });\n            }\n            if (!result) {\n                setError();\n                return false;\n            }\n            else {\n                return true;\n            }\n        }"
+    },
+    {
+      "schema": "runtime-instruction",
+      "path": [
+        "taskWorkspace",
+        "branch"
+      ],
+      "when": [
+        {
+          "path": [],
+          "key": "operation",
+          "equals": "THREAD_FORK"
+        }
+      ],
+      "rule": "eb1c928035abb0b1fb7df9d13bbab32c6a48d97924a6ce217ae9d04511f23ac4",
+      "source": "(val, ctx) => {\n            const result = check(val);\n            const setError = () => ctx.addIssue({\n                code: ZodIssueCode.custom,\n                ...getIssueProperties(val),\n            });\n            if (typeof Promise !== \"undefined\" && result instanceof Promise) {\n                return result.then((data) => {\n                    if (!data) {\n                        setError();\n                        return false;\n                    }\n                    else {\n                        return true;\n                    }\n                });\n            }\n            if (!result) {\n                setError();\n                return false;\n            }\n            else {\n                return true;\n            }\n        }"
+    },
+    {
+      "schema": "skill-manifest",
+      "path": [],
+      "when": [],
+      "rule": "c7f11582d3b5f4a980ca4f4403741563ab2bdd9466bdd577d420249986e8ca5d",
+      "source": "(value, context) => { if ((value.executionMode === \"program\") !== (value.programId !== null))\n    context.addIssue({ code: \"custom\", path: [\"programId\"], message: \"program mode requires programId and prompt mode forbids it\" }); }"
+    },
+    {
+      "schema": "task-failure",
+      "path": [],
+      "when": [],
+      "rule": "4a5816c1d7a464e7fb777e6557dfe64125e964922d1c720a41045f6ffc7f454d",
+      "source": "(value, context) => {\n    if (!value.sameApproachAllowed && !value.changedPremiseRequired)\n        context.addIssue({ code: \"custom\", path: [\"changedPremiseRequired\"], message: \"a changed premise is required when the same approach is forbidden\" });\n}"
+    },
+    {
+      "schema": "task-failure",
+      "path": [
+        "workState",
+        "branch"
+      ],
+      "when": [],
+      "rule": "eb1c928035abb0b1fb7df9d13bbab32c6a48d97924a6ce217ae9d04511f23ac4",
+      "source": "(val, ctx) => {\n            const result = check(val);\n            const setError = () => ctx.addIssue({\n                code: ZodIssueCode.custom,\n                ...getIssueProperties(val),\n            });\n            if (typeof Promise !== \"undefined\" && result instanceof Promise) {\n                return result.then((data) => {\n                    if (!data) {\n                        setError();\n                        return false;\n                    }\n                    else {\n                        return true;\n                    }\n                });\n            }\n            if (!result) {\n                setError();\n                return false;\n            }\n            else {\n                return true;\n            }\n        }"
+    },
+    {
+      "schema": "task-packet",
+      "path": [
+        "workspace",
+        "branch"
+      ],
+      "when": [],
+      "rule": "eb1c928035abb0b1fb7df9d13bbab32c6a48d97924a6ce217ae9d04511f23ac4",
+      "source": "(val, ctx) => {\n            const result = check(val);\n            const setError = () => ctx.addIssue({\n                code: ZodIssueCode.custom,\n                ...getIssueProperties(val),\n            });\n            if (typeof Promise !== \"undefined\" && result instanceof Promise) {\n                return result.then((data) => {\n                    if (!data) {\n                        setError();\n                        return false;\n                    }\n                    else {\n                        return true;\n                    }\n                });\n            }\n            if (!result) {\n                setError();\n                return false;\n            }\n            else {\n                return true;\n            }\n        }"
+    }
+  ],
+  "defaults": [
+    {
+      "schema": "episode-draft",
+      "path": [
+        "facts",
+        "*",
+        "confidence"
+      ],
+      "when": [],
+      "value": "medium"
+    },
+    {
+      "schema": "episode",
+      "path": [
+        "facts",
+        "*",
+        "confidence"
+      ],
+      "when": [],
+      "value": "medium"
+    }
+  ]
+}
