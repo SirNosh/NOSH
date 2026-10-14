@@ -32,7 +32,7 @@ nosh setup
 nosh open
 ```
 
-The npm package is a small launcher. On first run it downloads NOSH from the latest [GitHub release](https://github.com/SirNosh/NOSH/releases), checks its SHA-256, and installs it under `%LOCALAPPDATA%\NOSH\harness` (or `~/.nosh/NOSH/harness`). Once a day `nosh` tells you when a newer release exists; `nosh update` installs it, and it waits while Missions, Directions, Autoresearch, Jobs, or agents are active. `nosh update --check` only reports versions, and `nosh --version` shows what is installed. Updates move forward only.
+The npm package is a small launcher. On first run it downloads NOSH from the latest [GitHub release](https://github.com/SirNosh/NOSH/releases), checks its SHA-256, and installs it under `%LOCALAPPDATA%\NOSH\harness` (or `~/.nosh/NOSH/harness`). Once a day `nosh` tells you when a newer release exists; `nosh update` installs it, but does not switch to it while Missions, Directions, Autoresearch, Jobs, agents, or runtime threads are active; run it again once that work is done. `nosh update --check` only reports versions, and `nosh --version` shows what is installed. Updates move forward only.
 
 Or run from a source checkout (this needs Bun >=1.3 on PATH for the terminal UI):
 
@@ -100,7 +100,7 @@ Accepted Mission work is merged onto the Mission's own branch (`nosh/mission-<id
 - **Threads and Episodes.** Agent work runs as bounded threads. Each step does one piece of work and returns an immutable, hashed Episode: a compact record of verified facts, decisions, references, and changed files. Threads can run in parallel, wait on each other, and start from selected Episodes instead of whole transcripts, so context stays small.
 - **Typed outputs.** Every task ends with one JSON envelope of schema-checked records. NOSH prebuilds that envelope with the daemon's own facts (IDs, commits, commands, fingerprints) already filled in, so the model only writes its judgment. The host validates it and issues a receipt; that receipt, not the model's text, decides acceptance.
 - **State without bookkeeping calls.** Agents never spend tool calls on bookkeeping. Starting a task is the acknowledgement. A `PROGRESS:` line in ordinary text is a progress update. The daemon commits a worker's edits itself (before every run and after the final answer), and a file is cited simply as `"artifact:<path>"`.
-- **Asynchronous, parallel tool use.** Tool calls in one turn run in parallel. Long calls, such as a test run or a network read, never block the agent. If a call is not done within a moment, the agent gets a placeholder and keeps working, and the result arrives later as a message that wakes it. An agent with nothing else to do ends its turn and sleeps until the result lands. Results are only ever appended, so the prompt cache stays valid, and edits pause while a run is testing the worktree.
+- **Asynchronous, parallel tool use.** Tool calls in one turn run in parallel. Long calls, such as a test run or a network read, never block the agent. If a call is not done within a moment, the agent gets a placeholder and keeps working, and the result arrives later as a message that wakes it. An agent with nothing else to do ends its turn and sleeps until the result lands. Results are only ever appended, so the prompt cache stays valid, and edits are refused from the moment a run starts testing the worktree until its result arrives.
 - **Programs of tool calls.** With `nosh_code`, an agent writes a short JavaScript program that calls its own tools: independent calls run together, one result feeds the next call, and a large output is filtered before it reaches the model, all in one model call. It is the default for any work that touches more than one file: in our tests, a 13-file read task used about 4,000–7,000 budget tokens with a program against 23,000–25,000 without, with the same correct result. The program runs in a sandboxed QuickJS interpreter in a worker thread and can call only tools the session already has; every call inside it is checked and recorded like a direct call. Set `NOSH_CODE_MODE=off` in the daemon's environment to remove it.
 - **Durable programs.** Orchestration programs are declared step graphs with typed state. Their state is checkpointed after every transition and resumes after a restart.
 - **Code-owned keep decisions.** Whether an experiment is kept is decided by code, not by a model: the run must be valid, every guardrail must pass, and the measured improvement must reach the contract's minimum effect. An independent review must then agree. A model can never declare its own result a success.
@@ -128,6 +128,8 @@ nosh logs
 nosh backup <project-id-or-path>
 nosh backup restore <project-id-or-path> <backup-id>
 nosh stop
+nosh stop --if-idle             # exit 0 stopped, 2 work still active, 3 not running
+nosh update                     # npm installs: update; source checkouts: print update steps
 ```
 
 Backup requires a clean Git working tree. Backup and restore are rejected while the Project has non-terminal agents, Jobs, runtime threads (including paused ones), Missions, Directions, or Autoresearch. Restore is scheduled, then applied on a later daemon start. Do not change the target repository or daemon data while restore is pending. The removed embedded-shell probe is no longer part of this check.

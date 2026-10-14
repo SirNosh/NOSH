@@ -43,7 +43,9 @@ evidence-linked claims. Check the host receipt, including failed effects,
 before claiming acceptance or completion.
 
 Workers have exactly one durable role: Librarian/Researcher, General-Purpose
-Worker, or Reviewer. Use `nosh_runtime_instruct` for typed thread operations;
+Worker, or Reviewer; worker task sessions request delegated work through
+`nosh_delegation_request` and never receive `nosh_runtime_instruct`. Where a
+session exposes `nosh_runtime_instruct`, use it for typed thread operations;
 the daemon authorizes the proposer, scope, parent/child relationship, budgets,
 and capabilities before executing it. Use `THREAD_FORK` for focused user input
 only when the runtime grants that capability; ordinary chat can ask directly.

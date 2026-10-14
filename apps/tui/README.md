@@ -20,7 +20,7 @@ starts a separate Bun process on that runtime.
 Type `/help` for the authoritative key and command reference, or Ctrl+P for
 the palette. Enter sends; Shift+Enter or Alt+Enter inserts a newline. Ctrl+O
 switches project, F2 selects a model, Ctrl+T cycles thinking levels, Ctrl+B
-toggles the sidebar. Esc returns to the conversation; in the conversation a
+toggles the sidebar, Ctrl+G opens the research map. Esc returns to the conversation; in the conversation a
 second Esc within 1.5 seconds clears the draft. Up/Down recall session input
 history. PgUp/PgDn and Ctrl+Home/End scroll. `/quit` or Ctrl+C detaches.
 See the [user guide](../../docs/user-guide/tui.md).
@@ -33,12 +33,15 @@ See the [user guide](../../docs/user-guide/tui.md).
   otherwise the first advertised level.
 - `/status [missions|directions|autoresearch|agents]`, `/jobs`, `/job <id>`,
   `/tail <id> [stdout|stderr]`: inspect durable work. Cards show ids and versions.
+- `/map`: live research map of Missions, Directions, Autoresearch, workers, and jobs.
 - `/approvals`: inspect the contract and graph proposals.
 - `/approve <proposalId> <inspectedVersion>`: stage graph approval.
 - `/transition <missions|directions|autoresearch> <id> <inspectedVersion> <state>`:
   stage a version-checked state action. The daemon checks legal transitions.
 - `/control <missionId> <inspectedVersion> <pause|resume|stop> [safe|checkpoint|immediate]`.
 - `/cancel <jobId>` and `/checkpoint <jobId>` stage job actions.
+- `/start`, `/retry`, `/steer`, `/export-paper`, and `/amend-contract <JSON file path>`
+  also stage actions; `/help` gives their arguments.
 - `/confirm` applies the staged action once. `/discard` clears it.
 - `/create <missions|directions|autoresearch> <JSON file path>` reads a
   daemon API payload prepared in an external editor and stages creation.

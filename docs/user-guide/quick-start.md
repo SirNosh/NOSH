@@ -39,7 +39,7 @@ Keep build/install/launch in one environment. Pi credentials must be available i
   - On approval, NOSH commits exactly the two contract files, so the checkout stays clean for research tasks.
   - Later changes go through `/amend-contract <file>`, which is committed the same way.
 - F2: choose a model your Pi account lists (for example `openai-codex/gpt-5.6-luna`, if available), then a thinking level it advertises. Ctrl+T cycles thinking levels.
-- Default model: sessions that select no model, including all Director, worker, reviewer, and librarian sessions, use `defaultModel` from `%LOCALAPPDATA%\NOSH\config.json`, written as `provider/id` or `provider/id:thinkingLevel` (for example `"defaultModel": "openai-codex/gpt-6-luna:low"`). Restart the daemon (`nosh stop`, then `nosh start`) to apply it. Without it, Pi's global `~/.pi/agent/settings.json` default applies, which other Pi clients can change.
+- Default model: sessions that select no model, including all Director, worker, reviewer, and librarian sessions, use `defaultModel` from `%LOCALAPPDATA%\NOSH\config.json`, written as `provider/id` or `provider/id:thinkingLevel` (for example `"defaultModel": "openai-codex/gpt-6-luna:low"`). `nosh model set provider/id:level` writes it and applies it to new sessions of a running daemon; after editing the file by hand, restart the daemon (`nosh stop`, then `nosh start`). Without it, Pi's global `~/.pi/agent/settings.json` default applies, which other Pi clients can change.
 - Ctrl+P: searchable commands. Enter sends; Shift+Enter adds a newline.
 - `/help` lists every key and command.
 - `/quit` or Ctrl+C detaches. It does not stop the daemon or Jobs.

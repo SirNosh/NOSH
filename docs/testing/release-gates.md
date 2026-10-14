@@ -48,7 +48,9 @@ corepack pnpm package:windows
 
 `.github/workflows/ci.yml` runs on pull requests and pushes to `main` on `windows-latest` with pnpm 10.28.0, Node from `.nvmrc`, and Bun 1.4.2: frozen install, `quality`, `test`, `release:smoke`, `notices`, and `sbom`. It uploads `release/nosh.cdx.json` and `THIRD_PARTY_NOTICES.md` as the `compliance` artifact.
 
-`.github/workflows/release.yml` runs on `v*` tags with the same steps, then `package:windows`. It publishes `NOSH-Research-<version>-windows.zip`, its `.sha256`, the CycloneDX SBOM, and notices to a GitHub release, with a build-provenance attestation for the zip. Verify the SHA-256 and attestation before running `scripts/install.ps1`. CI does not replace the terminal, real-workload, or security gates.
+Releases start with `npm version patch` (bumps `package.json`, commits, tags) and `git push --follow-tags`. `.github/workflows/release.yml` runs on `v*` tags and fails unless the tag equals `v<package.json version>`. It runs the same steps, then `package:windows` and `scripts/package-npm.mjs --name nosh-runtime`, installs the resulting `nosh-runtime-<version>.tgz` into a temporary prefix, and requires its `help` to run. It publishes `NOSH-Research-<version>-windows.zip`, `nosh-runtime-<version>.tgz`, a `.sha256` for each, the CycloneDX SBOM, and notices to a GitHub release, with build-provenance attestations for the zip and the tgz. The `nosh-harness` npm launcher installs that tgz. Verify the SHA-256 and attestation before running `scripts/install.ps1`. CI does not replace the terminal, real-workload, or security gates.
+
+`.github/workflows/pages.yml` deploys `site/` to GitHub Pages (https://sirnosh.github.io/NOSH/) on manual dispatch or on pushes to `agent/optimize-harness-and-project-intake` that change `site/` or the workflow.
 
 ## Real-workload and safety gates
 

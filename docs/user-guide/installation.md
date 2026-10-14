@@ -2,7 +2,7 @@
 
 ## From npm
 
-`npm install -g nosh-harness` installs a small launcher. Its first run downloads the latest NOSH release from GitHub into `%LOCALAPPDATA%\NOSH\harness`, verifies its SHA-256, and runs it; it needs only Node >=22.19.0 and Git. Update with `nosh update`, which waits while any Project has active work. The rest of this page covers running from a source checkout.
+`npm install -g nosh-harness` installs a small launcher. Its first run downloads the latest NOSH release from GitHub into `%LOCALAPPDATA%\NOSH\harness`, verifies its SHA-256, and runs it; it needs only Node >=22.19.0 and Git. Update with `nosh update`: it installs the new release, then switches to it only if no Project has active work (otherwise it exits 2; run it again once that work is done) and restarts a daemon that was running. `nosh update --check` only compares versions, `nosh --version` shows the installed one, and at most once a day a command prints a notice when a newer release exists. The rest of this page covers running from a source checkout.
 
 ## Prerequisites
 
@@ -39,7 +39,7 @@ nosh open
 
 In the TUI, press Ctrl+O to open or create a Project (or run `nosh project open C:\path\to\repo` first).
 
-State lives under `%LOCALAPPDATA%\NOSH`; if `LOCALAPPDATA` is unset, `%APPDATA%\NOSH`, then `~/.nosh/NOSH`. It is not configurable. `config.json` holds the port and bootstrap credential; `data/` holds `host.sqlite`, per-Project databases, `logs/noshd.log`, `jobs/`, and `backups/`. Setup creates the bootstrap credential; do not copy it into a Project or publish it. The daemon binds only to loopback.
+State lives under `%LOCALAPPDATA%\NOSH`; if `LOCALAPPDATA` is unset, `%APPDATA%\NOSH`, then `~/.nosh/NOSH`. It is not configurable. `config.json` holds the port, bootstrap credential, and default model; `data/` holds `host.sqlite`, per-Project databases, `logs/noshd.log`, `jobs/`, and `backups/`. Setup creates the bootstrap credential; do not copy it into a Project or publish it. The daemon binds only to loopback.
 
 ## Operation and removal
 
@@ -48,4 +48,4 @@ State lives under `%LOCALAPPDATA%\NOSH`; if `LOCALAPPDATA` is unset, `%APPDATA%\
 Back up Projects before migration or removal. `scripts/uninstall.ps1` removes the wrapper, PATH entry, and logon task; `-NoPath`, `-NoScheduledTask`, and `-BinRoot` mirror the installer. Repositories and state are kept by default.
 
 > [!WARNING]
-> `scripts/uninstall.ps1 -RemoveData` deletes all of `%LOCALAPPDATA%\NOSH`, including databases, logs, Job records, the bootstrap configuration, and **all local backups** under `data\backups`. Copy backups you need to separate storage first. Clean-machine installation, native terminal behavior, and workload-specific WSL/GPU recovery still require manual validation; a successful TypeScript build is not that evidence.
+> `scripts/uninstall.ps1 -RemoveData` deletes all of `%LOCALAPPDATA%\NOSH`, including databases, logs, Job records, the bootstrap configuration, an npm-installed `harness`, and **all local backups** under `data\backups`. Copy backups you need to separate storage first. Clean-machine installation, native terminal behavior, and workload-specific WSL/GPU recovery still require manual validation; a successful TypeScript build is not that evidence.

@@ -1,12 +1,12 @@
 # Terminal workspace
 
-Run `nosh open` or `nosh tui` in an interactive terminal with Bun >=1.3. Node runs the daemon; Bun runs the OpenTUI client. Configure provider credentials through Pi outside the TUI.
+Run `nosh open` or `nosh tui` in an interactive terminal with Bun >=1.3. Node runs the daemon; Bun runs the OpenTUI client. Connect model accounts with `nosh login` outside the TUI.
 
 ## OpenCode-style workspace
 
 The home screen shows the NOSH mark (a gradient block wordmark), the composer, colored key hints, and the open project. Every conversation also opens with the mark, above its first message. The sidebar heading carries a compact wordmark.
 
-The home screen has a centered NOSH logo (a one-line wordmark below 20 rows) and a multiline composer. Conversations use Markdown, separate user/assistant/tool blocks, and a research sidebar. The sidebar is hidden on the home screen and below 80 columns. It shows one line per record with section counts and a **Needs you** section for a staged action and pending graph proposals. The footer shows the repository path, a connection badge (`● connected`, `○ connecting`, `○ reconnecting`), and `N O S H 0.1.0`. Inspector views show a scrollbar only when content overflows; the status line animates while work is in progress. Upstream source and MIT notices are in [UPSTREAM.md](../../apps/tui/UPSTREAM.md).
+The home screen has a centered NOSH logo (a one-line wordmark below 20 rows) and a multiline composer. Conversations use Markdown, separate user/assistant/tool blocks, and a research sidebar. The sidebar is hidden on the home screen and below 80 columns. It shows one line per record with section counts and a **Needs you** section for a staged action and pending graph proposals. The footer shows the repository path, a connection badge (`● connected`, `○ connecting`, `○ reconnecting`), and `nosh 0.1.0`. Inspector views show a scrollbar only when content overflows; the status line animates while work is in progress. Upstream source and MIT notices are in [UPSTREAM.md](../../apps/tui/UPSTREAM.md).
 
 Tool calls are titled by their target (for example `bash ls .nosh` or `read docs/paper.md`) and show at most six lines or 360 characters of output, followed by `… N more lines`. The composer label shows the active agent role and model, loaded from the daemon when an agent starts.
 
@@ -52,6 +52,6 @@ After updating daemon code, restart it when active work can safely be interrupte
 
 The daemon owns versions, permissions, receipts, and state. Mutations are not retried after ambiguous network failures. Inspect durable state before retrying. A staged action is bound to its project, inspected version, and idempotency key.
 
-Live WebSocket text/tool updates are transient. A bounded HTTP bootstrap and periodic reconciliation retain up to 400 durable events; the visible transcript keeps the last 120 entries and 64,000 characters, each item clipped to 16,000. Chat and project-open requests time out after 120 seconds on the client; other requests after 15 seconds. A timeout does not prove the daemon did not act. Disconnects clear incomplete drafts and reconnect from the durable cursor. This is not a complete audit-log viewer.
+Live WebSocket text/tool updates are transient. A bounded HTTP bootstrap and periodic reconciliation retain up to 400 durable events; the transcript keeps the last 120 entries and 64,000 characters (the last 100 entries are rendered), each item clipped to 16,000. Chat and project-open requests time out after 120 seconds on the client; other requests after 15 seconds. A timeout does not prove the daemon did not act. Disconnects clear incomplete drafts and reconnect from the durable cursor. This is not a complete audit-log viewer.
 
 No browser, relay, embedded shell, graph canvas, paper editor, artifact viewer, or foreground-fork takeover is restored. Use external editors/terminals and the local typed API for other operations. The OpenCode appearance does not import its coding-agent backend or all of its plugins/features.

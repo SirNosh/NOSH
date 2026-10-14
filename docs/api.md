@@ -4,10 +4,10 @@
 
 ## Authentication and limits
 
-- A request is trusted automatically when its socket is loopback, its `Host` header is `localhost`, `127.x.x.x`, or `[::1]`, and it either has no `Origin` (native clients such as the CLI) or an `Origin` equal to that loopback host. Cross-origin and DNS-rebinding requests are not trusted.
+- A request is trusted automatically when its socket is loopback, its `Host` header is `localhost`, `127.x.x.x`, or `[::1]`, and it either has no `Origin` and a `Sec-Fetch-Site` that is absent, `same-origin`, or `none` (native clients such as the CLI) or an `Origin` equal to that loopback host. Cross-origin and DNS-rebinding requests are not trusted.
 - Otherwise send `Authorization: Bearer <session>`. `POST /session` with `Authorization: Bearer <bootstrap capability>` returns a session token valid for 15 minutes. The TUI uses this flow.
 - `GET /health` needs no authentication. Unauthorized requests return `401 {"error":"unauthorized"}`; unknown routes `404`; invalid requests `400 {"error":"…"}`.
-- Request bodies are limited to 3 MB. Mutations take an `idempotencyKey`; version-checked mutations take `expectedVersion` (or the named expected-version field). Do not blindly retry an ambiguous failed mutation; inspect state first.
+- Request bodies are limited to 3 MB. Mutations take an `idempotencyKey` (at least 16 characters); version-checked mutations take `expectedVersion` (or the named expected-version field). Do not blindly retry an ambiguous failed mutation; inspect state first.
 - Trusted callers have full local authority, including launching Jobs and agents. Never expose the port beyond loopback.
 
 ## Events
@@ -49,15 +49,16 @@ All `GET` routes require `projectId`; all `POST` routes require `projectId` and 
 | GET | `/missions/:id/completion` | — | Completion basis and latest completion packet. |
 | POST | `/missions/:id/steer` | `expectedVersion`, `message` | Steer a running Mission. |
 | POST | `/missions/:id/control` | `expectedVersion`, `action` (`pause`/`resume`/`stop`), `mode` (`safe`/`checkpoint`/`immediate`) | Mission control. |
-| POST | `/missions/:id/transition` | `expectedVersion`, `next` | State transition. |
-| POST | `/missions/:id/graph` | `expectedVersion`, `baseGraphVersion`, `operations`, `rationale` | Propose a graph change. |
-| POST | `/missions/:id/nodes/:node/transition` | `expectedVersion`, `next` | Graph node transition. |
+| POST | `/{missions,directions,autoresearch}/:id/start` | `expectedVersion` | Advance through the remaining start states to `running` (Directions: `active`) in one call. |
+| POST | `/missions/:id/transition` | `expectedVersion`, `next` | State transition (`pausing`/`stopping` are refused; use `/control`). |
+| POST | `/missions/:id/graph` | `expectedVersion`, `baseGraphVersion`, `operations`, `rationale`, `evidenceIds[]` | Propose a graph change. |
+| POST | `/missions/:id/nodes/:node/transition` | `expectedVersion`, `next` (`ready`/`blocked`/`cancelled`; no `lease`) | Graph node transition. |
 | GET | `/graph-proposals` | — | Graph proposals. |
 | POST | `/graph-proposals/:id/approve` | `expectedProposalVersion` | Approve an inspected proposal. |
 | GET/POST | `/directions` | `question`, `decisionUse` | List or create Directions. |
 | POST | `/directions/:id/transition` | `expectedVersion`, `next` | State transition. |
 | POST | `/directions/:id/baseline` | `expectedVersion`, `commit`, `reviewId`, `evaluationContractHash` | Accept a reviewed baseline. |
-| POST | `/directions/:id/nodes/:node/transition` | `expectedVersion`, `next` | Node transition. |
+| POST | `/directions/:id/nodes/:node/transition` | `expectedVersion`, `next` (`ready`/`blocked`/`cancelled`; no `lease`) | Node transition. |
 | GET/POST | `/autoresearch` | `decisionQuestion` | List or create Autoresearch executions. |
 | POST | `/autoresearch/:id/transition` | `expectedVersion`, `next` | State transition. |
 

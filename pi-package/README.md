@@ -4,14 +4,14 @@ This package is the sole model-runtime resource package for NOSH Research. It co
 
 `noshd` loads this directory automatically for its embedded Pi sessions through an in-memory package setting; no manual Pi package installation is needed. The compatible Pi SDK is pinned by the daemon dependency (`@earendil-works/pi-coding-agent` 0.80.x). `nosh doctor` checks that the `pi` CLI is on PATH, that this package's metadata exists, and provider-authentication presence without reading credential values. It does not check the Pi version.
 
-Workers may submit typed records or request delegation; they cannot directly start child agents. When a task grants `nosh_runtime_instruct`, the host may authorize opening a child thread under a thread the worker controls. Only `noshd` validates submissions and mutates durable control-plane state. Authorized workspace file edits remain allowed.
+Workers may submit typed records or request delegation through `nosh_delegation_request`; they cannot directly start child agents, and task sessions do not receive `nosh_runtime_instruct`. When the host authorizes a delegation request, the daemon itself opens and steps the bounded child thread. Only `noshd` validates submissions and mutates durable control-plane state. Authorized workspace file edits remain allowed.
 
 ## Prompt authority
 
 `packages/pi-adapter/src/index.ts::noshSystemPrompt` supplies the actual system
 prompt to `DefaultResourceLoader` for every Pi session. It combines shared
 architecture, control-plane, turn-mode, runtime, recovery, and scientific-integrity
-rules with role-specific guidance. The daemon remains the scheduler and authority;
+rules with host-managed-state and role-specific guidance. The daemon remains the scheduler and authority;
 Pi sessions are replaceable. Task Packets, selected Episode projections, current
 objectives, and terminal contracts supply dynamic context. That context is
 selective and does not imply access to a parent's transcript or absent records.

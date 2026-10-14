@@ -35,6 +35,6 @@ Backups contain the selected Project's database, `.nosh` contracts/events/sessio
 
 ## Release boundary
 
-The distribution contains CLI, daemon, TUI, shared packages, Pi resources, install/package helpers, and public docs. Browser/PWA/relay bundles and Playwright wiring are removed. Windows install/uninstall remains per-user. Bun and provider credentials are external prerequisites.
+The distribution contains CLI, daemon, TUI, shared packages, Pi resources, install/package helpers, and public docs. Browser/PWA/relay bundles and Playwright wiring are removed. Windows install/uninstall remains per-user. Releases also ship `nosh-runtime-<version>.tgz` (CLI, daemon, TUI, internal packages, and Pi resources; third-party dependencies, including Bun, install from npm), which the `nosh-harness` npm launcher (`apps/launcher`) installs from the latest GitHub release into per-user state. Bun is an external prerequisite for the Windows package and source checkouts; provider credentials always are.
 
 See [release gates](docs/testing/release-gates.md) for validation. Unit tests do not establish clean-machine Windows behavior, physical WSL/GPU correctness, terminal accessibility, real-provider correctness, or independent security approval.
