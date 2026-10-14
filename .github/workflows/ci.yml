@@ -3,13 +3,16 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: ["**"]
 
 permissions:
   contents: read
 
 jobs:
   verify:
+    # Every push to a branch of this repository is tested; pull requests are tested here only when they come from a
+    # fork, since a same-repository pull request's commits were already tested as pushes.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

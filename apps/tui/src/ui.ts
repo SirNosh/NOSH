@@ -2,7 +2,7 @@
  * OpenCode home/session/prompt layout adapted for NOSH's research daemon.
  * Copyright (c) 2025 opencode. MIT license, pinned sources: ../UPSTREAM.md.
  */
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { createCliRenderer, BoxRenderable, TextRenderable, ScrollBoxRenderable, StyledText, fg,
   CliRenderEvents, TextAttributes, type CliRenderer, type KeyEvent } from '@opentui/core';
 import { DaemonClient, type TuiConfig } from './client.js';
@@ -10,6 +10,11 @@ import { Controller, HELP, safeText } from './controller.js';
 import { createDialogs } from './dialog.js';
 import { slashQuery } from './palette.js';
 import { ComposerRenderable } from './composer.js';
+
+/** The NOSH release this TUI ships in: the root package.json, three levels above dist/ in a checkout and in the installed runtime package. */
+export function noshVersion(): string {
+  try { return String(JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')).version ?? ''); } catch { return ''; }
+}
 import { compactLogoText, createMarkdownStyle, keyHints, logoText, splitBorder, theme } from './theme.js';
 import { createTranscript, createInspector, createResearchMap, createResearchSidebar, text, type AttentionItem } from './visual.js';
 
@@ -126,7 +131,7 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     height: 1, flexGrow: 1, minWidth: 0, onMouseDown: () => { void dialogs.openProjects(); } });
   const connection = new TextRenderable(renderer, { id: 'connection', content: '', fg: theme.muted,
     height: 1, flexShrink: 0, marginRight: 2 });
-  const version = new TextRenderable(renderer, { id: 'version', content: 'nosh 0.1.0', fg: theme.muted,
+  const version = new TextRenderable(renderer, { id: 'version', content: `nosh ${noshVersion()}`.trim(), fg: theme.muted,
     height: 1, flexShrink: 0 });
   footer.add(cwd); footer.add(connection); footer.add(version); shell.add(body); shell.add(footer); renderer.root.add(shell);
 

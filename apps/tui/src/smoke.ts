@@ -3,7 +3,8 @@ import { DaemonClient } from './client.js';
 import { Controller, type TranscriptEntry } from './controller.js';
 import { createTranscript } from './visual.js';
 import { createMarkdownStyle } from './theme.js';
-import { createWorkspace } from './ui.js';
+import { createWorkspace, noshVersion } from './ui.js';
+check(/^\d+\.\d+\.\d+$/.test(noshVersion()), `TUI could not read the NOSH version (got "${noshVersion()}")`);
 const test = await createTestRenderer({width:100,height:30,kittyKeyboard:true});
 const client = new DaemonClient({baseUrl:'http://127.0.0.1',sessionToken:'test'});
 const controller = new Controller(client);
@@ -14,7 +15,7 @@ const currentView = (): string => controller.view, composerText = (): string => 
 try {
   await test.renderOnce();
   let frame = test.captureCharFrame();
-  check(frame.includes('███╗   ██╗') && frame.includes('nosh 0.1.0') && frame.includes('Choose a project first'), 'OpenTUI workspace did not render');
+  check(frame.includes('███╗   ██╗') && frame.includes(`nosh ${noshVersion()}`) && frame.includes('Choose a project first'), 'OpenTUI workspace did not render');
   await test.mockInput.typeText('research draft');
   test.mockInput.pressEnter({shift:true});
   await test.renderOnce();
@@ -59,7 +60,7 @@ try {
   check(frame.includes('RESEARCH MAP') && frame.includes('MISSION Boundary tests') && frame.includes('├─ ● Write tests') && frame.includes('└─ ○ Final review') && frame.includes('▰▰▰▰▰▱▱▱▱▱ 1/2') && frame.includes('WORKERS'), 'Research map did not render as a tree');
   test.resize(60,20); workspace.render(); await test.renderOnce();
   frame = test.captureCharFrame();
-  check(frame.includes('nosh 0.1.0') && !frame.includes('ctrl+b hide'), 'Narrow layout must hide sidebar');
+  check(frame.includes(`nosh ${noshVersion()}`) && !frame.includes('ctrl+b hide'), 'Narrow layout must hide sidebar');
   workspace.dispose();
   test.resize(100, 30);
   await checkNativeTranscript();
