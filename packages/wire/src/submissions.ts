@@ -145,17 +145,36 @@ export const handoffTeachbackSchema = z.object({
 
 const decision = z.object({ action: ref, targetId: ref, reason: text }).strict();
 const nextWake = z.object({ type: z.enum(["event", "deadline", "event_or_deadline"]), deadline: timestamp.nullable() }).strict();
+/**
+ * A research child the Mission Director specifies for a research_direction or autoresearch node of the approved graph.
+ * The daemon checks commandId against the Project contract, runs it once to measure the baseline, and freezes the
+ * evaluation contract from that measurement; the model never supplies baseline numbers.
+ */
+const spawnMetric = z.object({ name: z.string().min(1).max(200), objective: z.enum(["maximize", "minimize"]), minimumEffect: z.number().positive() }).strict();
+const spawnGuardrail = z.object({ name: z.string().min(1).max(200), direction: z.enum(["maximize", "minimize"]), threshold: z.number() }).strict();
+const spawnFamilyTags = z.array(z.string().min(1).max(200)).min(1).max(8);
+const spawnScope = z.array(z.string().min(1).max(500)).min(1).max(32);
+const missionSpawnSchema = z.object({
+  nodeId: ref, kind: z.enum(["research_direction", "autoresearch"]), question: text, decisionUse: text.nullable(),
+  evaluation: z.object({ commandId: ref, resultPath: z.string().min(1).max(500), primaryMetric: spawnMetric, guardrails: z.array(spawnGuardrail).max(8), target: z.number().nullable(), maximumNoProgressRounds: z.number().int().min(1).max(3) }).strict(),
+  familyTags: spawnFamilyTags, scope: spawnScope,
+}).strict().superRefine((value, context) => { if (value.kind === "research_direction" && !value.decisionUse) context.addIssue({ code: z.ZodIssueCode.custom, path: ["decisionUse"], message: "A research_direction spawn needs decisionUse: what the answer will decide" }); });
+/** A further Autoresearch a Research Director starts under its Direction's frozen evaluation contract. */
+const directionSpawnSchema = z.object({ nodeId: ref, kind: z.literal("autoresearch"), question: text, familyTags: spawnFamilyTags, scope: spawnScope }).strict();
+
 export const missionDirectorCycleSchema = z.object({
   $schema: z.literal(schemaUri("mission-director-cycle")), schemaVersion, cycleId: ref, missionId: id("mis"), directorAgentId: id("agt"), observedObjectiveVersion: z.number().int().positive(), observedGraphVersion: z.number().int().positive(), consumedEventRange: versionRange,
   northStarCheck: z.object({ missionObjective: text, unsatisfiedCriterionIds: z.array(ref), criticalPathNodeIds: z.array(ref), currentWorkContributes: z.boolean() }).strict(),
   portfolioCheck: z.object({ readyNodeIds: z.array(ref), starvedNodeIds: z.array(ref), overfocusedNodeId: ref.nullable(), fairnessAction: ref }).strict(),
   decisions: z.array(decision), createdTaskIds: z.array(id("tsk")), invokedDirectionIds: z.array(id("dir")), invokedAutoresearchIds: z.array(id("ar")), graphChangeProposalIds: z.array(ref), userInputRequestId: ref.nullable(), budgetWarnings: list, blockerIds: z.array(id("blk")), nextWake, submittedAt: timestamp,
+  spawn: missionSpawnSchema.optional(),
 }).strict();
 
 export const researchDirectorCycleSchema = z.object({
   $schema: z.literal(schemaUri("research-director-cycle")), schemaVersion, cycleId: ref, directionId: id("dir"), directorAgentId: id("agt"), observedGraphVersion: z.number().int().positive(), evaluationContractHash: sha256Digest, consumedEventRange: versionRange,
   questionCheck: z.object({ questionId: ref, currentDisposition: z.enum(["unresolved", "supported", "refuted", "inconclusive"]), remainingUncertaintyIds: z.array(ref), currentWorkContributes: z.boolean() }).strict(),
   acceptedFrontierExperimentIds: z.array(ref), failedHypothesisIdsAdded: z.array(ref), decisions: z.array(decision), createdTaskIds: z.array(id("tsk")), invokedAutoresearchIds: z.array(id("ar")), graphChangeProposalIds: z.array(ref), directionSuggestionIds: z.array(ref), userInputRequestId: ref.nullable(), nextWake, submittedAt: timestamp,
+  spawn: directionSpawnSchema.optional(),
 }).strict();
 
 export const graphChangeProposalSchema = z.object({

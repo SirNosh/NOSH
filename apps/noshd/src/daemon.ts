@@ -58,7 +58,7 @@ export class NoshDaemon {
     this.agents.defaultModel = options.defaultModel;
     const packagePath = options.packagePath ?? resolve(import.meta.dirname, "..", "..", "..", "pi-package");
     this.runtime = new OrchestrationRuntime({ storeFor: (projectId) => { this.assertProjectWritable(projectId); return this.storeFor(projectId); }, projectFor: (projectId) => { const project = this.projects().find((entry) => entry.projectId === projectId); if (!project) throw new Error(`Project ${projectId} is not registered on this host`); return project; }, sessions: this.agents, packagePath, publish: (event) => this.events.emit("event", event) });
-    this.missions = new MissionSupervisor(this.research, this.agents, () => this.projects(), packagePath, (event) => this.appendDraft(event), this.runtime);
+    this.missions = new MissionSupervisor(this.research, this.agents, () => this.projects(), packagePath, (event) => this.appendDraft(event), this.runtime, { start: (spec) => this.startJob(spec), get: (jobId) => this.jobs.get(jobId) });
     // Jobs are constructed below; resolve lazily so baseline evaluation uses the live supervisor.
     this.directions = new DirectionSupervisor(this.research, this.agents, () => this.projects(), packagePath, (event) => this.appendDraft(event), this.runtime, { start: (spec) => this.startJob(spec), get: (jobId) => this.jobs.get(jobId) });
     this.jobs = new JobSupervisor(options.dataDirectory, (job) => {
@@ -90,6 +90,8 @@ export class NoshDaemon {
   }
 
   stop(): void {
+    // Marks where downtime begins, so wall-clock budgets exclude the time until the next start.
+    if (this.started) for (const project of this.projects()) { try { this.appendDraft({ $schema: "https://nosh.dev/schemas/event/v1", schemaVersion: 1, retention: "persistent", type: "daemon.shutdown", source: "noshd", scope: { projectId: project.projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: null }, correlationId: null, causationId: null, payload: {} }); } catch { /* an unreachable Project is reported on the next start */ } }
     this.started = false;
     this.missions.stop();
     this.directions.stop();
@@ -664,7 +666,14 @@ export class NoshDaemon {
     const mission = this.research.assertInspectedMissionState(projectId, missionId, expectedVersion); const agents = this.agents.inspect().filter((agent) => agent.projectId === projectId && agent.missionId === missionId);
     if (action === "resume") return this.research.transitionMission(projectId, missionId, mission.version, "running", `${idempotencyKey}:running`);
     if (action === "pause") { const pausing = this.research.transitionMission(projectId, missionId, mission.version, "pausing", `${idempotencyKey}:pausing`); if (mode === "immediate") await Promise.all(agents.map((agent) => this.agents.abort(agent.agentId))); else await Promise.all(agents.map((agent) => this.agents.steer(agent.agentId, "Pause at the next safe boundary and persist a canonical handoff."))); if (mode === "checkpoint") for (const job of this.jobs.list().filter((entry) => missionJobMatches(entry, projectId, missionId))) this.jobs.checkpoint(job.jobId); return mode === "immediate" || !agents.length ? this.research.transitionMission(projectId, missionId, pausing.version, "paused", `${idempotencyKey}:paused`) : pausing; }
-    const stopping = this.research.transitionMission(projectId, missionId, mission.version, "stopping", `${idempotencyKey}:stopping`); for (const job of this.jobs.list().filter((entry) => missionJobMatches(entry, projectId, missionId))) this.jobs.cancel(job.jobId, "mission_stopped"); await Promise.all(agents.map((agent) => this.agents.abort(agent.agentId))); return this.research.transitionMission(projectId, missionId, stopping.version, "stopped", `${idempotencyKey}:stopped`);
+    const stopping = this.research.transitionMission(projectId, missionId, mission.version, "stopping", `${idempotencyKey}:stopping`); this.stopMissionChildren(projectId, missionId, idempotencyKey); for (const job of this.jobs.list().filter((entry) => missionJobMatches(entry, projectId, missionId))) this.jobs.cancel(job.jobId, "mission_stopped"); await Promise.all(agents.map((agent) => this.agents.abort(agent.agentId))); return this.research.transitionMission(projectId, missionId, stopping.version, "stopped", `${idempotencyKey}:stopped`);
+  }
+  /** Stopping a Mission stops the Directions and Autoresearch it spawned, and the Autoresearch those Directions started. */
+  private stopMissionChildren(projectId: string, missionId: string, idempotencyKey: string): void {
+    const directions = this.research.directions(projectId).filter((direction) => direction.value.origin?.scopeType === "mission" && direction.value.origin.scopeId === missionId);
+    const directionIds = new Set(directions.map((direction) => direction.entityId));
+    for (const direction of directions.filter((entry) => ["draft", "proposed", "active", "paused", "blocked"].includes(entry.state))) this.research.transitionDirection(projectId, direction.entityId, direction.version, "stopped", `${idempotencyKey}:child:${direction.entityId}`);
+    for (const run of this.research.autoresearch(projectId).filter((entry) => (entry.value.origin?.scopeId === missionId || (entry.value.directionId !== null && directionIds.has(entry.value.directionId))) && ["running", "paused", "blocked"].includes(entry.state))) this.research.transitionAutoresearch(projectId, run.entityId, run.version, "stopped", `${idempotencyKey}:child:${run.entityId}`);
   }
   controlJob(projectId: string, jobId: string, action: "checkpoint" | "cancel", idempotencyKey: string): JobRecord {
     this.assertProjectWritable(projectId);

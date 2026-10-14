@@ -2,7 +2,7 @@ import { schemaUri, type EventEnvelope } from "@nosh/wire";
 import type { AgentInspection } from "@nosh/pi-adapter";
 import type { JobRecord } from "@nosh/jobs";
 import { describe, expect, it } from "vitest";
-import { buildResearchMap } from "./research-map.js";
+import { buildResearchMap, type MapNode } from "./research-map.js";
 
 const node = (id: string, state: string, extra: Record<string, unknown> = {}) => ({ id, title: `Node ${id}`, type: "implementation", state, attempt: 1, maximumAttempts: 3, lease: null, ...extra });
 const event = (type: string, payload: Record<string, unknown>) => ({ type, payload }) as unknown as EventEnvelope;
@@ -45,5 +45,43 @@ describe("research map", () => {
     expect(map.roots.filter((root) => root.kind === "autoresearch")).toEqual([]);
     expect(JSON.stringify(map)).not.toContain("job_done");
     expect(map.workers.map((entry) => entry.id)).toEqual(["agt_w", "agt_i"]);
+  });
+
+  it("nests Mission-spawned Directions and Autoresearch under their spawning nodes, each exactly once", () => {
+    const origin = (scopeType: "mission" | "direction", scopeId: string, nodeId: string) => ({ scopeType, scopeId, nodeId, attempt: 1 });
+    const job = { jobId: "job_d", command: ["node", "evaluate.mjs"], state: "running", runner: "native", missionId: "mis_2", directionId: "dir_a", autoresearchId: "ar_d" } as unknown as JobRecord;
+    const map = buildResearchMap({
+      missions: [{ entityId: "mis_2", version: 7, state: "running", value: { title: "Early exit", updatedAt: "2026-10-05T00:00:00.000Z", nodes: [
+        node("n_spawn1", "working", { type: "research_direction", lease: { ownerId: "dir_a" } }),
+        node("n_spawn2", "accepted", { type: "research_direction" }),
+        node("n_ar", "working", { type: "autoresearch", lease: { ownerId: "ar_m" } }),
+        node("n_spawn3", "working", { type: "research_direction", lease: { ownerId: "dir_lease" } }),
+      ] } }],
+      directions: [
+        { entityId: "dir_a", version: 2, state: "awaiting_autoresearch", value: { question: "Does early exit help?", missionId: "mis_2", origin: origin("mission", "mis_2", "n_spawn1"), nodes: [node("h1", "working", { type: "hypothesis" }), node("h2", "ready", { type: "hypothesis" })] } },
+        { entityId: "dir_b", version: 1, state: "planning", value: { question: "Is the threshold stable?", missionId: "mis_2", origin: origin("mission", "mis_2", "n_spawn2"), nodes: [] } },
+        { entityId: "dir_c", version: 1, state: "planning", value: { question: "User-created under the Mission", missionId: "mis_2", nodes: [] } },
+        { entityId: "dir_lease", version: 1, state: "planning", value: { question: "Spawned before origin existed", missionId: "mis_2", nodes: [] } },
+        { entityId: "dir_user", version: 1, state: "planning", value: { question: "Unrelated question", nodes: [], updatedAt: "2026-10-04T00:00:00.000Z" } },
+      ],
+      autoresearch: [
+        { entityId: "ar_d", version: 1, state: "running", value: { directionId: "dir_a", missionId: "mis_2", origin: origin("direction", "dir_a", "h1"), decisionQuestion: "Tune exit threshold" } },
+        { entityId: "ar_m", version: 1, state: "running", value: { directionId: null, missionId: "mis_2", origin: origin("mission", "mis_2", "n_ar"), decisionQuestion: "Mission-level sweep" } },
+      ],
+      submitted: [submitted({ $schema: schemaUri("experiment-proposal"), experimentId: "exp_d", autoresearchId: "ar_d", round: 1, hypothesis: "Raise threshold" })],
+      events: [], agents: [], jobs: [job],
+    });
+    const paths = (entry: MapNode, prefix = ""): string[] => { const path = `${prefix}${entry.id}`; return [path, ...entry.children.flatMap((child) => paths(child, `${path}/`))]; };
+    const all = map.roots.flatMap((root) => paths(root));
+    expect(map.roots.map((root) => root.id)).toEqual(["mis_2", "dir_user"]);
+    expect(all).toEqual(expect.arrayContaining([
+      "mis_2/n_spawn1/dir_a/h1/ar_d/exp_d", "mis_2/n_spawn1/dir_a/h1/ar_d/job_d", "mis_2/n_spawn2/dir_b",
+      "mis_2/n_ar/ar_m", "mis_2/n_spawn3/dir_lease", "mis_2/dir_c",
+    ]));
+    // Every Direction and Autoresearch appears exactly once in the whole map.
+    for (const id of ["dir_a", "dir_b", "dir_c", "dir_lease", "dir_user", "ar_d", "ar_m"]) expect(all.filter((path) => path.split("/").at(-1) === id)).toHaveLength(1);
+    const spawned = map.roots[0]!.children[0]!.children.find((child) => child.id === "dir_a")!;
+    expect(spawned).toMatchObject({ kind: "direction", title: "Does early exit help?", detail: "v2", progress: { done: 0, total: 2 } });
+    expect(spawned.children.map((child) => child.id)).toEqual(["h1", "h2"]);
   });
 });

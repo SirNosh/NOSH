@@ -60,6 +60,21 @@ describe('thin controller', () => {
     expect(researchMapLines(undefined)).toEqual([]);
     expect(researchMapLines({roots:Array.from({length:50},(_,index)=>({kind:'mission',id:`m${index}`,title:'x',state:'running',children:[]}))},20)).toHaveLength(20);
   });
+  it('labels nested Directions and Autoresearch and shows their progress', () => {
+    const lines = researchMapLines({roots:[
+      {kind:'mission',id:'mis_1',title:'Early exit',state:'running',detail:'v7',progress:{done:0,total:1},children:[
+        {kind:'node',id:'n1',title:'Spawn direction',state:'working',detail:'research direction',progress:null,children:[
+          {kind:'direction',id:'dir_a',title:'Does early exit help?',state:'awaiting_autoresearch',detail:'v2',progress:{done:1,total:2},children:[
+            {kind:'node',id:'h1',title:'Hypothesis',state:'working',detail:'hypothesis',progress:null,children:[
+              {kind:'autoresearch',id:'ar_d',title:'Tune exit threshold',state:'running',detail:'round 1/3',progress:null,children:[]}]}]}]}]}]});
+    const rendered = lines.map(line => `${line.prefix}${line.glyph} ${line.label}${line.label ? ' ' : ''}${line.title} [${line.state}]`.trimEnd());
+    expect(rendered).toEqual([
+      '◆ MISSION Early exit [running]', '└─ ● Spawn direction [working]', '   └─ ◇ DIRECTION Does early exit help? [awaiting_autoresearch]',
+      '      └─ ● Hypothesis [working]', '         └─ ⟳ AUTORESEARCH Tune exit threshold [running]']);
+    expect(lines[2]!.detail).toBe('▰▰▰▰▰▱▱▱▱▱ 1/2  v2');
+    expect(lines[2]!.tone).toBe('waiting');
+    expect(lines[4]!.detail).toBe('round 1/3');
+  });
   it('help and paths do not keep the previous view rows', async () => {
     const {controller,request} = setup();
     request.mockResolvedValueOnce({contract:{workingTitle:'Study',approvedAt:null}}).mockResolvedValueOnce({proposals:[]});

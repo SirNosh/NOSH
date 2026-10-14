@@ -2,6 +2,7 @@ import { canonicalJson, sha256, type JsonValue } from "@nosh/wire";
 import { closeSync, fstatSync, readSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { execFile, spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 export type JobState = "queued" | "starting" | "running" | "checkpointing" | "finishing" | "completed" | "failed" | "cancelled" | "lost";
 export type JobSpec = {
@@ -15,6 +16,11 @@ export type JobRecord = JobSpec & {
 };
 
 export type ResourceSnapshot = { elapsedSeconds: number; residentBytes: number | null; gpu: JsonValue | null; outputStalledSeconds: number };
+// How a Job's command ended, as observed by its runner; `error` means the command could not be started at all.
+type ExitOutcome = { exitCode: number | null; signal: NodeJS.Signals | null; finishedAt: string; error?: string };
+
+// Native Jobs run under this wrapper (compiled next to this module), which records the command's exit in the Job directory.
+const exitWrapper = fileURLToPath(new URL("./exit-wrapper.js", import.meta.url));
 
 export class JobSupervisor {
   private readonly children = new Map<string, ChildProcess>();
@@ -40,7 +46,7 @@ export class JobSupervisor {
     this.save(record);
     const stdout = openSync(record.stdoutPath, "a");
     const stderr = openSync(record.stderrPath, "a");
-    const launch = commandFor(record);
+    const launch = commandFor(record, this.exitPath(record.jobId));
     let child: ChildProcess;
     try {
       child = spawn(launch.file, launch.args, { cwd: record.workingDirectory, detached: true, windowsHide: true, stdio: ["ignore", stdout, stderr] });
@@ -80,11 +86,8 @@ export class JobSupervisor {
     return this.list().map((record) => {
       if (!["starting", "running", "checkpointing", "finishing"].includes(record.state)) return record;
       const alive = record.runner === "wsl2" ? wslAlive(record) : nativeAlive(record);
-      if (!alive) {
-        record.state = "lost"; record.failureReason = "process_identity_not_recoverable"; record.finishedAt = new Date().toISOString();
-      } else {
-        record.state = "running"; record.recoveredAfterRestart = true; this.watchRecovered(record.jobId);
-      }
+      if (!alive) return this.reconcileExited(record, "process_identity_not_recoverable");
+      record.state = "running"; record.recoveredAfterRestart = true; this.watchRecovered(record.jobId);
       this.save(record);
       return record;
     });
@@ -156,8 +159,12 @@ export class JobSupervisor {
   private async collectResources(record: JobRecord): Promise<ResourceSnapshot> {
     const elapsedSeconds = record.startedAt ? Math.max(0, Math.floor(((record.finishedAt ? Date.parse(record.finishedAt) : Date.now()) - Date.parse(record.startedAt)) / 1000)) : 0;
     const newest = Math.max(existsSync(record.stdoutPath) ? statSync(record.stdoutPath).mtimeMs : 0, existsSync(record.stderrPath) ? statSync(record.stderrPath).mtimeMs : 0);
+    // A native Job's command is its exit wrapper's only child; measure the command, not the wrapper.
+    const query = record.runner === "native"
+      ? `(Get-CimInstance Win32_Process -Filter 'ParentProcessId=${record.windowsPid}' -ErrorAction Stop | Measure-Object -Property WorkingSetSize -Sum).Sum`
+      : `(Get-Process -Id ${record.windowsPid} -ErrorAction Stop).WorkingSet64`;
     const resident = record.windowsPid && process.platform === "win32" && !record.finishedAt
-      ? telemetryCommand("powershell.exe", ["-NoProfile", "-Command", `(Get-Process -Id ${record.windowsPid} -ErrorAction Stop).WorkingSet64`]) : Promise.resolve(null);
+      ? telemetryCommand("powershell.exe", ["-NoProfile", "-Command", query]) : Promise.resolve(null);
     if (record.usesGpu && (!this.gpuCache || this.gpuCache.expires <= Date.now())) this.gpuCache = { expires: Date.now() + 5000, value: gpuSnapshot() };
     const [rss, gpu] = await Promise.all([resident, record.usesGpu ? this.gpuCache!.value : Promise.resolve(null)]);
     const bytes = rss?.trim() ? Number(rss.trim()) : NaN;
@@ -173,37 +180,54 @@ export class JobSupervisor {
   private finish(jobId: string, code: number | null, signal: NodeJS.Signals | null): void {
     // After close(), restart recovery reconciles the outcome; a late exit event must not write or throw.
     if (this.closed || !existsSync(this.recordPath(jobId))) return;
-    try { this.finishRecord(jobId, code, signal); }
+    // The exit wrapper's record carries the reason a native command could not be started; WSL Jobs report through wsl.exe's exit.
+    try { this.finishRecord(jobId, readExitFile(this.exitPath(jobId)) ?? { exitCode: code, signal, finishedAt: new Date().toISOString() }); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   }
-  private finishRecord(jobId: string, code: number | null, signal: NodeJS.Signals | null): void {
+  private finishRecord(jobId: string, outcome: ExitOutcome): void {
     const record = this.get(jobId);
     if (["completed", "failed", "cancelled", "lost"].includes(record.state)) return;
     record.state = "finishing";
     this.save(record);
-    record.exitCode = code;
-    record.finishedAt = new Date().toISOString();
-    record.state = code === 0 ? "completed" : "failed";
-    record.failureReason = code === 0 ? null : signal ? `signal_${signal}` : `exit_${code}`;
+    record.exitCode = outcome.exitCode;
+    record.finishedAt = outcome.finishedAt;
+    record.state = outcome.exitCode === 0 ? "completed" : "failed";
+    record.failureReason = outcome.exitCode === 0 ? null : outcome.error ?? (outcome.signal ? `signal_${outcome.signal}` : `exit_${outcome.exitCode}`);
     this.save(record);
     this.children.delete(jobId);
     clearTimeout(this.timers.get(jobId));
     this.timers.delete(jobId);
   }
 
+  // Polls a Job re-attached after a restart until it ends, and enforces its original deadline (startedAt + timeoutSeconds).
+  // One pending timeout per Job, so cancel() and finishRecord() clear the watch through `timers` like a normal Job's deadline.
   private watchRecovered(jobId: string): void {
-    const timer = setInterval(() => {
+    const schedule = (deadline: number) => { const timer = setTimeout(tick, Math.max(0, Math.min(2_000, deadline - Date.now()))); timer.unref(); this.timers.set(jobId, timer); };
+    const tick = () => {
+      this.timers.delete(jobId);
       // A record removed underneath a timer (deleted data) ends the watch; it must not become an unhandled exception.
-      if (!existsSync(this.recordPath(jobId))) { clearInterval(timer); this.timers.delete(jobId); return; }
+      if (!existsSync(this.recordPath(jobId))) return;
       const record = this.get(jobId);
-      if (record.state !== "running") { clearInterval(timer); this.timers.delete(jobId); return; }
+      if (record.state !== "running") return;
+      if (Date.now() >= deadlineOf(record)) { this.cancel(jobId, "timeout"); return; }
       const alive = record.runner === "wsl2" ? wslAlive(record) : nativeAlive(record);
-      if (!alive) { record.state = "lost"; record.failureReason = "exit_unobserved_after_restart"; record.finishedAt = new Date().toISOString(); this.save(record); clearInterval(timer); this.timers.delete(jobId); }
-    }, 2_000);
-    timer.unref(); this.timers.set(jobId, timer);
+      if (!alive) { this.reconcileExited(record, "exit_unobserved_after_restart"); return; }
+      schedule(deadlineOf(record));
+    };
+    schedule(deadlineOf(this.get(jobId)));
+  }
+
+  // The process is gone: record the exit its runner wrote down, or `lost` when there is none (runner killed, or a Job launched before exit records).
+  private reconcileExited(record: JobRecord, unrecordedReason: string): JobRecord {
+    const outcome = record.runner === "wsl2" ? wslExit(record) : readExitFile(this.exitPath(record.jobId));
+    if (outcome) { this.finishRecord(record.jobId, outcome); return this.get(record.jobId); }
+    record.state = "lost"; record.failureReason = unrecordedReason; record.finishedAt = new Date().toISOString();
+    this.save(record);
+    return record;
   }
 
   private recordPath(jobId: string): string { return join(this.dataDirectory, "jobs", jobId, "job.json"); }
+  private exitPath(jobId: string): string { return join(this.dataDirectory, "jobs", jobId, "exit.json"); }
   private launchFailed(record: JobRecord, error: unknown): JobRecord {
     if (["completed", "failed", "cancelled", "lost"].includes(record.state)) return record;
     record.state = "failed";
@@ -218,7 +242,8 @@ export class JobSupervisor {
 
   private terminate(record: JobRecord): void {
     if (record.runner === "wsl2" && record.wslPidFile) {
-      const script = 'pid=$(cat "$1" 2>/dev/null) || exit 0; kill -TERM -- -"$pid" 2>/dev/null || true';
+      // No `--` before the process group: dash (Ubuntu's /bin/sh) rejects it as an illegal number.
+      const script = 'pid=$(cat "$1" 2>/dev/null) || exit 0; kill -TERM -"$pid" 2>/dev/null || true';
       spawnSync("wsl.exe", [...distributionArgs(record), "--exec", "sh", "-c", script, "nosh", record.wslPidFile], { windowsHide: true, timeout: 10_000 });
       return;
     }
@@ -260,13 +285,26 @@ function validateSpec(spec: JobSpec): void {
   if (spec.runner === "wsl2" && !spec.distribution) throw new Error("WSL2 jobs require a distribution");
 }
 
-function commandFor(record: JobRecord): { file: string; args: string[] } {
-  if (record.runner === "native") return { file: record.command[0]!, args: record.command.slice(1) };
-  const script = 'umask 077; echo "$$" > "$1"; shift; exec setsid "$@"';
-  return { file: "wsl.exe", args: [...distributionArgs(record), "--exec", "sh", "-c", script, "nosh", record.wslPidFile!, ...record.command] };
+function commandFor(record: JobRecord, exitFile: string): { file: string; args: string[] } {
+  if (record.runner === "native") return { file: process.execPath, args: [exitWrapper, exitFile, "--", ...record.command] };
+  // Under `wsl.exe --exec` the shell already leads its session, so a plain `setsid` forks and returns at once; `setsid -w` waits and keeps
+  // the exit status. The new session's leader writes its PID (the Job's process group), runs the command, then records its exit status.
+  const script = `umask 077; rm -f "$1" "$2"; exec setsid -w sh -c 'echo "$$" > "$0"; e=$1; shift; "$@"; c=$?; printf %s "$c" > "$e.tmp" && mv "$e.tmp" "$e"; exit $c' "$@"`;
+  return { file: "wsl.exe", args: [...distributionArgs(record), "--exec", "sh", "-c", script, "nosh", record.wslPidFile!, wslExitFile(record.jobId), ...record.command] };
 }
 
 function distributionArgs(record: Pick<JobRecord, "distribution">): string[] { return record.distribution ? ["-d", record.distribution] : []; }
+
+function deadlineOf(record: JobRecord): number { return record.timeoutSeconds > 0 && record.startedAt ? Date.parse(record.startedAt) + record.timeoutSeconds * 1000 : Infinity; }
+
+function readExitFile(path: string): ExitOutcome | null { return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) as ExitOutcome : null; }
+
+function wslExitFile(jobId: string): string { return `/tmp/nosh-${jobId}.exit`; }
+
+function wslExit(record: JobRecord): ExitOutcome | null {
+  const result = spawnSync("wsl.exe", [...distributionArgs(record), "--exec", "cat", wslExitFile(record.jobId)], { encoding: "utf8", windowsHide: true, timeout: 10_000 });
+  return result.status === 0 && /^\d+$/.test(result.stdout) ? { exitCode: Number(result.stdout), signal: null, finishedAt: new Date().toISOString() } : null;
+}
 
 function nativeAlive(record: JobRecord): boolean {
   if (!record.windowsPid || !record.processFingerprint) return false;
@@ -275,7 +313,7 @@ function nativeAlive(record: JobRecord): boolean {
 
 function wslAlive(record: JobRecord): boolean {
   if (!record.wslPidFile) return false;
-  const script = 'pid=$(cat "$1" 2>/dev/null) || exit 1; kill -0 -- -"$pid" 2>/dev/null';
+  const script = 'pid=$(cat "$1" 2>/dev/null) || exit 1; kill -0 -"$pid" 2>/dev/null';
   return spawnSync("wsl.exe", [...distributionArgs(record), "--exec", "sh", "-c", script, "nosh", record.wslPidFile], { windowsHide: true, timeout: 10_000 }).status === 0;
 }
 

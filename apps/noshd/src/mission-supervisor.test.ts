@@ -10,15 +10,18 @@ import { isTaskTerminalRecord, schemaUri, sha256, type EventDraft, type JsonValu
 import { describe, expect, it, vi } from "vitest";
 import { DirectionSupervisor } from "./direction-supervisor.js";
 import { MissionSupervisor } from "./mission-supervisor.js";
-import { ResearchControl } from "./research-control.js";
+import { ResearchControl, downtimeIntervals, runningSeconds } from "./research-control.js";
 
 class FixtureAgents {
   private readonly sessions = new Map<string, PiSessionOptions>();
+  /** General-worker prompts that fail like a provider/terminal glitch (no completion at all) before workers succeed. */
+  transientWorkerFailures = 0;
   constructor(private readonly append: (draft: EventDraft) => void, private readonly failGeneralWorkers = false, private readonly deferLastCriterion = false) {}
   inspect(): AgentInspection[] { return [...this.sessions.values()].map((session) => ({ ...session, piSessionId: `pi_${session.agentId}`, status: "running", currentTool: null, activeToolIds: [], startedAt: new Date().toISOString(), lastEventAt: new Date().toISOString(), modelProvider: session.model?.provider ?? null, modelId: session.model?.id ?? null, modelName: null, thinkingLevel: session.thinkingLevel ?? "medium", contextTokens: null, contextWindow: null, contextPercent: null })); }
   async start(options: PiSessionOptions): Promise<AgentInspection> { this.sessions.set(options.agentId, options); return this.inspect().find((agent) => agent.agentId === options.agentId)!; }
   async prompt(agentId: string, prompt: string): Promise<void> {
-    const session = this.sessions.get(agentId)!; const taskId = session.taskId; if (!taskId) throw new Error("Fixture session requires a Task ID"); const target = /target\.targetId=([a-z0-9_]+)/.exec(prompt)?.[1] ?? ""; const packetText = prompt.split("Task Packet: ")[1]?.split(". Complete only")[0]; const packet = packetText ? JSON.parse(packetText) as { attempt: number; workspace: { startingCommit: string; branch: string }; lease: { leaseId: string }; requiredOutputs: Array<{ outputId: string }>; acceptanceCriteria: Array<{ criterionId: string }> } : null; const reviewRequestText = prompt.split("Review Request: ")[1]?.split(". Submit")[0]; const reviewRequest = reviewRequestText ? JSON.parse(reviewRequestText) as { reviewId: string; reviewRequestId: string; reviewType: string; target: { targetType: string; targetId: string; targetVersion: number }; criteria: Array<{ criterionId: string; required: boolean }>; requiredArtifactIds: string[]; requiredEvidenceIds: string[] } : null; const now = new Date().toISOString();
+    const session = this.sessions.get(agentId)!; const taskId = session.taskId; if (!taskId) throw new Error("Fixture session requires a Task ID");
+    if (session.role === "general_worker" && this.transientWorkerFailures > 0) { this.transientWorkerFailures -= 1; throw new Error("Terminal output rejected: fixture transient failure"); } const target = /target\.targetId=([a-z0-9_]+)/.exec(prompt)?.[1] ?? ""; const packetText = prompt.split("Task Packet: ")[1]?.split(". Complete only")[0]; const packet = packetText ? JSON.parse(packetText) as { attempt: number; workspace: { startingCommit: string; branch: string }; lease: { leaseId: string }; requiredOutputs: Array<{ outputId: string }>; acceptanceCriteria: Array<{ criterionId: string }> } : null; const reviewRequestText = prompt.split("Review Request: ")[1]?.split(". Submit")[0]; const reviewRequest = reviewRequestText ? JSON.parse(reviewRequestText) as { reviewId: string; reviewRequestId: string; reviewType: string; target: { targetType: string; targetId: string; targetVersion: number }; criteria: Array<{ criterionId: string; required: boolean }>; requiredArtifactIds: string[]; requiredEvidenceIds: string[] } : null; const now = new Date().toISOString();
     let record: JsonValue;
     if (session.role === "mission_director") record = { $schema: schemaUri("mission-director-cycle"), cycleId: /"cycleId":"(cycle_[0-9a-f]+)"/.exec(prompt)?.[1], directorAgentId: agentId, missionId: session.missionId, observedGraphVersion: Number(/graph version (\d+)/.exec(prompt)?.[1]), northStarCheck: { currentWorkContributes: true } };
     else if (session.role === "research_director") record = { $schema: schemaUri("research-director-cycle"), cycleId: /"cycleId":"(cycle_[0-9a-f]+)"/.exec(prompt)?.[1], directorAgentId: agentId, directionId: session.directionId, observedGraphVersion: Number(/graph version (\d+)/.exec(prompt)?.[1]), evaluationContractHash: /sha256:[0-9a-f]{64}/.exec(prompt)?.[0] ?? "", questionCheck: { currentWorkContributes: true } };
@@ -328,6 +331,45 @@ describe("MissionSupervisor", { timeout: 90_000 }, () => { // Real git worktrees
       direction = research.transitionDirectionNode(projectId, direction.entityId, direction.version, directionNode.id, "ready", "exhausted-user", undefined, true);
       expect(direction.value.nodes[0]).toMatchObject({ state: "ready", maximumAttempts: exhausted.attempt + 1 });
     } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
+  });
+  it("retries transient worker failures without a focus alarm, so a node gets all its attempts", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-transient-")); const repositoryRoot = join(directory, "repository"); mkdirSync(repositoryRoot); initializeRepository(repositoryRoot); const projectId = createId("prj"); const project: RegisteredProject = { projectId, repositoryRoot, databasePath: join(directory, "project.sqlite"), registeredAt: new Date().toISOString() }; const store = new EventStore(project.databasePath); const research = new ResearchControl(() => store, () => project, () => undefined); const fixture = new FixtureAgents((draft) => { appendFixtureEvent(store, draft); });
+    fixture.transientWorkerFailures = 2;
+    try {
+      let mission = research.createMission(projectId, { title: "Transient", objective: "Survive provider glitches", deliverables: ["Reviewed result"], successCriteria: ["Every node is accepted"], idempotencyKey: "transient-create" }); for (const next of ["planning", "awaiting_approval", "running"] as const) mission = research.transitionMission(projectId, mission.entityId, mission.version, next, `transient-${next}`);
+      for (const deadline = Date.now() + 80_000; Date.now() < deadline && !["completed", "blocked"].includes(research.mission(projectId, mission.entityId).state);) { const supervisor = new MissionSupervisor(research, fixture as unknown as PiAdapter, () => [project], join(directory, "pi-package"), (draft) => { appendFixtureEvent(store, draft); }); await supervisor.tick(); await new Promise((resolve) => setTimeout(resolve, 20)); }
+      expect(research.scopedEvents(projectId, mission.entityId, "task.execution_failed")).toHaveLength(2);
+      expect(research.scopedEvents(projectId, mission.entityId, "focus.alarm")).toHaveLength(0);
+      expect(research.mission(projectId, mission.entityId).state).toBe("completed");
+    } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("returns a Mission and a Direction left in reviewing by a restart to their running state", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-review-recovery-")); const repositoryRoot = join(directory, "repository"); mkdirSync(repositoryRoot); initializeRepository(repositoryRoot); const projectId = createId("prj"); const project: RegisteredProject = { projectId, repositoryRoot, databasePath: join(directory, "project.sqlite"), registeredAt: new Date().toISOString() }; const store = new EventStore(project.databasePath); const research = new ResearchControl(() => store, () => project, () => undefined); const fixture = new FixtureAgents((draft) => { appendFixtureEvent(store, draft); }); const emit = (draft: EventDraft) => { appendFixtureEvent(store, draft); };
+    try {
+      let mission = research.createMission(projectId, { title: "Interrupted review", objective: "Resume after restart", deliverables: ["Result"], successCriteria: ["Reviewed"], idempotencyKey: "review-recovery-mission" }); for (const next of ["planning", "awaiting_approval", "running", "reviewing"] as const) mission = research.transitionMission(projectId, mission.entityId, mission.version, next, `review-recovery-${next}`);
+      let direction = research.createDirection(projectId, { question: "Does it hold?", decisionUse: "Decide", idempotencyKey: "review-recovery-direction" }); for (const next of ["proposed", "active", "reviewing"] as const) direction = research.transitionDirection(projectId, direction.entityId, direction.version, next, `review-recovery-d-${next}`);
+      // A fresh supervisor (as after a daemon restart) finds both in reviewing with nothing running.
+      const missions = new MissionSupervisor(research, fixture as unknown as PiAdapter, () => [project], join(directory, "pi-package"), emit); missions.stop(); await missions.tick();
+      const directions = new DirectionSupervisor(research, fixture as unknown as PiAdapter, () => [project], join(directory, "pi-package"), emit); await directions.tick();
+      expect(research.mission(projectId, mission.entityId).state).toBe("running");
+      expect(research.scopedEvents(projectId, mission.entityId, "mission.review_recovered")).toHaveLength(1);
+      expect(research.direction(projectId, direction.entityId).state).toBe("active");
+      expect(research.eventsAfter(projectId, 0).filter((event) => event.type === "direction.review_recovered" && event.scope.directionId === direction.entityId)).toHaveLength(1);
+    } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("excludes daemon downtime from wall-clock budgets", () => {
+    const at = (seconds: number) => new Date(Date.UTC(2026, 9, 14, 0, 0, seconds)).toISOString();
+    const event = (type: string, seconds: number) => ({ type, timestamp: at(seconds) }) as never;
+    // Running from 0; the daemon recorded its last event at 10 s, crashed, and restarted at 3,600 s; paused at 3,610 s.
+    const log = [event("mission.running", 0), event("agent.completed", 10), event("recovery.report", 3_600), event("mission.paused", 3_610)];
+    expect(downtimeIntervals(log)).toEqual([[Date.parse(at(10)), Date.parse(at(3_600))]]);
+    expect(runningSeconds(log, "mission", downtimeIntervals(log))).toBe(20);
+    // A clean stop marks the start of downtime precisely.
+    const clean = [event("autoresearch.running", 0), event("daemon.shutdown", 30), event("recovery.report", 600), event("autoresearch.completed", 660)];
+    expect(runningSeconds(clean, "autoresearch", downtimeIntervals(clean))).toBe(90);
+    expect(runningSeconds(clean, "autoresearch")).toBe(660);
   });
 });
 

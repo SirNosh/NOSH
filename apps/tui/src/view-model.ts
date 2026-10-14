@@ -225,9 +225,9 @@ export function researchMapLines(map: unknown, maximum = 400): MapLine[] {
   const lines: MapLine[] = []; const value = record(map);
   const visit = (node: Record<string, unknown>, prefix: string, branch: string, root: boolean): void => {
     if (lines.length >= maximum) return;
-    const kind = text(node.kind), state = text(node.state, 40), progress = record(node.progress);
-    const bar = root && typeof progress.total === 'number' ? progressBar(Number(progress.done), progress.total) : '';
-    lines.push({ prefix: prefix + branch, glyph: mapGlyph(kind, state), tone: root ? (MAP_ROOTS[kind] ? mapTone(state) : 'idle') : mapTone(state), label: root ? MAP_ROOTS[kind]?.label ?? '' : '', title: text(node.title, 200), state, detail: [bar, text(node.detail, 160)].filter(Boolean).join('  ') });
+    const kind = text(node.kind), state = text(node.state, 40), progress = record(node.progress), entity = root || Boolean(MAP_ROOTS[kind]);
+    const bar = entity && typeof progress.total === 'number' ? progressBar(Number(progress.done), progress.total) : '';
+    lines.push({ prefix: prefix + branch, glyph: mapGlyph(kind, state), tone: root ? (MAP_ROOTS[kind] ? mapTone(state) : 'idle') : mapTone(state), label: entity ? MAP_ROOTS[kind]?.label ?? '' : '', title: text(node.title, 200), state, detail: [bar, text(node.detail, 160)].filter(Boolean).join('  ') });
     const children = Array.isArray(node.children) ? node.children.map(record) : [];
     const nested = root ? prefix : prefix + (branch === '└─ ' ? '   ' : '│  ');
     children.forEach((child, index) => visit(child, nested, index === children.length - 1 ? '└─ ' : '├─ ', false));

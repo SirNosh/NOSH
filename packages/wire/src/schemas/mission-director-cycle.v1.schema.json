@@ -250,6 +250,162 @@
         "submittedAt": {
           "type": "string",
           "format": "date-time"
+        },
+        "spawn": {
+          "type": "object",
+          "properties": {
+            "nodeId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "research_direction",
+                "autoresearch"
+              ]
+            },
+            "question": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "decisionUse": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "evaluation": {
+              "type": "object",
+              "properties": {
+                "commandId": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+                  "maxLength": 128
+                },
+                "resultPath": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "primaryMetric": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "objective": {
+                      "type": "string",
+                      "enum": [
+                        "maximize",
+                        "minimize"
+                      ]
+                    },
+                    "minimumEffect": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "objective",
+                    "minimumEffect"
+                  ],
+                  "additionalProperties": false
+                },
+                "guardrails": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "direction": {
+                        "type": "string",
+                        "enum": [
+                          "maximize",
+                          "minimize"
+                        ]
+                      },
+                      "threshold": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "direction",
+                      "threshold"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "maxItems": 8
+                },
+                "target": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "maximumNoProgressRounds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 3
+                }
+              },
+              "required": [
+                "commandId",
+                "resultPath",
+                "primaryMetric",
+                "guardrails",
+                "target",
+                "maximumNoProgressRounds"
+              ],
+              "additionalProperties": false
+            },
+            "familyTags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "minItems": 1,
+              "maxItems": 8
+            },
+            "scope": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "minItems": 1,
+              "maxItems": 32
+            }
+          },
+          "required": [
+            "nodeId",
+            "kind",
+            "question",
+            "decisionUse",
+            "evaluation",
+            "familyTags",
+            "scope"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [

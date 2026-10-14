@@ -8,9 +8,14 @@ import { VersionedDag, isLegalDirectionTransition, isLegalMissionTransition, typ
 import type { EntityProjection, EventStore, OperationIntent, RegisteredProject } from "@nosh/persistence";
 import { canonicalJson, eventBudgetTokens, isTaskTerminalRecord, schemaUri, sha256, validateRecord, type EventDraft, type EventEnvelope, type JsonValue } from "@nosh/wire";
 
-export type MissionProjection = { missionId: string; projectId: string; title: string; objective: string; nonObjectives: string[]; deliverables: string[]; successCriteria: string[]; startingEvidence: string[]; budgets: { maximumModelTokens: number; maximumWallClockSeconds: number; maximumGpuSeconds: number; maximumDiskBytes: number; maximumConcurrentAgents: number }; approvalBoundaries: string[]; externalActionRestrictions: string[]; pausePolicy: "safe"; finalReviewRubric: string[]; approvedGraphVersion: number | null; approvedAt: string | null; canonicalContract: JsonValue | null; state: MissionState; /** Version written by the latest state transition; node churn after it does not change what a user inspected. */ stateVersion?: number; graphVersion: number; nodes: GraphNode[]; createdAt: string; updatedAt: string };
-export type DirectionProjection = { directionId: string; projectId: string; missionId: string | null; questionId: string; question: string; decisionUse: string; falsifiability: { supportingOutcome: string; refutingOutcome: string; inconclusiveOutcome: string }; projectClaimIds: string[]; scope: JsonValue; evaluationContractId: string; evaluationContract: JsonValue; evaluationContractHash: string; plannedBaselineExperimentId: string; integrationBranch: string; stoppingRules: Array<{ ruleId: string; statement: string }>; budget: JsonValue; closureRubric: Array<{ rubricId: string; statement: string }>; createdBy: "user"; approvedBy: "user" | null; activatedAt: string | null; canonicalContract: JsonValue | null; acceptedBaseline: { commit: string; reviewId: string } | null; state: DirectionState; graphVersion: number; nodes: GraphNode[]; createdAt: string; updatedAt: string };
-export type AutoresearchProjection = { autoresearchId: string; projectId: string; directionId: string | null; missionId: string | null; invokedByRole: "user"; decisionQuestion: string; familyTags: string[]; scope: string[]; fingerprint: string; state: "draft" | "running" | "paused" | "blocked" | "completed" | "stopped" | "failed"; evaluationContractId: string; evaluationContract: JsonValue; evaluationContractHash: string; rootExperimentId: string; acceptedFrontierExperimentIds: string[]; forbiddenChangeScopes: string[]; variantPolicy: JsonValue; stopConditions: Array<{ type: string; value: number }>; promotionRubricIds: string[]; currentRound: number; maximumExperiments: number; maximumRounds: number; maximumDepth: number; maximumChildrenPerParent: number; maximumWallClockSeconds: number; maximumModelTokens: number; maximumGpuSeconds: number; maximumDiskBytes: number; canonicalContract: JsonValue | null; createdAt: string; updatedAt: string };
+/** Where a Mission- or Direction-spawned research child came from: the spawning scope, its graph node, and that node's attempt. */
+export type SpawnOrigin = { scopeType: "mission" | "direction"; scopeId: string; nodeId: string; attempt: number };
+/** Research children a Mission plans in its approved graph: Research Directions and one Mission-level Autoresearch. */
+export type ResearchPlan = { directions: number; missionAutoresearch: boolean };
+type MissionBudgets = MissionProjection["budgets"];
+export type MissionProjection = { missionId: string; projectId: string; title: string; objective: string; nonObjectives: string[]; deliverables: string[]; successCriteria: string[]; startingEvidence: string[]; budgets: { maximumModelTokens: number; maximumWallClockSeconds: number; maximumGpuSeconds: number; maximumDiskBytes: number; maximumConcurrentAgents: number }; approvalBoundaries: string[]; externalActionRestrictions: string[]; pausePolicy: "safe"; finalReviewRubric: string[]; approvedGraphVersion: number | null; approvedAt: string | null; canonicalContract: JsonValue | null; state: MissionState; /** Version written by the latest state transition; node churn after it does not change what a user inspected. */ stateVersion?: number; graphVersion: number; nodes: GraphNode[]; researchPlan?: ResearchPlan | null; createdAt: string; updatedAt: string };
+export type DirectionProjection = { directionId: string; projectId: string; missionId: string | null; questionId: string; question: string; decisionUse: string; falsifiability: { supportingOutcome: string; refutingOutcome: string; inconclusiveOutcome: string }; projectClaimIds: string[]; scope: JsonValue; evaluationContractId: string; evaluationContract: JsonValue; evaluationContractHash: string; plannedBaselineExperimentId: string; integrationBranch: string; stoppingRules: Array<{ ruleId: string; statement: string }>; budget: JsonValue; closureRubric: Array<{ rubricId: string; statement: string }>; createdBy: "user" | "mission_director"; approvedBy: "user" | null; activatedAt: string | null; canonicalContract: JsonValue | null; acceptedBaseline: { commit: string; reviewId: string } | null; state: DirectionState; graphVersion: number; nodes: GraphNode[]; origin?: SpawnOrigin | null; baseCommit?: string | null; createdAt: string; updatedAt: string };
+export type AutoresearchProjection = { autoresearchId: string; projectId: string; directionId: string | null; missionId: string | null; invokedByRole: "user" | "mission_director" | "research_director"; decisionQuestion: string; familyTags: string[]; scope: string[]; fingerprint: string; state: "draft" | "running" | "paused" | "blocked" | "completed" | "stopped" | "failed"; evaluationContractId: string; evaluationContract: JsonValue; evaluationContractHash: string; rootExperimentId: string; acceptedFrontierExperimentIds: string[]; forbiddenChangeScopes: string[]; variantPolicy: JsonValue; stopConditions: Array<{ type: string; value: number }>; promotionRubricIds: string[]; currentRound: number; maximumExperiments: number; maximumRounds: number; maximumDepth: number; maximumChildrenPerParent: number; maximumWallClockSeconds: number; maximumModelTokens: number; maximumGpuSeconds: number; maximumDiskBytes: number; canonicalContract: JsonValue | null; origin?: SpawnOrigin | null; baseCommit?: string | null; createdAt: string; updatedAt: string };
 export type Stored<T> = Omit<EntityProjection, "value"> & { value: T };
 export type MissionBudgetUse = { modelTokens: number; wallClockSeconds: number; gpuSeconds: number; diskBytes: number };
 export type AutoresearchBudgetUse = MissionBudgetUse & { experiments: number; rounds: number };
@@ -79,27 +84,29 @@ export class ResearchControl {
   missions(projectId: string): Array<Stored<MissionProjection>> { return this.store(projectId).projections(projectId, "mission") as Array<Stored<MissionProjection>>; }
   mission(projectId: string, missionId: string): Stored<MissionProjection> { const value = this.store(projectId).projection(projectId, "mission", missionId); if (!value) throw new Error("Unknown Mission"); return value as Stored<MissionProjection>; }
   graphProposals(projectId: string): Array<Stored<JsonValue>> { return this.store(projectId).projections(projectId, "graph_proposal") as Array<Stored<JsonValue>>; }
-  createMission(projectId: string, input: { title: string; objective: string; deliverables: string[]; successCriteria: string[]; nonObjectives?: string[]; startingEvidence?: string[]; idempotencyKey: string }): Stored<MissionProjection> {
+  createMission(projectId: string, input: { title: string; objective: string; deliverables: string[]; successCriteria: string[]; nonObjectives?: string[]; startingEvidence?: string[]; researchPlan?: ResearchPlan | null; budgets?: Partial<MissionBudgets>; idempotencyKey: string }): Stored<MissionProjection> {
+    const researchPlan = validResearchPlan(input.researchPlan ?? null);
+    const budgets = missionBudgets(researchPlan, input.budgets);
     const deliverables = input.deliverables.map((value) => value.trim()).filter(Boolean);
     const successCriteria = input.successCriteria.map((value) => value.trim()).filter(Boolean);
     const startingEvidence = (input.startingEvidence ?? []).map((value) => value.trim()).filter(Boolean);
     const replay = createdProjectionReplay<MissionProjection>(this.store(projectId), projectId, input.idempotencyKey, "mission", "mission.created");
     if (replay) {
       const value = replay.value;
-      if (value.title !== input.title.trim() || value.objective !== input.objective.trim() || !sameStringSet(value.deliverables, deliverables) || !sameStringSet(value.successCriteria, successCriteria) || !sameStringSet(value.nonObjectives, (input.nonObjectives ?? []).map((item) => item.trim()).filter(Boolean)) || !sameStringSet(value.startingEvidence, startingEvidence)) throw new Error("Mission creation idempotency key was reused for a different request");
+      if (value.title !== input.title.trim() || value.objective !== input.objective.trim() || !sameStringSet(value.deliverables, deliverables) || !sameStringSet(value.successCriteria, successCriteria) || !sameStringSet(value.nonObjectives, (input.nonObjectives ?? []).map((item) => item.trim()).filter(Boolean)) || !sameStringSet(value.startingEvidence, startingEvidence) || canonicalJson((value.researchPlan ?? null) as JsonValue) !== canonicalJson(researchPlan as JsonValue) || canonicalJson(value.budgets as unknown as JsonValue) !== canonicalJson(budgets as unknown as JsonValue)) throw new Error("Mission creation idempotency key was reused for a different request");
       return replay;
     }
     if (!input.title.trim() || !input.objective.trim() || !deliverables.length || !successCriteria.length) throw new Error("Mission title, objective, deliverables, and success criteria are required");
     assertExistingEvidenceIds(this.submitted(projectId).filter((entry) => isSchema(entry.record, "evidence")), startingEvidence);
     const missionId = createId("mis");
     const now = new Date().toISOString();
-    const nodes = defaultMissionNodes(now, successCriteria.map((_, index) => `criterion_${index + 1}`));
+    const nodes = defaultMissionNodes(now, successCriteria.map((_, index) => `criterion_${index + 1}`), researchPlan);
     const graph = new VersionedDag(missionId, nodes).current();
     const value: MissionProjection = {
       missionId, projectId, title: input.title.trim(), objective: input.objective.trim(),
       nonObjectives: (input.nonObjectives ?? []).map((value) => value.trim()).filter(Boolean),
       deliverables, successCriteria, startingEvidence,
-      budgets: { maximumModelTokens: 1_000_000, maximumWallClockSeconds: 86_400, maximumGpuSeconds: 0, maximumDiskBytes: 10_000_000_000, maximumConcurrentAgents: 2 },
+      budgets, researchPlan,
       approvalBoundaries: ["Protected-branch integration and budget increases require user approval"],
       externalActionRestrictions: ["No publication, push, purchase, or third-party message without explicit user approval"],
       pausePolicy: "safe",
@@ -190,13 +197,13 @@ export class ResearchControl {
 
   directions(projectId: string): Array<Stored<DirectionProjection>> { return this.store(projectId).projections(projectId, "direction") as Array<Stored<DirectionProjection>>; }
   direction(projectId: string, directionId: string): Stored<DirectionProjection> { const value = this.store(projectId).projection(projectId, "direction", directionId); if (!value) throw new Error("Unknown Direction"); return value as Stored<DirectionProjection>; }
-  createDirection(projectId: string, input: { question: string; decisionUse: string; missionId?: string | null; evaluationContract?: JsonValue; idempotencyKey: string }): Stored<DirectionProjection> {
+  createDirection(projectId: string, input: { question: string; decisionUse: string; missionId?: string | null; evaluationContract?: JsonValue; idempotencyKey: string }, spawned?: { origin: SpawnOrigin; baseCommit: string; budget: { maximumModelTokens: number; maximumWallClockSeconds: number } }): Stored<DirectionProjection> {
     const question = input.question.trim(); const decisionUse = input.decisionUse.trim();
     const evaluationContract = input.evaluationContract ?? { metrics: [], datasets: [], seeds: [0] };
     const replay = createdProjectionReplay<DirectionProjection>(this.store(projectId), projectId, input.idempotencyKey, "direction", "direction.created");
     if (replay) {
       const value = replay.value;
-      if (value.question !== question || value.decisionUse !== decisionUse || value.missionId !== (input.missionId ?? null) || canonicalJson(value.evaluationContract) !== canonicalJson(evaluationContract)) throw new Error("Direction creation idempotency key was reused for a different request");
+      if (value.question !== question || value.decisionUse !== decisionUse || value.missionId !== (input.missionId ?? null) || canonicalJson(value.evaluationContract) !== canonicalJson(evaluationContract) || canonicalJson((value.origin ?? null) as JsonValue) !== canonicalJson((spawned?.origin ?? null) as JsonValue)) throw new Error("Direction creation idempotency key was reused for a different request");
       return replay;
     }
     if (!isObject(evaluationContract)) throw new Error("Direction evaluation contract must be an object");
@@ -217,10 +224,10 @@ export class ResearchControl {
     const closureRubric = [{ rubricId: `rubric_${crypto.randomUUID().replaceAll("-", "")}`, statement: decisionUse }];
     const value: DirectionProjection = {
       directionId, projectId, missionId: input.missionId ?? null, questionId, question, decisionUse,
-      falsifiability, projectClaimIds: [], scope: { missionId: input.missionId ?? null, evaluationContractHash }, evaluationContractId, evaluationContract,
+      falsifiability, projectClaimIds: [], scope: { missionId: input.missionId ?? null, evaluationContractHash, ...(spawned ? { origin: spawned.origin as unknown as JsonValue, authorizedBy: "mission_approval" } : {}) }, evaluationContractId, evaluationContract,
       evaluationContractHash, plannedBaselineExperimentId, integrationBranch: `direction/${directionId}`,
-      stoppingRules, budget: { evaluationContractHash }, closureRubric, createdBy: "user", approvedBy: null, activatedAt: null, canonicalContract: null,
-      acceptedBaseline: null, state: "draft", graphVersion: graph.version, nodes: graph.nodes, createdAt: now, updatedAt: now,
+      stoppingRules, budget: { evaluationContractHash, ...(spawned ? spawned.budget : {}) }, closureRubric, createdBy: spawned ? "mission_director" : "user", approvedBy: null, activatedAt: null, canonicalContract: null,
+      acceptedBaseline: null, state: "draft", graphVersion: graph.version, nodes: graph.nodes, origin: spawned?.origin ?? null, baseCommit: spawned?.baseCommit ?? null, createdAt: now, updatedAt: now,
     };
     return this.mutate(projectId, "direction", directionId, 0, "direction.created", input.idempotencyKey, value, { scopeType: "direction", version: 1, value: graph as unknown as JsonValue, rationale: "initial direction plan" });
   }
@@ -314,7 +321,7 @@ export class ResearchControl {
 
   autoresearch(projectId: string): Array<Stored<AutoresearchProjection>> { return this.store(projectId).projections(projectId, "autoresearch") as Array<Stored<AutoresearchProjection>>; }
   autoresearchExecution(projectId: string, autoresearchId: string): Stored<AutoresearchProjection> { const execution = this.store(projectId).projection(projectId, "autoresearch", autoresearchId) as Stored<AutoresearchProjection> | undefined; if (!execution) throw new Error("Unknown Autoresearch execution"); return execution; }
-  createAutoresearch(projectId: string, input: { decisionQuestion: string; directionId?: string | null; missionId?: string | null; familyTags?: string[]; scope?: string[]; evaluationContract?: JsonValue; maximumExperiments?: number; maximumRounds?: number; maximumWallClockSeconds?: number; maximumModelTokens?: number; maximumGpuSeconds?: number; maximumDiskBytes?: number; idempotencyKey: string }): Stored<AutoresearchProjection> {
+  createAutoresearch(projectId: string, input: { decisionQuestion: string; directionId?: string | null; missionId?: string | null; familyTags?: string[]; scope?: string[]; evaluationContract?: JsonValue; maximumExperiments?: number; maximumRounds?: number; maximumWallClockSeconds?: number; maximumModelTokens?: number; maximumGpuSeconds?: number; maximumDiskBytes?: number; idempotencyKey: string }, spawned?: { invokedByRole: "mission_director" | "research_director"; origin: SpawnOrigin; baseCommit: string | null }): Stored<AutoresearchProjection> {
     const decisionQuestion = input.decisionQuestion.trim();
     const maximumExperiments = input.maximumExperiments ?? 12; const maximumRounds = input.maximumRounds ?? 8; const maximumWallClockSeconds = input.maximumWallClockSeconds ?? 86_400; const maximumModelTokens = input.maximumModelTokens ?? 500_000; const maximumGpuSeconds = input.maximumGpuSeconds ?? 86_400; const maximumDiskBytes = input.maximumDiskBytes ?? 10_000_000_000;
     const familyTags = [...new Set(input.familyTags ?? [])].sort(); const scope = [...new Set(input.scope ?? [])].sort();
@@ -334,19 +341,20 @@ export class ResearchControl {
     const evaluationContractHash = sha256(evaluationContract);
     if (direction && evaluationContractHash !== direction.value.evaluationContractHash) throw new Error("Autoresearch cannot change the frozen Direction evaluation contract");
     const fingerprint = sha256({ decisionQuestion: decisionQuestion.toLowerCase(), familyTags, scope, evaluationContractHash });
-    const siblings = this.autoresearch(projectId).filter((execution) => execution.value.directionId === input.directionId);
+    // Siblings share a Direction; without one, they share a Mission (or are both standalone).
+    const siblings = this.autoresearch(projectId).filter((execution) => (execution.value.directionId ?? null) === (input.directionId ?? null) && (input.directionId ? true : (execution.value.missionId ?? null) === (input.missionId ?? null)));
     if (siblings.length >= 12) throw new Error("Direction Autoresearch execution budget exhausted");
     if (siblings.some((execution) => execution.value.fingerprint === fingerprint)) throw new Error("Autoresearch execution is not meaningfully separate");
     const autoresearchId = createId("ar"); const now = new Date().toISOString();
     const value: AutoresearchProjection = {
       autoresearchId, projectId, directionId: input.directionId ?? null, missionId: input.missionId ?? direction?.value.missionId ?? null,
-      invokedByRole: "user", decisionQuestion, familyTags, scope, fingerprint, state: "draft",
+      invokedByRole: spawned?.invokedByRole ?? "user", decisionQuestion, familyTags, scope, fingerprint, state: "draft",
       evaluationContractId: direction?.value.evaluationContractId ?? `evaluation_${crypto.randomUUID().replaceAll("-", "")}`,
       evaluationContract, evaluationContractHash, rootExperimentId: createId("exp"), acceptedFrontierExperimentIds: [],
       forbiddenChangeScopes: [".nosh/**"], variantPolicy: { maximumDepth: 8, maximumChildrenPerParent: 4 },
       stopConditions: [{ type: "maximum_rounds", value: maximumRounds }], promotionRubricIds: [`rubric_${crypto.randomUUID().replaceAll("-", "")}`],
       currentRound: 0, maximumExperiments, maximumRounds, maximumDepth: 8, maximumChildrenPerParent: 4, maximumWallClockSeconds, maximumModelTokens,
-      maximumGpuSeconds, maximumDiskBytes, canonicalContract: null, createdAt: now, updatedAt: now,
+      maximumGpuSeconds, maximumDiskBytes, canonicalContract: null, origin: spawned?.origin ?? null, baseCommit: spawned?.baseCommit ?? null, createdAt: now, updatedAt: now,
     };
     return this.mutate(projectId, "autoresearch", autoresearchId, 0, "autoresearch.created", input.idempotencyKey, value, undefined, undefined, true);
   }
@@ -664,19 +672,22 @@ export class ResearchControl {
   }
   beginExternalOperation(projectId: string, operationType: string, idempotencyKey: string, request: JsonValue): OperationIntent { return this.store(projectId).beginOperation(projectId, operationType, idempotencyKey, request); }
   completeExternalOperation(projectId: string, intentId: string, result: JsonValue): OperationIntent { return this.store(projectId).completeOperation(projectId, intentId, result); }
+  /** The durable intent recorded under an idempotency key, if any. */
+  externalOperation(projectId: string, idempotencyKey: string): OperationIntent | undefined { return this.store(projectId).operationIntents(projectId).find((intent) => intent.idempotencyKey === idempotencyKey); }
   pendingExternalOperations(projectId: string, operationType?: string): OperationIntent[] { return this.store(projectId).operationIntents(projectId, "pending").filter((intent) => !operationType || intent.operationType === operationType); }
   scopedEvents(projectId: string, missionId: string, type?: string): EventEnvelope[] { return this.store(projectId).replay(projectId).filter((event) => event.scope.missionId === missionId && (!type || event.type === type)); }
   missionBudgetUse(projectId: string, missionId: string): MissionBudgetUse { const mission = this.mission(projectId, missionId); // Budgeted wall time counts only intervals spent running, as for Autoresearch.
-    const events = this.scopedEvents(projectId, missionId); return { ...eventResourceUse(events), wallClockSeconds: runningSeconds(events.filter((event) => (event.payload as { entityId?: string } | null)?.entityId === mission.entityId || !event.type.startsWith("mission.")), "mission"), diskBytes: directoryBytes(join(this.project(projectId).repositoryRoot, ".nosh")) }; }
+    const events = this.scopedEvents(projectId, missionId); return { ...eventResourceUse(events), wallClockSeconds: runningSeconds(events.filter((event) => (event.payload as { entityId?: string } | null)?.entityId === mission.entityId || !event.type.startsWith("mission.")), "mission", downtimeIntervals(this.store(projectId).replay(projectId))), diskBytes: directoryBytes(join(this.project(projectId).repositoryRoot, ".nosh")) }; }
   missionCompletionBasis(projectId: string, missionId: string): MissionCompletionBasis {
     const mission = this.mission(projectId, missionId);
-    const records = this.submitted(projectId).filter((entry) => entry.event.scope.missionId === missionId);
+    // Mission-own records only: a research child's reviews and claims are judged by its own closure, which the spawn node requires.
+    const records = this.submitted(projectId).filter((entry) => entry.event.scope.missionId === missionId && !entry.event.scope.directionId && !entry.event.scope.autoresearchId);
     const packets = records.filter((entry) => isSchema(entry.record, "task-packet")).map((entry) => entry.record as Record<string, JsonValue>).filter((packet) => packet.assignedRole !== "reviewer" && isObject(packet.scope) && packet.scope.missionId === missionId);
     const completions: MissionCompletionBasis["completions"] = [];
     const criteria: MissionCompletionBasis["criteria"] = [];
     const issues: string[] = [];
     const taskResults = new Map<string, { packet: Record<string, JsonValue>; completion: Record<string, JsonValue>; request: Record<string, JsonValue>; verdict: Record<string, JsonValue> }>();
-    for (const node of mission.value.nodes.filter((node) => node.required && node.state === "accepted" && !["reviewer", "claim_review", "final_review", "approval"].includes(node.type))) {
+    for (const node of mission.value.nodes.filter((node) => node.required && node.state === "accepted" && !["reviewer", "claim_review", "final_review", "approval", ...SPAWN_NODE_TYPES].includes(node.type))) {
       const candidates: Array<{ packet: Record<string, JsonValue>; completion: Record<string, JsonValue>; request: Record<string, JsonValue>; verdict: Record<string, JsonValue> }> = [];
       for (const packet of packets.filter((entry) => isObject(entry.scope) && entry.scope.graphNodeId === node.id)) {
         if (!validateRecord(schemaUri("task-packet"), packet).ok || packet.attempt !== node.attempt || typeof packet.taskId !== "string" || typeof packet.assignedAgentId !== "string" || typeof packet.responseSchema !== "string") continue;
@@ -724,6 +735,12 @@ export class ResearchControl {
       const completion = completions.find((entry) => entry.taskId === task.packet.taskId);
       if (completion) completion.validatorRunIds.push(...validatorRunIds);
     }
+    const childEvidenceIds: string[] = [];
+    for (const node of mission.value.nodes.filter((item) => item.required && item.state === "accepted" && SPAWN_NODE_TYPES.includes(item.type))) {
+      const child = this.spawnedChild(projectId, missionId, node.id);
+      if (!child || child.state !== (child.kind === "direction" ? "closed" : "completed")) { issues.push(`accepted node ${node.id} lacks a reviewed research child outcome`); continue; }
+      childEvidenceIds.push(...this.childEvidenceIds(projectId, child.entityId));
+    }
     const requestedArtifactIds = [...new Set(completions.flatMap((completion) => completion.artifactIds))];
     const artifactIds = requestedArtifactIds.filter((id) => artifactExists(this.project(projectId), id));
     for (const artifactId of requestedArtifactIds) if (!artifactIds.includes(artifactId)) issues.push(`Mission completion references missing Artifact ${artifactId}`);
@@ -758,9 +775,23 @@ export class ResearchControl {
     if (!artifactIds.length) issues.push("accepted task completions provide no stored deliverable artifacts");
     if (unresolvedClaimIds.length) issues.push(`unresolved claims: ${unresolvedClaimIds.join(", ")}`);
     if (openDefectIds.length) issues.push(`open blocking or major defects: ${openDefectIds.join(", ")}`);
-    return { completions, criteria, artifactIds, evidenceIds, validatorRunIds, claims, unresolvedClaimIds, openDefectIds, issues: [...new Set(issues)] };
+    return { completions, criteria, artifactIds, evidenceIds: [...new Set([...evidenceIds, ...childEvidenceIds])], validatorRunIds, claims, unresolvedClaimIds, openDefectIds, issues: [...new Set(issues)] };
   }
-  autoresearchBudgetUse(projectId: string, autoresearchId: string): AutoresearchBudgetUse { const execution = this.autoresearchExecution(projectId, autoresearchId); const events = this.store(projectId).replay(projectId).filter((event) => event.scope.autoresearchId === autoresearchId); const records = this.submitted(projectId).filter((entry) => entry.event.scope.autoresearchId === autoresearchId).map((entry) => entry.record as { $schema?: string; experimentId?: string; sizeBytes?: number }); const experimentIds = [...new Set(records.filter((record) => record.$schema === schemaUri("experiment-proposal") && record.experimentId).map((record) => record.experimentId!))]; const root = this.project(projectId).repositoryRoot; const diskBytes = records.filter((record) => record.$schema === schemaUri("artifact")).reduce((sum, record) => sum + Math.max(0, Number(record.sizeBytes ?? 0)), 0) + directoryBytes(join(root, ".nosh", "autoresearch", autoresearchId)) + experimentIds.reduce((sum, id) => sum + directoryBytes(join(root, ".nosh", "worktrees", `wt_${id.slice(4)}`)), 0) + directoryBytes(join(root, ".nosh", "worktrees", `integration_${autoresearchId.slice(3)}`)); return { ...eventResourceUse(events), wallClockSeconds: runningSeconds(events), diskBytes, experiments: experimentIds.length, rounds: execution.value.currentRound }; }
+  /** The latest Direction or Autoresearch spawned for a scope's node, if any. */
+  spawnedChild(projectId: string, scopeId: string, nodeId: string): { kind: "direction" | "autoresearch"; entityId: string; state: string; version: number; attempt: number } | null {
+    const matches = [
+      ...this.directions(projectId).filter((entry) => entry.value.origin?.scopeId === scopeId && entry.value.origin.nodeId === nodeId).map((entry) => ({ kind: "direction" as const, entityId: entry.entityId, state: entry.state, version: entry.version, attempt: entry.value.origin!.attempt, createdAt: entry.value.createdAt })),
+      ...this.autoresearch(projectId).filter((entry) => entry.value.origin?.scopeId === scopeId && entry.value.origin.nodeId === nodeId).map((entry) => ({ kind: "autoresearch" as const, entityId: entry.entityId, state: entry.state, version: entry.version, attempt: entry.value.origin!.attempt, createdAt: entry.value.createdAt })),
+    ].sort((a, b) => a.attempt - b.attempt || a.createdAt.localeCompare(b.createdAt));
+    const latest = matches.at(-1); return latest ? { kind: latest.kind, entityId: latest.entityId, state: latest.state, version: latest.version, attempt: latest.attempt } : null;
+  }
+  /** Evidence recorded inside a research child's scope (a Direction includes its Autoresearch). */
+  childEvidenceIds(projectId: string, childId: string): string[] {
+    return [...new Set(this.submitted(projectId).filter((entry) => isSchema(entry.record, "evidence") && (entry.event.scope.directionId === childId || entry.event.scope.autoresearchId === childId) && typeof entry.record.evidenceId === "string").map((entry) => entry.record.evidenceId as string))];
+  }
+  /** Model-token use inside a Direction, including its Autoresearch, under the daemon's budget formula. */
+  directionBudgetUse(projectId: string, directionId: string): Pick<MissionBudgetUse, "modelTokens"> { return { modelTokens: eventResourceUse(this.store(projectId).replay(projectId).filter((event) => event.scope.directionId === directionId)).modelTokens }; }
+  autoresearchBudgetUse(projectId: string, autoresearchId: string): AutoresearchBudgetUse { const execution = this.autoresearchExecution(projectId, autoresearchId); const projectEvents = this.store(projectId).replay(projectId); const events = projectEvents.filter((event) => event.scope.autoresearchId === autoresearchId); const records = this.submitted(projectId).filter((entry) => entry.event.scope.autoresearchId === autoresearchId).map((entry) => entry.record as { $schema?: string; experimentId?: string; sizeBytes?: number }); const experimentIds = [...new Set(records.filter((record) => record.$schema === schemaUri("experiment-proposal") && record.experimentId).map((record) => record.experimentId!))]; const root = this.project(projectId).repositoryRoot; const diskBytes = records.filter((record) => record.$schema === schemaUri("artifact")).reduce((sum, record) => sum + Math.max(0, Number(record.sizeBytes ?? 0)), 0) + directoryBytes(join(root, ".nosh", "autoresearch", autoresearchId)) + experimentIds.reduce((sum, id) => sum + directoryBytes(join(root, ".nosh", "worktrees", `wt_${id.slice(4)}`)), 0) + directoryBytes(join(root, ".nosh", "worktrees", `integration_${autoresearchId.slice(3)}`)); return { ...eventResourceUse(events), wallClockSeconds: runningSeconds(events, "autoresearch", downtimeIntervals(projectEvents)), diskBytes, experiments: experimentIds.length, rounds: execution.value.currentRound }; }
   missionCompletionIssues(projectId: string, missionId: string): string[] { const mission = this.mission(projectId, missionId); const issues: string[] = []; for (const node of mission.value.nodes) if (node.required && !["accepted", "waived", "superseded"].includes(node.state)) issues.push(`required node ${node.id} is ${node.state}`); const use = this.missionBudgetUse(projectId, missionId); if (use.modelTokens > mission.value.budgets.maximumModelTokens) issues.push("Mission model-token budget is exceeded"); if (use.wallClockSeconds > mission.value.budgets.maximumWallClockSeconds) issues.push("Mission wall-clock budget is exceeded"); if (use.gpuSeconds > mission.value.budgets.maximumGpuSeconds) issues.push("Mission GPU budget is exceeded"); if (use.diskBytes > mission.value.budgets.maximumDiskBytes) issues.push("Mission disk budget is exceeded"); const evidenceIds = new Set(this.records(projectId, "evidence").map((record) => (record as { evidenceId?: string }).evidenceId).filter((id): id is string => Boolean(id))); for (const record of this.records(projectId, "claim")) { const claim = record as { claimId?: string; supportingEvidenceIds?: string[]; contradictingEvidenceIds?: string[]; qualifyingEvidenceIds?: string[]; limitations?: string[] }; const references = [...(claim.supportingEvidenceIds ?? []), ...(claim.contradictingEvidenceIds ?? []), ...(claim.qualifyingEvidenceIds ?? [])]; if (!references.length && !(claim.limitations ?? []).length) issues.push(`claim ${claim.claimId ?? "unknown"} is unsupported and unqualified`); for (const id of references) if (!evidenceIds.has(id)) issues.push(`claim ${claim.claimId ?? "unknown"} references missing evidence ${id}`); } const artifacts = new ArtifactStore(join(this.project(projectId).repositoryRoot, ".nosh", "artifacts")); for (const record of this.records(projectId, "artifact")) { const id = (record as { artifactId?: string }).artifactId; if (id) try { artifacts.resolve(id, (record as { version?: number }).version); } catch { issues.push(`artifact ${id} does not resolve to its stored hash`); } } return [...new Set(issues)]; }
   readPaper(projectId: string): { markdown: string; bibliography: string; markdownHash: string; bibliographyHash: string; version: string } {
     const root = this.project(projectId).repositoryRoot;
@@ -1143,7 +1174,29 @@ export class ResearchControl {
 
 function node(id: string, type: string, title: string, criterionIds: string[], dependencies: string[], createdAt: string): GraphNode { return { id, type, title, required: true, criterionIds, hardDependencies: dependencies, softDependencies: [], state: "pending", attempt: 0, maximumAttempts: 3, priority: 5, criticalWeight: 1, createdAt, lease: null }; }
 function missionCriteria(mission: MissionProjection): Array<{ criterionId: string; statement: string }> { return mission.successCriteria.map((statement, index) => ({ criterionId: `criterion_${index + 1}`, statement })); }
-function defaultMissionNodes(createdAt: string, criterionIds: string[]): GraphNode[] { const plan = `mnode_${crypto.randomUUID().replaceAll("-", "")}`; const evidence = `mnode_${crypto.randomUUID().replaceAll("-", "")}`; const review = `mnode_${crypto.randomUUID().replaceAll("-", "")}`; return [node(plan, "implementation", "Produce the bounded deliverable", criterionIds, [], createdAt), node(evidence, "literature_review", "Collect and cite the sources the Mission relies on (repository files and, where relevant, literature); establishing implementation results is the implementation node's job", [], [], createdAt), node(review, "final_review", "Independent final review", [], [plan, evidence], createdAt)]; }
+/** Mission nodes whose work is a spawned research child rather than one task. */
+export const SPAWN_NODE_TYPES = ["research_direction", "autoresearch"];
+function validResearchPlan(plan: ResearchPlan | null): ResearchPlan | null {
+  if (plan === null) return null;
+  if (!isObject(plan as unknown as JsonValue) || !Number.isInteger(plan.directions) || plan.directions < 0 || plan.directions > 4 || typeof plan.missionAutoresearch !== "boolean") throw new Error("Mission researchPlan needs directions (0-4) and missionAutoresearch (true or false)");
+  return plan.directions || plan.missionAutoresearch ? { directions: plan.directions, missionAutoresearch: plan.missionAutoresearch } : null;
+}
+/** A research plan runs Directions and Autoresearch under the Mission's own ceiling, so it starts with a larger one. */
+function missionBudgets(plan: ResearchPlan | null, requested: Partial<MissionBudgets> | undefined): MissionBudgets {
+  const budgets: MissionBudgets = { maximumModelTokens: plan ? 4_000_000 : 1_000_000, maximumWallClockSeconds: plan ? 259_200 : 86_400, maximumGpuSeconds: 0, maximumDiskBytes: 10_000_000_000, maximumConcurrentAgents: 2, ...(requested ?? {}) };
+  const bounds: Record<keyof MissionBudgets, [number, number]> = { maximumModelTokens: [1, 50_000_000], maximumWallClockSeconds: [60, 2_592_000], maximumGpuSeconds: [0, 2_592_000], maximumDiskBytes: [1, 1_000_000_000_000], maximumConcurrentAgents: [1, 8] };
+  for (const [key, [low, high]] of Object.entries(bounds) as Array<[keyof MissionBudgets, [number, number]]>) if (!Number.isInteger(budgets[key]) || budgets[key] < low || budgets[key] > high) throw new Error(`Mission budget ${key} must be an integer from ${low} to ${high}`);
+  return budgets;
+}
+function defaultMissionNodes(createdAt: string, criterionIds: string[], plan: ResearchPlan | null = null): GraphNode[] {
+  const spawns: GraphNode[] = plan ? [...Array.from({ length: plan.directions }, (_, index) => ({ ...node(`mnode_${crypto.randomUUID().replaceAll("-", "")}`, "research_direction", `Research Direction ${index + 1}: answer one question the objective depends on`, [], [], createdAt), maximumAttempts: 2 })), ...(plan.missionAutoresearch ? [{ ...node(`mnode_${crypto.randomUUID().replaceAll("-", "")}`, "autoresearch", "Mission Autoresearch: improve one measured result under a frozen evaluation", [], [], createdAt), maximumAttempts: 2 }] : [])] : [];
+  const base = defaultTaskNodes(createdAt, criterionIds);
+  if (!spawns.length) return base;
+  // The deliverable builds on what the research children found; the final review sees everything.
+  const [implementation, literature, review] = base as [GraphNode, GraphNode, GraphNode];
+  return [...spawns, { ...implementation, hardDependencies: spawns.map((item) => item.id) }, literature, { ...review, hardDependencies: [implementation.id, literature.id, ...spawns.map((item) => item.id)] }];
+}
+function defaultTaskNodes(createdAt: string, criterionIds: string[]): GraphNode[] { const plan = `mnode_${crypto.randomUUID().replaceAll("-", "")}`; const evidence = `mnode_${crypto.randomUUID().replaceAll("-", "")}`; const review = `mnode_${crypto.randomUUID().replaceAll("-", "")}`; return [node(plan, "implementation", "Produce the bounded deliverable", criterionIds, [], createdAt), node(evidence, "literature_review", "Collect and cite the sources the Mission relies on (repository files and, where relevant, literature); establishing implementation results is the implementation node's job", [], [], createdAt), node(review, "final_review", "Independent final review", [], [plan, evidence], createdAt)]; }
 function missionNodeRecord(mission: MissionProjection, graphNode: GraphNode, rationale: string): JsonValue {
   return { $schema: schemaUri("mission-node"), schemaVersion: 1, missionId: mission.missionId, graphVersion: mission.graphVersion, nodeId: graphNode.id, nodeType: graphNode.type, title: graphNode.title, rationale, criterionIds: graphNode.criterionIds, hardDependencyNodeIds: graphNode.hardDependencies, softDependencyNodeIds: graphNode.softDependencies, inputArtifactIds: [], expectedOutputKinds: [], assignedRole: graphNode.type === "literature_review" ? "librarian_researcher" : ["claim_review", "final_review", "approval"].includes(graphNode.type) ? "reviewer" : "general_worker", preconditionValidatorIds: [], postconditionValidatorIds: ["validator_task.postflight"], reviewRubricIds: ["rubric_scientific.correctness"], budget: { maximumAttempts: graphNode.maximumAttempts, priority: graphNode.priority, criticalWeight: graphNode.criticalWeight }, workspacePolicy: {}, state: graphNode.state, attempt: graphNode.attempt, lease: graphNode.lease, createdAt: graphNode.createdAt };
 }
@@ -1440,15 +1493,28 @@ function latestScopedClaims(records: Array<{ event: EventEnvelope; record: JsonV
   return [...claims.values()].map((claim) => claim.record);
 }
 function draft(projectId: string, type: string, payload: JsonValue): EventDraft { return { $schema: schemaUri("event"), schemaVersion: 1, retention: "persistent", type, source: "noshd", scope: { projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: null, jobId: null, agentId: null }, correlationId: null, causationId: null, payload }; }
-/** Budgeted Autoresearch wall time counts only intervals spent running; paused or blocked waiting is not research time. */
-function runningSeconds(events: EventEnvelope[], scope: "autoresearch" | "mission" = "autoresearch"): number {
-  let total = 0; let since: number | null = null;
+/** Budgeted wall time counts only intervals spent running; paused or blocked waiting is not research time, and neither is time the daemon was down. */
+export function runningSeconds(events: EventEnvelope[], scope: "autoresearch" | "mission" = "autoresearch", downtime: Array<[number, number]> = [], now = Date.now()): number {
+  const intervals: Array<[number, number]> = []; let since: number | null = null;
   for (const event of events) {
     if (event.type === `${scope}.running`) since ??= Date.parse(event.timestamp);
-    else if (since !== null && ["paused", "blocked", "stopped", "completed", "failed"].map((state) => `${scope}.${state}`).includes(event.type)) { total += Date.parse(event.timestamp) - since; since = null; }
+    else if (since !== null && ["paused", "blocked", "stopped", "completed", "failed"].map((state) => `${scope}.${state}`).includes(event.type)) { intervals.push([since, Date.parse(event.timestamp)]); since = null; }
   }
-  if (since !== null) total += Date.now() - since;
+  if (since !== null) intervals.push([since, now]);
+  const total = intervals.reduce((sum, [start, end]) => sum + (end - start) - downtime.reduce((overlap, [down, up]) => overlap + Math.max(0, Math.min(end, up) - Math.max(start, down)), 0), 0);
   return Math.max(0, Math.floor(total / 1000));
+}
+/**
+ * Daemon downtime per project: each start writes recovery.report; the gap before it runs from the daemon.shutdown
+ * written on a clean stop, or after a crash from the last event the daemon recorded.
+ */
+export function downtimeIntervals(events: EventEnvelope[]): Array<[number, number]> {
+  const intervals: Array<[number, number]> = []; let last: EventEnvelope | null = null;
+  for (const event of events) {
+    if (event.type === "recovery.report" && last) { const down = Date.parse(last.timestamp); const up = Date.parse(event.timestamp); if (up > down) intervals.push([down, up]); }
+    last = event;
+  }
+  return intervals;
 }
 /** A blocked or paused scope can be repaired by returning its blocked/failed node to ready; reactivating then resumes scheduling. */
 const missionStates = new Set<string>(["created", "draft", "planning", "awaiting_approval", "running", "pausing", "paused", "reviewing", "blocked", "stopping", "completed", "stopped", "failed"]);

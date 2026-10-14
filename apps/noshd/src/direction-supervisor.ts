@@ -9,13 +9,16 @@ import type { RegisteredProject } from "@nosh/persistence";
 import { Scheduler } from "@nosh/scheduler";
 import { canonicalJson, schemaUri, sha256, validateRecord, type EventDraft, type JsonValue, type TaskPermissions, episodeTypeForRole } from "@nosh/wire";
 import { spawnSync } from "node:child_process";
-import { join, relative, resolve } from "node:path";
+import { join } from "node:path";
 import { daemonTaskFacts, declaredTaskCommands, librarianNetworkAllowed, librarianResearchHosts, taskCommandInstructions, taskCommandRuns, type DirectionProjection, type ResearchControl, type Stored } from "./research-control.js";
 import { completionRunIssues, validateGitCompletion, writeUpOnly } from "./task-postflight.js";
 import { directionAutoresearchOutcomes, directionBrief } from "./director-brief.js";
+import { MIN_AUTORESEARCH_TOKENS, runEvaluationJob, spawnDirectionAutoresearch, type DirectionSpawn } from "./research-spawner.js";
+/** Autoresearch a Direction starts on its own per hypothesis node; after that it waits for its user. */
+const MAX_AUTONOMOUS_AUTORESEARCH = 2;
 import { createTaskWorktree, taskWorktreePath } from "./task-worktree.js";
 import { completionInstructions, generalWorkerCompletionTemplate, librarianInstructions, reviewerInstructions, type DaemonEvaluation } from "./task-templates.js";
-import { loadNativeEvaluation, type JobRecord, type JobSpec } from "@nosh/jobs";
+import type { JobRecord, JobSpec } from "@nosh/jobs";
 
 export class DirectionSupervisor {
   private timer: NodeJS.Timeout | undefined; private readonly busy = new Set<string>(); private readonly awaiting = new Set<string>(); private readonly scheduler = new Scheduler();
@@ -23,41 +26,56 @@ export class DirectionSupervisor {
   // Each cycle records its own failures as events; only failures after shutdown (closed stores) reach here.
   start(): void { this.timer = setInterval(() => void this.tick().catch(() => undefined), 1_000); this.timer.unref(); }
   stop(): void { if (this.timer) clearInterval(this.timer); this.timer = undefined; }
-  async tick(): Promise<void> { for (const project of this.projects()) for (const direction of this.research.directions(project.projectId)) if (direction.state === "active") void this.cycle(project, direction.entityId).catch(() => undefined); }
+  async tick(): Promise<void> { for (const project of this.projects()) for (const direction of this.research.directions(project.projectId)) { if (direction.state === "active") void this.cycle(project, direction.entityId).catch(() => undefined); else if (direction.state === "reviewing") this.recoverInterruptedReview(project.projectId, direction.entityId); } }
+
+  /** A closure review cut short by a daemon restart leaves the Direction in reviewing, which no cycle handles; return it to active so closure runs again. */
+  private recoverInterruptedReview(projectId: string, directionId: string): void {
+    if (this.busy.has(directionId) || this.agents.inspect().some((agent) => agent.directionId === directionId && !agent.autoresearchId)) return;
+    const direction = this.research.direction(projectId, directionId); if (direction.state !== "reviewing") return;
+    this.research.transitionDirection(projectId, directionId, direction.version, "active", `review-interrupted-${direction.version}`);
+    this.emit(event(projectId, directionId, direction.value.missionId, "direction.review_recovered", { fromVersion: direction.version }));
+  }
 
   private async cycle(project: RegisteredProject, directionId: string): Promise<void> {
-    if (this.busy.has(directionId) || this.agents.inspect().some((agent) => agent.directionId === directionId)) return; const owner = this.research.direction(project.projectId, directionId); if (this.runtime?.hasActiveFork(project.projectId, owner.value.missionId, directionId)) return; this.busy.add(directionId);
+    if (this.busy.has(directionId) || this.agents.inspect().some((agent) => agent.directionId === directionId)) return; const owner = this.research.direction(project.projectId, directionId); if (this.runtime?.hasActiveFork(project.projectId, owner.value.missionId, directionId)) return; if (owner.value.origin?.scopeType === "mission" && this.research.mission(project.projectId, owner.value.origin.scopeId).state !== "running") return; this.busy.add(directionId);
     try {
       let direction = this.research.direction(project.projectId, directionId); if (direction.state !== "active") return; direction = this.reconcileOrphanedNodes(project.projectId, direction); if (direction.state !== "active") return; const graph = new VersionedDag(directionId, direction.value.nodes, "hydrated", direction.value.graphVersion); if (graph.completionReady()) { await this.close(project, direction); return; }
       const node = this.scheduler.frontier(graph, { paused: false, approvals: new Set(), workspaceConflicts: new Set(), availableRoles: new Set(["librarian_researcher", "general_worker", "reviewer"]), available: { agents: 1, gpuJobs: 0, gpuSeconds: 0, modelTokens: Number.MAX_SAFE_INTEGER, diskBytes: Number.MAX_SAFE_INTEGER } })[0]; if (!node) { if (!direction.value.nodes.some((item) => ["leased", "working", "postflight", "reviewing"].includes(item.state))) this.research.transitionDirection(project.projectId, directionId, direction.version, "blocked", `direction-blocked-${createId("cmd")}`); return; }
       // Hypothesis evaluation is experiment work: the Direction-backed Autoresearch fulfils it, not a single worker.
-      if (isHypothesisNode(node)) { this.awaitAutoresearch(project, direction, node); return; }
+      if (isHypothesisNode(node)) { await this.awaitAutoresearch(project, direction, node); return; }
       await this.director(project, direction, node); direction = this.research.direction(project.projectId, directionId); if (direction.state === "active") await this.runNode(project, direction, node.id);
     } catch (error) { let direction = this.research.direction(project.projectId, directionId); this.emit(event(project.projectId, directionId, direction.value.missionId, "direction.supervisor_error", { message: error instanceof Error ? error.message : "Direction supervisor failed" })); if (direction.state === "reviewing") direction = this.research.transitionDirection(project.projectId, directionId, direction.version, "active", `direction-review-failed-${createId("cmd")}`); if (direction.state === "active") this.research.transitionDirection(project.projectId, directionId, direction.version, "blocked", `direction-error-${createId("cmd")}`); }
     finally { this.busy.delete(directionId); }
   }
 
-  private async director(project: RegisteredProject, direction: Stored<DirectionProjection>, node: GraphNode): Promise<void> {
+  private async director(project: RegisteredProject, direction: Stored<DirectionProjection>, node: GraphNode, spawn?: { siblings: string[]; rejections: string[] }): Promise<{ spawn?: DirectionSpawn }> {
     const agentId = createId("agt"); const taskId = createId("tsk");
-    const brief = directionBrief({ research: this.research, project, direction, node, agentId });
+    const brief = directionBrief({ research: this.research, project, direction, node, agentId, ...(spawn ? { spawn } : {}) });
     await this.session(project, direction, agentId, taskId, "research_director", brief.prompt);
-    const record = this.research.terminalRecord(project.projectId, taskId, "research-director-cycle") as { cycleId?: string; directorAgentId?: string; directionId?: string; observedGraphVersion?: number; evaluationContractHash?: string; questionCheck?: { currentWorkContributes?: boolean } } | undefined;
+    const record = this.research.terminalRecord(project.projectId, taskId, "research-director-cycle") as { cycleId?: string; directorAgentId?: string; directionId?: string; observedGraphVersion?: number; evaluationContractHash?: string; questionCheck?: { currentWorkContributes?: boolean }; spawn?: DirectionSpawn } | undefined;
     if (!record || record.cycleId !== brief.ids.cycleId || record.directorAgentId !== agentId || record.directionId !== direction.entityId || record.observedGraphVersion !== direction.value.graphVersion || record.evaluationContractHash !== direction.value.evaluationContractHash) throw new Error("Research Director did not submit the current cycle record");
     // A valid "does not contribute" decision is the director halting work, not a supervisor fault.
     if (record.questionCheck?.currentWorkContributes !== true) { this.emit(event(project.projectId, direction.entityId, direction.value.missionId, "direction.director_halted", { cycleId: record.cycleId, nodeId: node.id })); throw new Error("Research Director halted the selected node; user attention required"); }
+    return record.spawn ? { spawn: record.spawn } : {};
   }
   /**
    * Resolve the hypothesis node from the Direction's Autoresearch outcome (Autoresearch carries its
    * own closure Review). Each execution is consumed once: a stopped or failed one costs a node
    * attempt, after which the node waits for a new execution while attempts remain.
    */
-  private awaitAutoresearch(project: RegisteredProject, direction: Stored<DirectionProjection>, node: GraphNode): void {
+  private async awaitAutoresearch(project: RegisteredProject, direction: Stored<DirectionProjection>, node: GraphNode): Promise<void> {
     const projectId = project.projectId; const id = direction.entityId;
-    const consumed = new Set(this.research.eventsAfter(projectId, 0).filter((entry) => entry.type === "direction.hypothesis_resolved" && entry.scope.directionId === id && (entry.payload as { nodeId?: string }).nodeId === node.id).map((entry) => String((entry.payload as { autoresearchId?: string }).autoresearchId)));
+    const consumed = new Set(this.research.eventsAfter(projectId, 0).filter((entry) => ["direction.hypothesis_resolved", "direction.hypothesis_continued"].includes(entry.type) && entry.scope.directionId === id && (entry.payload as { nodeId?: string }).nodeId === node.id).map((entry) => String((entry.payload as { autoresearchId?: string }).autoresearchId)));
     const runs = this.research.autoresearch(projectId).filter((run) => run.value.directionId === id && !consumed.has(run.entityId));
     const completed = runs.find((run) => run.state === "completed");
     const finished = runs.find((run) => ["failed", "stopped"].includes(run.state));
+    // A first Autoresearch that improved nothing is not the answer yet while a second, distinct one can still run.
+    // Only when a second one actually starts; otherwise the completed one answers the node, as before.
+    if (completed && !finished && !completed.value.acceptedFrontierExperimentIds?.length && this.autonomousRuns(projectId, id, node.id) < MAX_AUTONOMOUS_AUTORESEARCH && this.autoresearchTokens(projectId, direction) >= MIN_AUTORESEARCH_TOKENS && await this.spawnAutoresearch(project, direction, node)) {
+      this.emit(event(projectId, id, direction.value.missionId, "direction.hypothesis_continued", { nodeId: node.id, autoresearchId: completed.entityId })); return;
+    }
     if (!completed && !finished) {
+      if (!runs.length && await this.spawnAutoresearch(project, direction, node)) return;
       if (!this.awaiting.has(node.id)) { this.awaiting.add(node.id); this.emit(event(projectId, id, direction.value.missionId, "direction.awaiting_autoresearch", { nodeId: node.id, autoresearchIds: runs.map((run) => run.entityId), action: runs.length ? `Waiting for Autoresearch ${runs.map((run) => run.entityId).join(", ")}; if one is blocked, resume it (TUI: /transition autoresearch <id> <version> running).` : "Create and start a Direction-backed Autoresearch (TUI: /create autoresearch <file>, then /start autoresearch <id> <version>)." })); }
       return;
     }
@@ -67,6 +85,43 @@ export class DirectionSupervisor {
     this.emit(event(projectId, id, direction.value.missionId, "direction.hypothesis_resolved", { nodeId: node.id, autoresearchId: source.entityId, outcome: completed ? "accepted" : source.state }));
     if (completed) for (const next of ["postflight", "reviewing", "accepted"] as const) current = this.research.transitionDirectionNode(projectId, id, current.version, node.id, next, `${key}-${next}`);
     else this.fail(projectId, id, node.id, source.entityId);
+  }
+  /** Autoresearch this Direction started on its own for a hypothesis node. */
+  private autonomousRuns(projectId: string, directionId: string, nodeId: string): number { return this.research.autoresearch(projectId).filter((run) => run.value.origin?.scopeType === "direction" && run.value.origin.scopeId === directionId && run.value.origin.nodeId === nodeId).length; }
+  /** Model tokens the next Autoresearch may use: 80% of the Direction budget goes to Autoresearch, the first gets at most 60% of that. */
+  private autoresearchTokens(projectId: string, direction: Stored<DirectionProjection>): number {
+    const maximum = (direction.value.budget as { maximumModelTokens?: number }).maximumModelTokens;
+    if (!maximum) return 500_000;
+    const remaining = maximum - this.research.directionBudgetUse(projectId, direction.entityId).modelTokens - maximum * 0.2;
+    const first = !this.research.autoresearch(projectId).some((run) => run.value.origin?.scopeType === "direction" && run.value.origin.scopeId === direction.entityId);
+    return Math.floor(first ? Math.min(remaining, maximum * 0.8 * 0.6) : remaining);
+  }
+  /**
+   * Starts this Direction's next Autoresearch without a human: a Mission-spawned Direction's first one follows the
+   * Mission's spec; otherwise the Research Director specifies a distinct one. Returns false when none may start.
+   */
+  private async spawnAutoresearch(project: RegisteredProject, direction: Stored<DirectionProjection>, node: GraphNode): Promise<boolean> {
+    const projectId = project.projectId; const ordinal = this.autonomousRuns(projectId, direction.entityId, node.id) + 1;
+    if (ordinal > MAX_AUTONOMOUS_AUTORESEARCH) return false;
+    const tokens = this.autoresearchTokens(projectId, direction); if (tokens < MIN_AUTORESEARCH_TOKENS) return false;
+    const key = `child-spawn:${direction.entityId}:${node.id}:${ordinal}`; const prior = this.research.externalOperation(projectId, key);
+    const rejections = this.research.eventsAfter(projectId, 0).filter((entry) => entry.type === "research.spawn_rejected" && entry.scope.directionId === direction.entityId && (entry.payload as { ordinal?: number }).ordinal === ordinal);
+    if (rejections.length >= 3) return false;
+    let spawn: DirectionSpawn | undefined = prior ? (prior.request as { spawn: DirectionSpawn }).spawn : undefined;
+    if (!spawn && ordinal === 1 && direction.value.origin?.scopeType === "mission") {
+      const missionSpec = this.research.externalOperation(projectId, `child-spawn:${direction.value.origin.scopeId}:${direction.value.origin.nodeId}:${direction.value.origin.attempt}`)?.request as { spawn?: { familyTags?: string[]; scope?: string[] } } | undefined;
+      spawn = { nodeId: node.id, kind: "autoresearch", question: direction.value.question, familyTags: missionSpec?.spawn?.familyTags ?? ["direction"], scope: missionSpec?.spawn?.scope ?? ["**"] };
+    }
+    if (!spawn) spawn = (await this.director(project, direction, node, { siblings: this.research.autoresearch(projectId).filter((run) => run.value.directionId === direction.entityId).map((run) => `${run.entityId} (${run.state}): ${run.value.decisionQuestion}; familyTags ${(run.value.familyTags ?? []).join(", ")}; scope ${(run.value.scope ?? []).join(", ")}`), rejections: rejections.map((entry) => String((entry.payload as { issues?: string[] }).issues?.join("; ") ?? "")) })).spawn;
+    try {
+      if (!spawn || spawn.nodeId !== node.id) throw new Error(`the Research Director did not fill spawn for node ${node.id}`);
+      const childId = spawnDirectionAutoresearch(this.research, projectId, { directionId: direction.entityId, missionId: direction.value.missionId, nodeId: node.id, ordinal, spawn, maximumModelTokens: tokens });
+      this.emit(event(projectId, direction.entityId, direction.value.missionId, "direction.autoresearch_spawned", { nodeId: node.id, ordinal, autoresearchId: childId }));
+      return true;
+    } catch (error) {
+      this.emit(event(projectId, direction.entityId, direction.value.missionId, "research.spawn_rejected", { nodeId: node.id, ordinal, issues: [error instanceof Error ? error.message : String(error)] }));
+      return false;
+    }
   }
   private reconcileOrphanedNodes(projectId: string, direction: Stored<DirectionProjection>): Stored<DirectionProjection> { for (const stale of direction.value.nodes.filter((node) => ["leased", "working", "postflight", "reviewing"].includes(node.state))) { if (stale.state === "leased") direction = this.research.transitionDirectionNode(projectId, direction.entityId, direction.version, stale.id, "ready", `direction-recovery-release-${stale.lease?.leaseId ?? createId("cmd")}`); else { direction = this.research.transitionDirectionNode(projectId, direction.entityId, direction.version, stale.id, "failed", `direction-recovery-failed-${stale.lease?.leaseId ?? createId("cmd")}`); const current = direction.value.nodes.find((node) => node.id === stale.id)!; if (current.attempt < current.maximumAttempts) direction = this.research.transitionDirectionNode(projectId, direction.entityId, direction.version, stale.id, "ready", `direction-recovery-ready-${stale.lease?.leaseId ?? createId("cmd")}`); else { this.emit(event(projectId, direction.entityId, direction.value.missionId, "direction.node_recovered", { nodeId: stale.id, priorState: stale.state, disposition: "attempt_budget_exhausted" })); return this.research.transitionDirection(projectId, direction.entityId, direction.version, "blocked", `direction-recovery-blocked-${stale.lease?.leaseId ?? createId("cmd")}`); } } this.emit(event(projectId, direction.entityId, direction.value.missionId, "direction.node_recovered", { nodeId: stale.id, priorState: stale.state, disposition: "ready_for_new_lease" })); } return direction; }
 
@@ -84,17 +139,10 @@ export class DirectionSupervisor {
     if (!this.jobRunner) return null;
     const execution = (direction.value.evaluationContract as { execution?: { runner?: "native" | "wsl2"; distribution?: string | null; command?: string[]; resultPath?: string; timeoutSeconds?: number; usesGpu?: boolean } }).execution;
     if (!execution?.command?.length || !execution.resultPath) throw new Error("Direction evaluation contract has no runnable execution command");
-    const worktree = taskWorktreePath(project.repositoryRoot, packet.workspace.worktreeId); const resultPath = resolve(worktree, execution.resultPath);
-    if (relative(worktree, resultPath).startsWith("..")) throw new Error("Evaluation result path escapes the worktree");
-    const jobId = createId("job"); const timeoutSeconds = execution.timeoutSeconds ?? 600; const displayCommand = execution.command.join(" ");
-    this.jobRunner.start({ jobId, projectId: project.projectId, missionId: direction.value.missionId, directionId: direction.entityId, autoresearchId: null, runId: createId("run"), experimentId: direction.value.plannedBaselineExperimentId, commitSha: packet.workspace.startingCommit, workingDirectory: worktree, runner: execution.runner ?? "native", distribution: execution.distribution ?? null, command: execution.command, checkpointCommand: null, environmentLockHash: sha256({ node: process.version, platform: process.platform, arch: process.arch }), evaluationContractHash: direction.value.evaluationContractHash, timeoutSeconds, usesGpu: execution.usesGpu === true });
-    const terminal = ["completed", "failed", "cancelled", "lost"]; let job = this.jobRunner.get(jobId); const deadline = Date.now() + (timeoutSeconds + 60) * 1_000;
-    while (!terminal.includes(job.state) && Date.now() < deadline) { await new Promise((done) => setTimeout(done, 500)); job = this.jobRunner.get(jobId); }
-    if (!terminal.includes(job.state)) throw new Error(`Baseline evaluation Job ${jobId} did not finish within its timeout`);
-    let metrics: JsonValue = { error: job.failureReason ?? job.state }; let failure: string | null = job.state === "completed" ? "evaluation result file is absent" : `job ${job.state}`; let metricArtifactId: string | null = null;
+    const worktree = taskWorktreePath(project.repositoryRoot, packet.workspace.worktreeId); const displayCommand = execution.command.join(" ");
+    const run = await runEvaluationJob(this.jobRunner, { projectId: project.projectId, missionId: direction.value.missionId, directionId: direction.entityId, autoresearchId: null, experimentId: direction.value.plannedBaselineExperimentId, commitSha: packet.workspace.startingCommit, worktree, execution: { runner: execution.runner ?? "native", distribution: execution.distribution ?? null, command: execution.command, resultPath: execution.resultPath, timeoutSeconds: execution.timeoutSeconds ?? 600, usesGpu: execution.usesGpu === true }, evaluationContractHash: direction.value.evaluationContractHash });
+    const { jobId, job, resultPath, metrics, failure } = run; let metricArtifactId: string | null = null;
     if (job.state === "completed" && existsSync(resultPath)) {
-      try { const loaded = loadNativeEvaluation(resultPath); if (loaded && typeof loaded === "object" && !Array.isArray(loaded)) { metrics = loaded; failure = null; } else failure = "evaluation result is not a JSON object"; }
-      catch (error) { failure = error instanceof Error ? error.message : "evaluation result is malformed"; }
       metricArtifactId = this.jobArtifact(project, direction, "artifact_metrics", "application/json", resultPath, failure ? "negative_evidence" : "accepted_evidence");
       // An untracked result file would make the task worktree dirty for postflight; its content is now an artifact.
       if (directionGit(worktree, ["status", "--porcelain", "--", execution.resultPath]).startsWith("??")) unlinkSync(resultPath);
@@ -111,7 +159,8 @@ export class DirectionSupervisor {
   }
   private applyReview(projectId: string, direction: Stored<DirectionProjection>, nodeId: string, taskId: string, reviewerId: string, commit: string | null, request: DirectionReviewRequest): void { const review = this.research.terminalRecord(projectId, taskId, "review-verdict") as DirectionReviewVerdict | undefined; if (review && directionReviewPasses(review, request, reviewerId)) { direction = this.research.transitionDirectionNode(projectId, direction.entityId, direction.version, nodeId, "accepted", `direction-accepted-${taskId}`); if (!direction.value.acceptedBaseline && commit && review.reviewId) this.research.acceptDirectionBaseline(projectId, direction.entityId, direction.version, { commit, reviewId: review.reviewId, evaluationContractHash: direction.value.evaluationContractHash, idempotencyKey: `direction-baseline-${taskId}` }); return; } if (review?.verdict === "BLOCKED" && review.reviewId === request.reviewId && review.reviewRequestId === request.reviewRequestId) { this.research.transitionDirectionNode(projectId, direction.entityId, direction.version, nodeId, "blocked", `direction-review-blocked-${taskId}`); return; } this.fail(projectId, direction.entityId, nodeId, taskId); }
   private issueTaskPacket(project: RegisteredProject, direction: Stored<DirectionProjection>, node: GraphNode, agentId: string, taskId: string, role: "librarian_researcher" | "general_worker" | "reviewer", responseSchema: string, expiresAt: string): DirectionTaskPacket {
-    const head = directionGit(project.repositoryRoot, ["rev-parse", "HEAD"]);
+    // A Mission-spawned Direction works from the commit its baseline was measured at; a user Direction from the checkout.
+    const head = direction.value.baseCommit ?? directionGit(project.repositoryRoot, ["rev-parse", "HEAD"]);
     const branch = directionGit(project.repositoryRoot, ["branch", "--show-current"]);
     if (!branch || directionGit(project.repositoryRoot, ["status", "--porcelain"])) throw new Error("Direction Task preflight requires a clean checked-out Git branch");
     const tree = createTaskWorktree(this.research, project, taskId, head);
