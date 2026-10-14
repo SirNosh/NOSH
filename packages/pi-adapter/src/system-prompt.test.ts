@@ -66,8 +66,8 @@ describe("NOSH system prompt contract", () => {
     for (const role of ["reviewer", "mission_director", "research_director", "librarian_researcher"] as const) expect(hostStateGuidance(role)).not.toContain("commits your worktree");
     expect(hostStateGuidance("reviewer")).toContain("Review Request");
     expect(hostStateGuidance("mission_director")).toContain("cycle record is your only output");
-    // Without this hint the model never chose nosh_code in the ablation (0/4); roles that can hold it are told when it pays.
-    for (const role of ["general_worker", "librarian_researcher", "reviewer"] as const) expect(hostStateGuidance(role)).toContain("prefer one nosh_code program");
+    // Without guidance the model never chose nosh_code in the ablation (0/4); roles that can hold it are told it is the default for multi-file work.
+    for (const role of ["general_worker", "librarian_researcher", "reviewer"] as const) expect(hostStateGuidance(role)).toContain("nosh_code is your default for any work that touches more than one file");
     for (const role of ["mission_director", "research_director"] as const) expect(hostStateGuidance(role)).not.toContain("nosh_code");
     process.env.NOSH_CODE_MODE = "off";
     try { expect(hostStateGuidance("general_worker")).not.toContain("nosh_code"); } finally { delete process.env.NOSH_CODE_MODE; }

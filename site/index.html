@@ -364,6 +364,7 @@ footer .mono { font-family: var(--mono); }
             <li>Make judgments, and return them as one schema-checked JSON envelope per task.</li>
             <li>Ask the daemon to run the commands declared in the research contract. They never get a shell.</li>
             <li>Run as bounded threads that start from compact, hashed Episodes instead of whole transcripts.</li>
+            <li>Write a short program to read, check, and edit several files in one step. Each call inside it is still checked and recorded.</li>
           </ul>
         </div>
         <div class="side daemon">
@@ -523,6 +524,8 @@ footer .mono { font-family: var(--mono); }
         <div class="cap"><dt>Answer research questions</dt><dd>A Direction measures a baseline, runs Autoresearch, and closes as supported, refuted, or inconclusive.</dd></div>
         <div class="cap"><dt>Search for improvements</dt><dd>Autoresearch evaluates each experiment under the same contract, enforces guardrails, and promotes only reviewed winners.</dd></div>
         <div class="cap"><dt>Keep long calls off the critical path</dt><dd>Tool calls in one turn run in parallel. A slow test run returns a placeholder, and the result wakes the agent when it lands.</dd></div>
+        <div class="cap"><dt>Work through many files in one step</dt><dd>Agents write a short program that reads files together and keeps only what matters. In our tests, a 13-file task used about a fifth of the tokens.</dd></div>
+        <div class="cap"><dt>Run your commands safely</dt><dd>Workers never get a shell. They ask the daemon to run commands declared in the contract, each as a supervised Job.</dd></div>
         <div class="cap"><dt>See what is happening</dt><dd>Press <kbd>Ctrl</kbd>+<kbd>G</kbd> in the terminal UI for a live map of Missions, Directions, experiments, workers, and Jobs.</dd></div>
         <div class="cap"><dt>Use any model account</dt><dd>Sign in with a ChatGPT or Claude subscription, or use an API key from OpenAI, Anthropic, Gemini, OpenRouter, DeepSeek, Groq, Mistral, xAI, and others.</dd></div>
         <div class="cap"><dt>Survive restarts</dt><dd>Closing the terminal UI does not stop the daemon or its Jobs. Orchestration resumes from its last checkpoint.</dd></div>
@@ -541,6 +544,7 @@ footer .mono { font-family: var(--mono); }
         <div class="fact"><dt>loopback only</dt><dd>The API binds to loopback. A request is trusted only with a loopback <code>Host</code> header and no foreign <code>Origin</code>, which rejects cross-origin and DNS-rebinding browser requests.</dd></div>
         <div class="fact"><dt>short sessions</dt><dd>Any other caller needs a <strong>15-minute bearer session</strong>, issued only in exchange for the bootstrap capability in your per-user state directory.</dd></div>
         <div class="fact"><dt>no worker shell</dt><dd>Workers can only ask the daemon to run commands declared in the contract. Each one runs as a supervised Job.</dd></div>
+        <div class="fact"><dt>sandboxed programs</dt><dd>Agent-written programs run in a <strong>WebAssembly interpreter on a separate thread</strong>, with no files, network, or shell of their own. They can call only the tools the task already has.</dd></div>
         <div class="fact"><dt>credentials</dt><dd>Pi's runtime stores your model credential. NOSH never shows it, and API keys are masked while you type them.</dd></div>
         <div class="fact"><dt>scope</dt><dd>Do not expose <code>noshd</code> to a LAN or tunnel. It does not protect against malware running as your own user. Read the <a href="https://github.com/SirNosh/NOSH/blob/main/THREAT_MODEL.md">threat model</a>.</dd></div>
       </dl>
