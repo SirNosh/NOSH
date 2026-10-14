@@ -16,11 +16,14 @@ class FixtureAgents {
   private readonly sessions = new Map<string, PiSessionOptions>();
   /** General-worker prompts that fail like a provider/terminal glitch (no completion at all) before workers succeed. */
   transientWorkerFailures = 0;
+  /** Mission Director prompts whose cycle record the host rejects, as when a model writes a schema-invalid spawn. */
+  directorSlips = 0;
   constructor(private readonly append: (draft: EventDraft) => void, private readonly failGeneralWorkers = false, private readonly deferLastCriterion = false) {}
   inspect(): AgentInspection[] { return [...this.sessions.values()].map((session) => ({ ...session, piSessionId: `pi_${session.agentId}`, status: "running", currentTool: null, activeToolIds: [], startedAt: new Date().toISOString(), lastEventAt: new Date().toISOString(), modelProvider: session.model?.provider ?? null, modelId: session.model?.id ?? null, modelName: null, thinkingLevel: session.thinkingLevel ?? "medium", contextTokens: null, contextWindow: null, contextPercent: null })); }
   async start(options: PiSessionOptions): Promise<AgentInspection> { this.sessions.set(options.agentId, options); return this.inspect().find((agent) => agent.agentId === options.agentId)!; }
   async prompt(agentId: string, prompt: string): Promise<void> {
     const session = this.sessions.get(agentId)!; const taskId = session.taskId; if (!taskId) throw new Error("Fixture session requires a Task ID");
+    if (session.role === "mission_director" && this.directorSlips > 0) { this.directorSlips -= 1; throw new Error('Terminal output rejected: {"accepted":false,"retryAllowed":false,"error":"Invalid terminal record: minimumEffect too_small"}'); }
     if (session.role === "general_worker" && this.transientWorkerFailures > 0) { this.transientWorkerFailures -= 1; throw new Error("Terminal output rejected: fixture transient failure"); } const target = /target\.targetId=([a-z0-9_]+)/.exec(prompt)?.[1] ?? ""; const packetText = prompt.split("Task Packet: ")[1]?.split(". Complete only")[0]; const packet = packetText ? JSON.parse(packetText) as { attempt: number; workspace: { startingCommit: string; branch: string }; lease: { leaseId: string }; requiredOutputs: Array<{ outputId: string }>; acceptanceCriteria: Array<{ criterionId: string }> } : null; const reviewRequestText = prompt.split("Review Request: ")[1]?.split(". Submit")[0]; const reviewRequest = reviewRequestText ? JSON.parse(reviewRequestText) as { reviewId: string; reviewRequestId: string; reviewType: string; target: { targetType: string; targetId: string; targetVersion: number }; criteria: Array<{ criterionId: string; required: boolean }>; requiredArtifactIds: string[]; requiredEvidenceIds: string[] } : null; const now = new Date().toISOString();
     let record: JsonValue;
     if (session.role === "mission_director") record = { $schema: schemaUri("mission-director-cycle"), cycleId: /"cycleId":"(cycle_[0-9a-f]+)"/.exec(prompt)?.[1], directorAgentId: agentId, missionId: session.missionId, observedGraphVersion: Number(/graph version (\d+)/.exec(prompt)?.[1]), northStarCheck: { currentWorkContributes: true } };
@@ -344,6 +347,23 @@ describe("MissionSupervisor", { timeout: 90_000 }, () => { // Real git worktrees
     } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("runs a fresh Director cycle after an invalid cycle record, and blocks only after three in a row", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-slip-")); const repositoryRoot = join(directory, "repository"); mkdirSync(repositoryRoot); initializeRepository(repositoryRoot); const projectId = createId("prj"); const project: RegisteredProject = { projectId, repositoryRoot, databasePath: join(directory, "project.sqlite"), registeredAt: new Date().toISOString() }; const store = new EventStore(project.databasePath); const research = new ResearchControl(() => store, () => project, () => undefined); const fixture = new FixtureAgents((draft) => { appendFixtureEvent(store, draft); });
+    const run = async (title: string) => {
+      let mission = research.createMission(projectId, { title, objective: "Survive director slips", deliverables: ["Reviewed result"], successCriteria: ["Every node is accepted"], idempotencyKey: `${title}-create` }); for (const next of ["planning", "awaiting_approval", "running"] as const) mission = research.transitionMission(projectId, mission.entityId, mission.version, next, `${title}-${next}`);
+      // A fresh supervisor every tick: the slip count must come from durable events, not process memory.
+      for (const deadline = Date.now() + 80_000; Date.now() < deadline && !["completed", "blocked"].includes(research.mission(projectId, mission.entityId).state);) { await new MissionSupervisor(research, fixture as unknown as PiAdapter, () => [project], join(directory, "pi-package"), (draft) => { appendFixtureEvent(store, draft); }).tick(); await new Promise((resolve) => setTimeout(resolve, 20)); }
+      return mission.entityId;
+    };
+    try {
+      fixture.directorSlips = 2; const recovered = await run("slip");
+      expect(research.scopedEvents(projectId, recovered, "mission.director_retry")).toHaveLength(2);
+      expect(research.mission(projectId, recovered).state).toBe("completed");
+      fixture.directorSlips = 3; const stuck = await run("stuck");
+      expect(research.scopedEvents(projectId, stuck, "mission.director_retry")).toHaveLength(2);
+      expect(research.mission(projectId, stuck).state).toBe("blocked");
+    } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
+  });
   it("returns a Mission and a Direction left in reviewing by a restart to their running state", async () => {
     const directory = mkdtempSync(join(tmpdir(), "nosh-review-recovery-")); const repositoryRoot = join(directory, "repository"); mkdirSync(repositoryRoot); initializeRepository(repositoryRoot); const projectId = createId("prj"); const project: RegisteredProject = { projectId, repositoryRoot, databasePath: join(directory, "project.sqlite"), registeredAt: new Date().toISOString() }; const store = new EventStore(project.databasePath); const research = new ResearchControl(() => store, () => project, () => undefined); const fixture = new FixtureAgents((draft) => { appendFixtureEvent(store, draft); }); const emit = (draft: EventDraft) => { appendFixtureEvent(store, draft); };
     try {

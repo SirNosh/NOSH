@@ -65,31 +65,30 @@ export function spawnIssues(project: RegisteredProject, spawn: MissionSpawn, nod
 export async function probeEvaluation(research: ResearchControl, jobRunner: JobRunner, project: RegisteredProject, input: { missionId: string; directionId: string | null; spawn: MissionSpawn; baseCommit: string }): Promise<{ ok: true; metrics: Record<string, number>; execution: EvaluationExecution; probeJobId: string } | { ok: false; issues: string[]; metricKeys: string[]; writtenJson: string[] }> {
   const command = declaredTaskCommands(project).find((entry) => entry.commandId === input.spawn.evaluation.commandId)!;
   const execution: EvaluationExecution = { runner: "native", distribution: null, command: command.argv, resultPath: input.spawn.evaluation.resultPath, timeoutSeconds: command.timeoutSeconds, usesGpu: false };
-  const tree = createTaskWorktree(research, project, createId("tsk"), input.baseCommit); const started = Date.now();
+  const tree = createTaskWorktree(research, project, createId("tsk"), input.baseCommit); const before = jsonFiles(tree.path);
   const run = await runEvaluationJob(jobRunner, { projectId: project.projectId, missionId: input.missionId, directionId: input.directionId, autoresearchId: null, experimentId: createId("exp"), commitSha: input.baseCommit, worktree: tree.path, execution, evaluationContractHash: sha256({ probe: input.spawn.evaluation as unknown as JsonValue }) });
   const metrics = Object.fromEntries(Object.entries(run.metrics && typeof run.metrics === "object" && !Array.isArray(run.metrics) ? run.metrics : {}).filter((entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1])));
   const issues = run.failure ? [`probe ${command.argv.join(" ")}: ${run.failure}`] : [];
   for (const name of [input.spawn.evaluation.primaryMetric.name, ...input.spawn.evaluation.guardrails.map((guardrail) => guardrail.name)]) if (!run.failure && !(name in metrics)) issues.push(`metric ${name} is not a finite number in ${input.spawn.evaluation.resultPath}`);
   if (!issues.length) return { ok: true, metrics, execution, probeJobId: run.jobId };
   // The rejection is all the Director sees next cycle, so it names what the command really wrote. Outputs are often
-  // gitignored (metrics.json), so they are found by modification time, not Git status.
-  const writtenJson = jsonWrittenSince(tree.path, started); const metricKeys = Object.keys(metrics).slice(0, 40);
+  // gitignored (metrics.json), so they are found by comparing the worktree before and after the run, not Git status.
+  const writtenJson = [...jsonFiles(tree.path)].filter(([path, modified]) => before.get(path) !== modified).map(([path]) => path).slice(0, 20); const metricKeys = Object.keys(metrics).slice(0, 40);
   if (run.failure === "evaluation result file is absent") issues.push(writtenJson.length ? `${input.spawn.evaluation.resultPath} does not exist; the command wrote ${writtenJson.join(", ")}: use one of these as resultPath` : `${input.spawn.evaluation.resultPath} does not exist and the command wrote no JSON file in the repository`);
   else if (!run.failure) issues.push(`numeric keys in ${input.spawn.evaluation.resultPath}: ${metricKeys.join(", ") || "none"}`);
   return { ok: false, issues, metricKeys, writtenJson };
 }
 
-/** Repository-relative JSON files modified since `since`, skipping Git metadata and dependencies. */
-function jsonWrittenSince(root: string, since: number, directory = root, depth = 0): string[] {
-  if (depth > 4) return [];
-  const found: string[] = [];
+/** Repository-relative JSON files and their modification times, skipping Git metadata and dependencies. */
+function jsonFiles(root: string, directory = root, depth = 0, found = new Map<string, number>()): Map<string, number> {
+  if (depth > 4) return found;
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     if (entry.name === ".git" || entry.name === "node_modules") continue;
     const path = join(directory, entry.name);
-    if (entry.isDirectory()) found.push(...jsonWrittenSince(root, since, path, depth + 1));
-    else if (entry.isFile() && entry.name.endsWith(".json") && statSync(path).mtimeMs >= since - 2_000) found.push(relative(root, path).replaceAll("\\", "/"));
+    if (entry.isDirectory()) jsonFiles(root, path, depth + 1, found);
+    else if (entry.isFile() && entry.name.endsWith(".json")) found.set(relative(root, path).replaceAll("\\", "/"), statSync(path).mtimeMs);
   }
-  return found.slice(0, 20);
+  return found;
 }
 
 /** The frozen evaluation contract: the director's metric judgment plus the daemon-measured baseline. */

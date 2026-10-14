@@ -15,6 +15,14 @@ import type { DirectionProjection, MissionProjection, ResearchControl, Stored } 
 const MAX_BRIEF = 14_000;
 const MAX_ITEMS = 12;
 
+/** A director cycle the model did not produce validly (a rejected or missing record): a fresh cycle can follow. */
+export class DirectorSlip extends Error {}
+const MAX_DIRECTOR_SLIPS = 3;
+/** Whether a fresh cycle may follow this slip: slips in a row since the scope's last accepted cycle, read from durable events. */
+export function directorRetryAllowed(events: EventEnvelope[], cycleSchema: string, retryType: string): boolean {
+  const last = events.map((event) => event.type === "record.submitted" && (event.payload as { $schema?: string } | null)?.$schema === cycleSchema).lastIndexOf(true);
+  return events.slice(last + 1).filter((event) => event.type === retryType).length + 1 < MAX_DIRECTOR_SLIPS;
+}
 export type BriefIds = { cycleId: string; submittedAt: string; consumedEventRange: { fromSequence: number; toSequence: number } };
 type Record_ = Record<string, unknown>;
 
@@ -183,7 +191,7 @@ export function missionBrief(input: { research: ResearchControl; project: Regist
   const cycle = { ...spawnTemplate, $schema: schemaUri("mission-director-cycle"), schemaVersion: 1, cycleId: ids.cycleId, missionId: mission.entityId, directorAgentId: agentId, observedObjectiveVersion: 1, observedGraphVersion: value.graphVersion, consumedEventRange: ids.consumedEventRange, northStarCheck: { missionObjective: value.objective, unsatisfiedCriterionIds: unsatisfied, criticalPathNodeIds: [node.id], currentWorkContributes: true }, portfolioCheck: { readyNodeIds: ready, starvedNodeIds: [], overfocusedNodeId: null, fairnessAction: "fairness_none" }, decisions: [{ action: "run_node", targetId: node.id, reason: "EDIT: why running this node now advances the objective." }], createdTaskIds: [], invokedDirectionIds: [], invokedAutoresearchIds: [], graphChangeProposalIds: [], userInputRequestId: null, budgetWarnings: [], blockerIds: [], nextWake: { type: "event", deadline: null }, submittedAt: ids.submittedAt };
   const instructions = [
     "Your cycle: decide whether running the selected node now advances the Mission objective and its unsatisfied criteria. You do not execute work, lease nodes, read files, or claim completion; the daemon runs the node, its worker, postflight, and independent Review after you. Base every statement only on this brief.",
-    ...templateInstructions(cycle, `northStarCheck.criticalPathNodeIds, northStarCheck.currentWorkContributes (false halts the Mission for user attention), portfolioCheck.starvedNodeIds/overfocusedNodeId, budgetWarnings, and decisions[].reason${input.spawn ? "; and every field of spawn except nodeId and kind (objective is maximize or minimize; guardrails are {name, direction, threshold}; target is a number or null; maximumNoProgressRounds is 1-3)" : ""}`, "mission_director"),
+    ...templateInstructions(cycle, `northStarCheck.criticalPathNodeIds, northStarCheck.currentWorkContributes (false halts the Mission for user attention), portfolioCheck.starvedNodeIds/overfocusedNodeId, budgetWarnings, and decisions[].reason${input.spawn ? "; and every field of spawn except nodeId and kind (objective is maximize or minimize; primaryMetric.minimumEffect is the smallest improvement that counts and must be greater than 0; guardrails are {name, direction, threshold}, threshold being the allowed change from the measured baseline; target is a number or null; maximumNoProgressRounds is 1-3)" : ""}`, "mission_director"),
   ];
   return { prompt: finish(sections, instructions), ids };
 }

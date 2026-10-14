@@ -123,6 +123,8 @@ describe("Mission research spawning", { timeout: 120_000 }, () => {
       for (const deadline = Date.now() + 60_000; Date.now() < deadline && daemon.research.scopedEvents(project.projectId, mission.entityId, "research.spawn_rejected").length < 2;) { await supervisor.tick(); await new Promise((resolve) => setTimeout(resolve, 50)); }
       const [absent, missingKey] = daemon.research.scopedEvents(project.projectId, mission.entityId, "research.spawn_rejected").map((entry) => JSON.stringify(entry.payload));
       expect(absent).toContain("results/dev.json"); expect(absent).toContain("metrics.json");
+      // Files the checkout itself brought in are not outputs of the command.
+      expect(absent).not.toContain(".nosh/project.json");
       expect(missingKey).toContain("score"); expect(missingKey).toContain("f1");
       expect(directors.prompts.at(-1)).toContain("metrics.json");
     } finally { cleanup(); }

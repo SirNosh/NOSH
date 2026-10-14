@@ -12,7 +12,7 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { daemonTaskFacts, declaredTaskCommands, librarianNetworkAllowed, librarianResearchHosts, taskCommandInstructions, taskCommandRuns, type DirectionProjection, type ResearchControl, type Stored } from "./research-control.js";
 import { completionRunIssues, validateGitCompletion, writeUpOnly } from "./task-postflight.js";
-import { directionAutoresearchOutcomes, directionBrief } from "./director-brief.js";
+import { DirectorSlip, directionAutoresearchOutcomes, directionBrief, directorRetryAllowed } from "./director-brief.js";
 import { MIN_AUTORESEARCH_TOKENS, runEvaluationJob, spawnDirectionAutoresearch, type DirectionSpawn } from "./research-spawner.js";
 /** Autoresearch a Direction starts on its own per hypothesis node; after that it waits for its user. */
 const MAX_AUTONOMOUS_AUTORESEARCH = 2;
@@ -44,16 +44,20 @@ export class DirectionSupervisor {
       // Hypothesis evaluation is experiment work: the Direction-backed Autoresearch fulfils it, not a single worker.
       if (isHypothesisNode(node)) { await this.awaitAutoresearch(project, direction, node); return; }
       await this.director(project, direction, node); direction = this.research.direction(project.projectId, directionId); if (direction.state === "active") await this.runNode(project, direction, node.id);
-    } catch (error) { let direction = this.research.direction(project.projectId, directionId); this.emit(event(project.projectId, directionId, direction.value.missionId, "direction.supervisor_error", { message: error instanceof Error ? error.message : "Direction supervisor failed" })); if (direction.state === "reviewing") direction = this.research.transitionDirection(project.projectId, directionId, direction.version, "active", `direction-review-failed-${createId("cmd")}`); if (direction.state === "active") this.research.transitionDirection(project.projectId, directionId, direction.version, "blocked", `direction-error-${createId("cmd")}`); }
+    } catch (error) { let direction = this.research.direction(project.projectId, directionId);
+      // An invalid cycle record is a model slip, not a stuck Direction: the next tick runs a fresh cycle.
+      if (error instanceof DirectorSlip && direction.state === "active" && directorRetryAllowed(this.research.eventsAfter(project.projectId, 0).filter((entry) => entry.scope.directionId === directionId && !entry.scope.autoresearchId), schemaUri("research-director-cycle"), "direction.director_retry")) { this.emit(event(project.projectId, directionId, direction.value.missionId, "direction.director_retry", { message: error.message })); return; }
+      this.emit(event(project.projectId, directionId, direction.value.missionId, "direction.supervisor_error", { message: error instanceof Error ? error.message : "Direction supervisor failed" })); if (direction.state === "reviewing") direction = this.research.transitionDirection(project.projectId, directionId, direction.version, "active", `direction-review-failed-${createId("cmd")}`); if (direction.state === "active") this.research.transitionDirection(project.projectId, directionId, direction.version, "blocked", `direction-error-${createId("cmd")}`); }
     finally { this.busy.delete(directionId); }
   }
 
   private async director(project: RegisteredProject, direction: Stored<DirectionProjection>, node: GraphNode, spawn?: { siblings: string[]; rejections: string[] }): Promise<{ spawn?: DirectionSpawn }> {
     const agentId = createId("agt"); const taskId = createId("tsk");
     const brief = directionBrief({ research: this.research, project, direction, node, agentId, ...(spawn ? { spawn } : {}) });
-    await this.session(project, direction, agentId, taskId, "research_director", brief.prompt);
+    try { await this.session(project, direction, agentId, taskId, "research_director", brief.prompt); }
+    catch (error) { if (error instanceof Error && error.message.startsWith("Terminal output rejected")) throw new DirectorSlip(error.message); throw error; }
     const record = this.research.terminalRecord(project.projectId, taskId, "research-director-cycle") as { cycleId?: string; directorAgentId?: string; directionId?: string; observedGraphVersion?: number; evaluationContractHash?: string; questionCheck?: { currentWorkContributes?: boolean }; spawn?: DirectionSpawn } | undefined;
-    if (!record || record.cycleId !== brief.ids.cycleId || record.directorAgentId !== agentId || record.directionId !== direction.entityId || record.observedGraphVersion !== direction.value.graphVersion || record.evaluationContractHash !== direction.value.evaluationContractHash) throw new Error("Research Director did not submit the current cycle record");
+    if (!record || record.cycleId !== brief.ids.cycleId || record.directorAgentId !== agentId || record.directionId !== direction.entityId || record.observedGraphVersion !== direction.value.graphVersion || record.evaluationContractHash !== direction.value.evaluationContractHash) throw new DirectorSlip("Research Director did not submit the current cycle record");
     // A valid "does not contribute" decision is the director halting work, not a supervisor fault.
     if (record.questionCheck?.currentWorkContributes !== true) { this.emit(event(project.projectId, direction.entityId, direction.value.missionId, "direction.director_halted", { cycleId: record.cycleId, nodeId: node.id })); throw new Error("Research Director halted the selected node; user attention required"); }
     return record.spawn ? { spawn: record.spawn } : {};

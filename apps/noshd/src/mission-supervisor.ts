@@ -11,7 +11,7 @@ import type { RegisteredProject } from "@nosh/persistence";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { SPAWN_NODE_TYPES, daemonTaskFacts, declaredTaskCommands, missionOutcomes, librarianNetworkAllowed, librarianResearchHosts, taskCommandInstructions, taskCommandRuns, type MissionProjection, type ResearchControl, type Stored } from "./research-control.js";
-import { missionBrief, type SpawnBriefContext } from "./director-brief.js";
+import { DirectorSlip, directorRetryAllowed, missionBrief, type SpawnBriefContext } from "./director-brief.js";
 import { createTaskWorktree, taskWorktreePath } from "./task-worktree.js";
 import { completionInstructions, generalWorkerCompletionTemplate, librarianInstructions, reviewerInstructions } from "./task-templates.js";
 import { completionRunIssues, validateGitCompletion, writeUpOnly } from "./task-postflight.js";
@@ -66,6 +66,8 @@ export class MissionSupervisor {
       let mission = this.research.mission(project.projectId, missionId);
       // Work cut short by a user Stop is the expected effect of that Stop, not a supervisor failure.
       if (["stopping", "stopped", "completed", "failed"].includes(mission.state)) return;
+      // An invalid cycle record is a model slip, not a stuck Mission: the next tick runs a fresh cycle.
+      if (error instanceof DirectorSlip && directorRetryAllowed(this.research.scopedEvents(project.projectId, missionId).filter((entry) => !entry.scope.directionId && !entry.scope.autoresearchId), schemaUri("mission-director-cycle"), "mission.director_retry")) { this.emit(event(project.projectId, missionId, "mission.director_retry", { message: error.message })); return; }
       this.emit(event(project.projectId, missionId, "mission.supervisor_error", { message: error instanceof Error ? error.message : "Mission supervisor failed" })); if (mission.state === "reviewing") mission = this.research.transitionMission(project.projectId, missionId, mission.version, "running", `supervisor-review-failed-${createId("cmd")}`); if (mission.state === "running") this.research.transitionMission(project.projectId, missionId, mission.version, "blocked", `supervisor-error-${createId("cmd")}`);
     } finally { this.busy.delete(missionId); }
   }
@@ -73,9 +75,10 @@ export class MissionSupervisor {
   private async directorCycle(project: RegisteredProject, mission: Stored<MissionProjection>, node: GraphNode, spawn?: SpawnBriefContext): Promise<{ spawn?: MissionSpawn }> {
     const agentId = createId("agt"); const taskId = createId("tsk");
     const brief = missionBrief({ research: this.research, project, mission, node, agentId, ...(spawn ? { spawn } : {}) });
-    await this.runSession(project, { agentId, taskId, missionId: mission.entityId, role: "mission_director" }, brief.prompt);
+    try { await this.runSession(project, { agentId, taskId, missionId: mission.entityId, role: "mission_director" }, brief.prompt); }
+    catch (error) { if (error instanceof Error && error.message.startsWith("Terminal output rejected")) throw new DirectorSlip(error.message); throw error; }
     const record = this.research.terminalRecord(project.projectId, taskId, "mission-director-cycle") as { cycleId?: string; directorAgentId?: string; missionId?: string; observedGraphVersion?: number; northStarCheck?: { currentWorkContributes?: boolean }; spawn?: MissionSpawn } | undefined;
-    if (!record || record.cycleId !== brief.ids.cycleId || record.directorAgentId !== agentId || record.missionId !== mission.entityId || record.observedGraphVersion !== mission.value.graphVersion) throw new Error("Mission Director did not submit the current cycle record");
+    if (!record || record.cycleId !== brief.ids.cycleId || record.directorAgentId !== agentId || record.missionId !== mission.entityId || record.observedGraphVersion !== mission.value.graphVersion) throw new DirectorSlip("Mission Director did not submit the current cycle record");
     if (record.northStarCheck?.currentWorkContributes !== true) throw new Error("Mission Director halted the selected node; user attention required");
     return record.spawn ? { spawn: record.spawn } : {};
   }
