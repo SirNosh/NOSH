@@ -113,7 +113,12 @@ export function freezeContract(spawn: MissionSpawn, probe: { metrics: Record<str
 export function allocateBudget(research: ResearchControl, projectId: string, mission: Stored<MissionProjection>, kind: "research_direction" | "autoresearch"): { ok: true; maximumModelTokens: number; maximumWallClockSeconds: number } | { ok: false; reason: string } {
   const budgets = mission.value.budgets; const use = research.missionBudgetUse(projectId, mission.entityId);
   const spawnNodes = mission.value.nodes.filter((node) => ["research_direction", "autoresearch"].includes(node.type));
-  const given = spawnNodes.map((node) => research.spawnedChild(projectId, mission.entityId, node.id)).filter((child): child is NonNullable<typeof child> => Boolean(child)).reduce((sum, child) => sum + (child.kind === "direction" ? Number((research.direction(projectId, child.entityId).value.budget as { maximumModelTokens?: number }).maximumModelTokens ?? 0) : research.autoresearchExecution(projectId, child.entityId).value.maximumModelTokens), 0);
+  // A live child holds its whole ceiling; an ended one (stopped, failed, rejected) holds only what it spent, so a retried node can respawn.
+  const given = spawnNodes.map((node) => research.spawnedChild(projectId, mission.entityId, node.id)).filter((child): child is NonNullable<typeof child> => Boolean(child)).reduce((sum, child) => {
+    const ceiling = child.kind === "direction" ? Number((research.direction(projectId, child.entityId).value.budget as { maximumModelTokens?: number }).maximumModelTokens ?? 0) : research.autoresearchExecution(projectId, child.entityId).value.maximumModelTokens;
+    if (!["failed", "stopped", "rejected"].includes(child.state)) return sum + ceiling;
+    return sum + Math.min(ceiling, child.kind === "direction" ? research.directionBudgetUse(projectId, child.entityId).modelTokens : research.autoresearchBudgetUse(projectId, child.entityId).modelTokens);
+  }, 0);
   const open = spawnNodes.filter((node) => !research.spawnedChild(projectId, mission.entityId, node.id) || ["failed", "stopped", "rejected"].includes(research.spawnedChild(projectId, mission.entityId, node.id)!.state)).length || 1;
   const pool = budgets.maximumModelTokens * (1 - MISSION_RESERVE) - given;
   const tokens = Math.floor(Math.min(pool / open, budgets.maximumModelTokens - use.modelTokens - budgets.maximumModelTokens * MISSION_RESERVE));

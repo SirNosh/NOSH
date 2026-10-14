@@ -172,6 +172,10 @@ describe("Mission research spawning", { timeout: 120_000 }, () => {
       const retried = nodes.find((node) => node.id === stopped!.value.origin!.nodeId)!;
       expect(retried).toMatchObject({ state: "ready", attempt: 1 });
       expect(daemon.research.scopedEvents(project.projectId, mission.entityId, "mission.child_resolved").map((entry) => (entry.payload as { outcome: string }).outcome).sort()).toEqual(["accepted", "failed"]);
+      // The stopped child's unused share returns to the pool, so the retried node can spawn a replacement.
+      for (const deadline = Date.now() + 60_000; Date.now() < deadline && daemon.research.directions(project.projectId).length < 3 && !daemon.research.scopedEvents(project.projectId, mission.entityId, "research.spawn_rejected").length;) { await supervisor.tick(); await new Promise((resolve) => setTimeout(resolve, 50)); }
+      expect(daemon.research.scopedEvents(project.projectId, mission.entityId, "research.spawn_rejected").map((entry) => entry.payload)).toEqual([]);
+      expect(daemon.research.directions(project.projectId)).toHaveLength(3);
     } finally { vi.restoreAllMocks(); cleanup(); }
   });
 
