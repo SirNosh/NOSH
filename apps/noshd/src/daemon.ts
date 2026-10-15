@@ -17,6 +17,7 @@ import { SingleInstanceLock } from "./single-instance.js";
 import { gitChangedPaths, gitWorktreeState } from "./task-postflight.js";
 import { taskWorktreePath } from "./task-worktree.js";
 import { ResearchControl } from "./research-control.js";
+import { isEvaluationVariant } from "./research-spawner.js";
 import { MissionSupervisor } from "./mission-supervisor.js";
 import { DirectionSupervisor } from "./direction-supervisor.js";
 import { AutoresearchSupervisor } from "./autoresearch-supervisor.js";
@@ -799,6 +800,10 @@ export class NoshDaemon {
       const commandId = (record as { commandId?: unknown } | null)?.commandId;
       const command = execution?.commands.find((entry) => entry.commandId === commandId);
       if (!execution || !command) throw new Error(`Unknown commandId; the approved Project contract declares: ${execution?.commands.map((entry) => entry.commandId).join(", ") || "none"}`);
+      if (packet.taskType === "task_experiment.implementation" && agent.autoresearchId) {
+        const frozen = (this.research.autoresearchExecution(projectId, agent.autoresearchId).value.evaluationContract as { execution?: { command?: string[] } } | null)?.execution?.command;
+        if (frozen && isEvaluationVariant(command.argv, frozen)) throw new Error(`${command.commandId} runs the frozen evaluation program. The daemon evaluates this variant with the frozen command after your final answer, and comparisons happen across rounds; run only the other declared commands (such as tests).`);
+      }
       const worktree = taskWorktreePath(project.repositoryRoot, packet.workspace.worktreeId);
       // Each run is tied to an exact commit: the daemon commits the worker's current edits first (workers have no commit tool).
       try { this.commitTaskWorktree(projectId, agent, packet, `nosh: ${taskId} edits before ${command.commandId}`); }
@@ -1124,7 +1129,7 @@ function assertJobIdentity(record: JobRecord, spec: JobSpec, context: string): v
 function chatSelection(selection?: ModelSelection): JsonValue { return selection ? { provider: selection.provider, id: selection.id, thinkingLevel: selection.thinkingLevel ?? null } : null; }
 function deterministicChatAgentId(projectId: string): string { return `agt_${sha256({ projectId, role: "nosh_chat" }).slice(7, 39)}`; }
 
-type TaskPacketFacts = { attempt?: number; permissions?: TaskPermissions; workspace?: TaskWorkspace };
+type TaskPacketFacts = { attempt?: number; taskType?: string; permissions?: TaskPermissions; workspace?: TaskWorkspace };
 
 const CITATION = /^artifact:(\S+)$/;
 const KIND_RANK = ["artifact_file", "artifact_source", "artifact_report", "artifact_bibliography"];

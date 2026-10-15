@@ -139,6 +139,31 @@ describe("nosh_run task commands", () => {
       expect(await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_check" }, agentId)).toMatchObject({ accepted: false, error: "This task is not authorized to run commands" });
     } finally { daemon.stop(); rmSync(directory, { recursive: true, force: true }); }
   }, 60_000);
+  it("refuses an experiment worker any variant of the frozen evaluation program, and allows its other commands", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-run-experiment-"));
+    const daemon = new NoshDaemon({ dataDirectory: join(directory, "data"), bootstrapToken: "test" });
+    try {
+      const project = daemon.initializeProject({ path: join(directory, "repository"), createRepository: true, workingTitle: "Experiment run fixture" });
+      const git = (args: string[]) => spawnSync("git", ["-C", project.repositoryRoot, ...args], { encoding: "utf8", windowsHide: true }).stdout.trim();
+      const approved = approveProjectContract(project.repositoryRoot, { ...readProjectContract(project.repositoryRoot), contractVersion: 2 });
+      daemon.amendProjectContract(project.projectId, { ...approved, contractVersion: 3, execution: { runner: "native", commands: [
+        { commandId: "command_check", description: "Unit tests", argv: [process.execPath, "-e", "process.exit(0)"], timeoutSeconds: 30 },
+        { commandId: "command_evaluate-test", description: "Held-out test evaluation", argv: [process.execPath, "evaluate.mjs", "--split=test"], timeoutSeconds: 30 },
+      ] } }, "amend-experiment-0001");
+      writeFileSync(join(project.repositoryRoot, "README.md"), "# fixture\n"); git(["add", "README.md"]); git(["-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-m", "initial"]);
+      const taskId = createId("tsk"); const agentId = createId("agt"); const autoresearchId = createId("ar");
+      const tree = createTaskWorktree(daemon.research, project, taskId, git(["rev-parse", "HEAD"]));
+      vi.spyOn(daemon.agents, "inspect").mockReturnValue([{ agentId, projectId: project.projectId, taskId, role: "general_worker", missionId: null, directionId: null, autoresearchId, experimentId: createId("exp") }] as unknown as ReturnType<typeof daemon.agents.inspect>);
+      const packet = { taskId, taskType: "task_experiment.implementation", permissions: { subprocess: "allowlisted", allowedToolIds: ["tool_nosh.run"] }, workspace: { worktreeId: tree.worktreeId } };
+      const records = daemon.research.records.bind(daemon.research);
+      vi.spyOn(daemon.research, "records").mockImplementation((projectId, schema) => schema === "task-packet" ? [packet] : records(projectId, schema));
+      vi.spyOn(daemon.research, "autoresearchExecution").mockReturnValue({ entityId: autoresearchId, value: { evaluationContract: { execution: { command: [process.execPath, "evaluate.mjs", "--split=dev"] } } } } as unknown as ReturnType<typeof daemon.research.autoresearchExecution>);
+      // The daemon evaluates every variant with the frozen command; a worker running it (or its held-out split) is refused.
+      expect(await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_evaluate-test" }, agentId)).toMatchObject({ accepted: false, error: expect.stringContaining("frozen evaluation") });
+      expect(await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_check" }, agentId)).toMatchObject({ accepted: true, exitCode: 0 });
+    } finally { vi.restoreAllMocks(); daemon.stop(); rmSync(directory, { recursive: true, force: true }); }
+  });
+
 });
 
 describe("paper write-up after a cited run", () => {

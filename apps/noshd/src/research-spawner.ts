@@ -50,6 +50,16 @@ export async function runEvaluationJob(jobRunner: JobRunner, input: { projectId:
   return { jobId, job, resultPath, metrics, failure };
 }
 
+/**
+ * Whether argv runs the frozen evaluation's program with other flags (`node evaluate.mjs --split=test` for
+ * `node evaluate.mjs --split=dev`). Experiment workers never run it: the daemon evaluates each variant with the frozen
+ * command, and its other splits (held-out test) are reserved.
+ */
+export function isEvaluationVariant(argv: string[], evaluation: string[]): boolean {
+  const program = (args: string[]) => args.filter((arg) => !arg.startsWith("-")).join("\u0000");
+  return program(argv) === program(evaluation);
+}
+
 /** Structural checks a spawn must pass before anything runs; the probe then checks it against a real evaluation. */
 export function spawnIssues(project: RegisteredProject, spawn: MissionSpawn, nodeId: string, nodeType: string): string[] {
   const issues: string[] = [];
