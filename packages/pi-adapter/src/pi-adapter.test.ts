@@ -92,6 +92,11 @@ describe("Pi event mapping", () => {
       expect(() => resolveWorkspacePath(options, ".git/HEAD", true)).toThrow("Git metadata");
       if (process.platform === "win32") expect(() => resolveWorkspacePath(options, ".GIT/HEAD", true)).toThrow("Git metadata");
       if (process.platform === "win32") expect(() => resolveWorkspacePath(options, ".NOSH/protected.ts", true)).toThrow("protected");
+      // Live: a director scoped an Autoresearch to ["."] (the whole repository); "./src" is the same idea for a folder.
+      const whole = { ...options, taskWorkspace: { ...taskWorkspace, writeScopes: ["."] } };
+      expect(() => resolveWorkspacePath(whole, "src/calibrate.mjs", true)).not.toThrow();
+      expect(() => resolveWorkspacePath(whole, ".nosh/protected.ts", true)).toThrow("protected");
+      expect(() => resolveWorkspacePath({ ...options, taskWorkspace: { ...taskWorkspace, writeScopes: ["./src"] } }, "src/calibrate.mjs", true)).not.toThrow();
     } finally {
       adapter.stop(options.agentId);
       rmSync(directory, { recursive: true, force: true });

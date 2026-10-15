@@ -957,8 +957,9 @@ function assertUnlinkedWorkspacePath(root: string, target: string): void {
 }
 function workspaceMatches(path: string, scope: string): boolean {
   const normalize = (value: string): string => process.platform === "win32" ? value.toLowerCase() : value;
-  if (scope === "**") return true;
-  const normalized = normalize(scope.replaceAll("\\", "/").replace(/\/+$/, ""));
+  // Directors write the repository root as "." and folders as "./src"; both mean the same as "**" and "src".
+  const normalized = normalize(scope.replaceAll("\\", "/").replace(/\/+$/, "").replace(/^(\.\/)+/, ""));
+  if (normalized === "**" || normalized === "." || normalized === "") return true;
   const prefix = normalized.endsWith("/**") ? normalized.slice(0, -3) : normalized;
   return path === prefix || path.startsWith(`${prefix}/`);
 }
