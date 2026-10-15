@@ -183,7 +183,8 @@ describe("Mission research spawning", { timeout: 120_000 }, () => {
     const { daemon, project, emit, submit, jobs, running, cleanup } = fixture("nosh-spawn-direction-");
     try {
       const mission = running(daemon.research.createMission(project.projectId, { title: "Direction child", objective: "Let the Direction search", deliverables: ["Result"], successCriteria: ["Reviewed"], researchPlan: { directions: 1, missionAutoresearch: false }, idempotencyKey: "direction-child-create" }));
-      const directors = new Directors(submit, (nodeId) => spec("research_direction")(nodeId));
+      let directionSpecs = 0;
+      const directors = new Directors(submit, (nodeId) => nodeId.startsWith("dnode_") ? { nodeId, kind: "autoresearch", question: `Distinct question ${++directionSpecs}`, familyTags: [`family-${directionSpecs}`], scope: ["src/**"] } : spec("research_direction")(nodeId));
       const supervisor = new MissionSupervisor(daemon.research, directors as unknown as PiAdapter, () => [project], ".", emit, undefined, jobs);
       for (const deadline = Date.now() + 90_000; Date.now() < deadline && !daemon.research.directions(project.projectId).length;) { await supervisor.tick(); await new Promise((resolve) => setTimeout(resolve, 50)); }
       let child = daemon.research.directions(project.projectId)[0]!;
@@ -204,6 +205,14 @@ describe("Mission research spawning", { timeout: 120_000 }, () => {
       await directions.tick();
       expect(daemon.research.autoresearchExecution(project.projectId, blocked.entityId).state).toBe("stopped");
       expect(daemon.research.scopedEvents(project.projectId, mission.entityId, "direction.autoresearch_stopped").map((entry) => (entry.payload as { autoresearchId: string }).autoresearchId)).toEqual([blocked.entityId]);
+      // Runs stopped before evaluating anything did no research, so they do not use up the Direction's Autoresearch cap.
+      const nextRun = async (count: number) => { for (let tick = 0; tick < 40 && daemon.research.autoresearch(project.projectId).length < count; tick += 1) { await directions.tick(); await new Promise((resolve) => setTimeout(resolve, 50)); } };
+      await nextRun(2);
+      const second = daemon.research.autoresearch(project.projectId).find((run) => run.entityId !== blocked.entityId)!;
+      expect(second).toBeDefined();
+      daemon.research.transitionAutoresearch(project.projectId, second.entityId, second.version, "blocked", "fixture-ar-blocked-2");
+      await nextRun(3);
+      expect(daemon.research.autoresearch(project.projectId)).toHaveLength(3);
       vi.restoreAllMocks();
       await daemon.controlMission(project.projectId, mission.entityId, daemon.research.mission(project.projectId, mission.entityId).version, "stop", "immediate", "stop-mission-0001");
       expect(daemon.research.direction(project.projectId, child.entityId).state).toBe("stopped");

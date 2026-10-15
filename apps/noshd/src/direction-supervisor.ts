@@ -81,7 +81,7 @@ export class DirectionSupervisor {
     const finished = runs.find((run) => ["failed", "stopped"].includes(run.state));
     // A first Autoresearch that improved nothing is not the answer yet while a second, distinct one can still run.
     // Only when a second one actually starts; otherwise the completed one answers the node, as before.
-    if (completed && !finished && !completed.value.acceptedFrontierExperimentIds?.length && this.autonomousRuns(projectId, id, node.id) < MAX_AUTONOMOUS_AUTORESEARCH && this.autoresearchTokens(projectId, direction) >= MIN_AUTORESEARCH_TOKENS && await this.spawnAutoresearch(project, direction, node)) {
+    if (completed && !finished && !completed.value.acceptedFrontierExperimentIds?.length && this.mayStartAnother(projectId, id, node.id) && this.autoresearchTokens(projectId, direction) >= MIN_AUTORESEARCH_TOKENS && await this.spawnAutoresearch(project, direction, node)) {
       this.emit(event(projectId, id, direction.value.missionId, "direction.hypothesis_continued", { nodeId: node.id, autoresearchId: completed.entityId })); return;
     }
     if (!completed && !finished) {
@@ -98,6 +98,16 @@ export class DirectionSupervisor {
   }
   /** Autoresearch this Direction started on its own for a hypothesis node. */
   private autonomousRuns(projectId: string, directionId: string, nodeId: string): number { return this.research.autoresearch(projectId).filter((run) => run.value.origin?.scopeType === "direction" && run.value.origin.scopeId === directionId && run.value.origin.nodeId === nodeId).length; }
+  /**
+   * Runs that count against MAX_AUTONOMOUS_AUTORESEARCH: those that evaluated at least one experiment. A run stopped
+   * before measuring anything (a harness fault, a stale block) did no research; at most twice the cap may start in all.
+   */
+  private mayStartAnother(projectId: string, directionId: string, nodeId: string): boolean {
+    const runs = this.research.autoresearch(projectId).filter((run) => run.value.origin?.scopeType === "direction" && run.value.origin.scopeId === directionId && run.value.origin.nodeId === nodeId);
+    const results = this.research.records(projectId, "experiment-result") as Array<{ autoresearchId?: string }>;
+    const researched = runs.filter((run) => results.some((result) => result.autoresearchId === run.entityId)).length;
+    return researched < MAX_AUTONOMOUS_AUTORESEARCH && runs.length < 2 * MAX_AUTONOMOUS_AUTORESEARCH;
+  }
   /** Model tokens the next Autoresearch may use: 80% of the Direction budget goes to Autoresearch, the first gets at most 60% of that. */
   private autoresearchTokens(projectId: string, direction: Stored<DirectionProjection>): number {
     const maximum = (direction.value.budget as { maximumModelTokens?: number }).maximumModelTokens;
@@ -112,7 +122,7 @@ export class DirectionSupervisor {
    */
   private async spawnAutoresearch(project: RegisteredProject, direction: Stored<DirectionProjection>, node: GraphNode): Promise<boolean> {
     const projectId = project.projectId; const ordinal = this.autonomousRuns(projectId, direction.entityId, node.id) + 1;
-    if (ordinal > MAX_AUTONOMOUS_AUTORESEARCH) return false;
+    if (!this.mayStartAnother(projectId, direction.entityId, node.id)) return false;
     const tokens = this.autoresearchTokens(projectId, direction); if (tokens < MIN_AUTORESEARCH_TOKENS) return false;
     const key = `child-spawn:${direction.entityId}:${node.id}:${ordinal}`; const prior = this.research.externalOperation(projectId, key);
     const rejections = this.research.eventsAfter(projectId, 0).filter((entry) => entry.type === "research.spawn_rejected" && entry.scope.directionId === direction.entityId && (entry.payload as { ordinal?: number }).ordinal === ordinal);
