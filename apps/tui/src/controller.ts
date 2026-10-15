@@ -131,6 +131,7 @@ export class Controller {
       const next = acceptPage(this.events, page.events, project, this.cursor);
       const priorCursor = this.cursor;
       this.events = next.events; this.cursor = next.after; this.bootstrapped = true; this.connection = 'connected';
+      this.foldSections(page.events.filter(e => e.sequence !== null && e.sequence > priorCursor));
       this.reconcileDrafts(page.events.filter(e => e.sequence !== null && e.sequence > priorCursor));
       this.ensureStream(); this.notify();
       void this.refreshAgentMetadata(generation);
@@ -146,7 +147,7 @@ export class Controller {
       const loaded = await Promise.all(['missions','directions','autoresearch'].map(async family => ({family,data:await this.client.request('/'+family+q)})));
       if (generation !== this.generation) return;
       for (const {family,data} of loaded) { this.sections.set(family,responseRows(family,data).slice(0,80)); this.sectionCursors.set(family,cursor); }
-      this.notify();
+      this.foldSections(this.events); this.notify();
     } catch { /* Live events still fill the sidebar; /status retries. */ }
   }
   /** Agent events carry no role/model; load them once per unknown agent (throttled). */
@@ -197,6 +198,20 @@ export class Controller {
     return {path:this.pending.path,body,projectId:String(body.projectId),title:`Review ${this.pending.path.split('/').filter(Boolean).at(-1) ?? 'action'}`,fields:fields(body)};
   }
   inspectorRows(): ViewRow[] { return boundRows(this.rows); }
+  /**
+   * Entity state changes are folded into the sidebar as they arrive. Recomputing them from the 400-event window loses
+   * them within minutes of busy research, and the rows fall back to the snapshot loaded at startup.
+   */
+  private foldSections(events: NoshEvent[]): void {
+    for (const e of events) {
+      const p = record(e.payload); const family = e.type.split('.')[0];
+      const section = family === 'mission' ? 'missions' : family === 'direction' ? 'directions' : family === 'autoresearch' ? 'autoresearch' : '';
+      if (!section || !p.entityId || !p.state || e.scope?.projectId !== this.projectId || (e.sequence ?? 0) <= (this.sectionCursors.get(section) ?? 0)) continue;
+      const id = text(p.entityId), rows = this.sections.get(section) ?? [], prior = rows.find(row => row.id === id);
+      const row: ViewRow = {id,section,title:prior?.title ?? (text(p.title) || id),state:text(p.state),fields:fields(p)};
+      this.sections.set(section, prior ? rows.map(entry => entry.id === id ? row : entry) : [...rows,row]);
+    }
+  }
   sidebarRows(): ViewRow[] {
     if (this.projectId && this.bootstrapped && this.sectionsLoadedFor !== this.projectId) { this.sectionsLoadedFor = this.projectId; void this.loadSections(this.generation); }
     const rows = new Map<string,ViewRow>();
@@ -276,7 +291,7 @@ export class Controller {
     if (event.sequence !== null) {
       const next = acceptPage(this.events,[event],this.projectId,this.cursor);
       if (next.after === this.cursor) return;
-      this.events = next.events; this.cursor = next.after; this.reconcileDrafts([event]); this.notify(); return;
+      this.events = next.events; this.cursor = next.after; this.foldSections([event]); this.reconcileDrafts([event]); this.notify(); return;
     }
     const agentId = text(event.scope.agentId), p = record(event.payload);
     if (!agentId || this.liveIds.has(event.eventId)) return;

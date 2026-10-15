@@ -279,6 +279,16 @@ describe('workspace presentation', () => {
     expect(controller.sidebarRows().map(row => `${row.section}:${row.id}:${row.state}`)).toContain('missions:mis_old:completed');
     expect(request).toHaveBeenCalledWith('/directions?projectId=p'); expect(request).toHaveBeenCalledWith('/autoresearch?projectId=p');
   });
+  it('keeps a live entity state in the sidebar after the event window rolls past it', async () => {
+    const {controller,request} = setup();
+    request.mockImplementation(async (path: string) => path.startsWith('/autoresearch') ? {executions:[{entityId:'aut',state:'running',version:2,value:{decisionQuestion:'Can we improve?'}}]} : path.startsWith('/events') ? {events:[]} : {});
+    await controller.poll(); controller.sidebarRows(); await new Promise(resolve => setTimeout(resolve, 0));
+    const event = (sequence: number, type: string, payload: Record<string,unknown>): NoshEvent => ({eventId:`${type}-${sequence}`,sequence,type,payload,scope:{projectId:'p',agentId:'a'}});
+    controller.ingestLiveEvent(event(1,'autoresearch.blocked',{entityId:'aut',state:'blocked',title:'Can we improve?'}));
+    // Busy research: hundreds of tool events push the state change out of the 400-event window within minutes.
+    for (let sequence = 2; sequence < 452; sequence += 1) controller.ingestLiveEvent(event(sequence,'agent.tool_started',{toolName:'nosh_workspace_read'}));
+    expect(controller.sidebarRows().find(row => row.id === 'aut')?.state).toBe('blocked');
+  });
   it('stages a paper export for the current project', async () => {
     const {controller} = setup(); await controller.execute('/export-paper');
     expect(controller.pendingAction()).toMatchObject({path:'/paper/export',body:{projectId:'p'}});
