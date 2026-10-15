@@ -19,6 +19,20 @@ describe("terminal JSON transport", () => {
     for (const trailing of ["]}", "}]}\n", " ] } ", "</|im_end|>", "<|im_end|>\n", "]}<|endoftext|>"]) expect(parseTerminalOutput(text + trailing, context).records).toEqual([record]);
     for (const trailing of [" done", "]} ok", text, "{}", "[1]", "<|im_end|> more text"]) expect(() => parseTerminalOutput(text + trailing, context)).toThrow();
   });
+  it("repairs one stray closing bracket inside the envelope, and records the repair", () => {
+    // Live (gpt-6-luna, every experiment proposal): `"guardrailRisks":[…]},"novelty":{…}`, repeated on correction.
+    const nested = { ...record, expectedEffect: { primaryMetric: "lower" }, guardrailRisks: ["a", "b"], novelty: { difference: "new" } };
+    const valid = JSON.stringify({ $schema: terminalOutputSchema, schemaVersion: 1, records: [nested] });
+    const slipped = valid.replace('"b"],"novelty"', '"b"]},"novelty"');
+    expect(slipped).not.toBe(valid);
+    const parsed = parseTerminalOutput(slipped, context);
+    expect(parsed.records).toEqual([nested]);
+    expect(parsed.repaired).toMatch(/^removed '\}' at offset \d+$/);
+    expect(parseTerminalOutput(valid, context).repaired).toBeUndefined();
+    // One deletion only, and only of a closing bracket: other syntax errors still go back to the model.
+    expect(() => parseTerminalOutput(slipped.replace('"b"]},"novelty"', '"b"]}},"novelty"'), context)).toThrow();
+    expect(() => parseTerminalOutput(valid.replace('"a","b"', '"a" "b"'), context)).toThrow();
+  });
   it("never submits apparent JSON from cancelled/error/truncated turns", async () => {
     for (const stopReason of ["error", "aborted", "length", "toolUse"]) {
       let submitted = 0; let prompted = 0;

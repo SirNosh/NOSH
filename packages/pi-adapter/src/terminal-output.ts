@@ -9,7 +9,7 @@ export const terminalSchemaTools: Readonly<Record<string, string>> = Object.free
   ["episode-draft", "nosh_episode_submit"], ["experiment-proposal", "nosh_experiment_propose"],
 ].map(([schema, tool]) => [schemaUri(schema!), tool!])));
 export const terminalToolNames = new Set(Object.values(terminalSchemaTools));
-export type TerminalOutput = { $schema: typeof terminalOutputSchema; schemaVersion: 1; records: Record<string, JsonValue>[] };
+export type TerminalOutput = { $schema: typeof terminalOutputSchema; schemaVersion: 1; records: Record<string, JsonValue>[]; repaired?: string };
 export type TerminalContext = {
   projectId: string; agentId: string; taskId: string | null; instructionId: string | null;
   threadId: string | null; expectedVersion: number | null; turnId: string; allowedTools: string[];
@@ -63,11 +63,31 @@ function withoutStrayClosers(text: string): string {
   }
   return text;
 }
+/**
+ * Models sometimes write one stray closing bracket mid-envelope (live, every proposal: `"guardrailRisks":[…]},"novelty"`)
+ * and repeat it on correction, because the parse error lands after it. Deleting one of the two nearest closers before
+ * the error is a syntax-only repair: the result still passes every envelope check below and host validation.
+ */
+function parseRepairingStrayCloser(text: string): { value: unknown; text: string; repaired?: string } {
+  // Trailing-closer trimming runs per candidate: a mid-envelope stray closer makes the raw text look complete one bracket early.
+  const trimmed = withoutStrayClosers(text);
+  try { return { value: JSON.parse(trimmed), text: trimmed }; }
+  catch (error) {
+    const at = error instanceof SyntaxError ? Number(/position (\d+)/.exec(error.message)?.[1]) : Number.NaN;
+    if (!Number.isFinite(at)) throw error;
+    const closers: number[] = []; let inString = false;
+    for (let index = 0; index < at; index += 1) { const character = text[index]; if (inString) { if (character === "\\") index += 1; else if (character === '"') inString = false; } else if (character === '"') inString = true; else if (character === "}" || character === "]") closers.push(index); }
+    for (const index of closers.slice(-2).reverse()) {
+      const candidate = withoutStrayClosers(text.slice(0, index) + text.slice(index + 1));
+      try { return { value: JSON.parse(candidate), text: candidate, repaired: `removed '${text[index]}' at offset ${index}` }; } catch { /* try the next closer */ }
+    }
+    throw error;
+  }
+}
 export function parseTerminalOutput(text: string, context: TerminalContext): TerminalOutput {
   if (Buffer.byteLength(text, "utf8") > terminalOutputMaxBytes) throw new Error("Terminal output exceeds 131072 UTF-8 bytes");
   if (!text.trim().startsWith("{")) throw new Error("Return one unfenced JSON object, without prose");
-  const envelope = withoutStrayClosers(text);
-  const parsed: unknown = JSON.parse(envelope); assertUniqueKeys(envelope);
+  const { value: parsed, text: envelope, repaired } = parseRepairingStrayCloser(text); assertUniqueKeys(envelope);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Terminal envelope must be an object");
   const object = parsed as Record<string, unknown>;
   if (Object.keys(object).sort().join(",") !== "$schema,records,schemaVersion" || object.$schema !== terminalOutputSchema || object.schemaVersion !== 1 || !Array.isArray(object.records) || object.records.length < 1 || object.records.length > 2) throw new Error("Invalid terminal envelope schema or record count (1..2)");
@@ -82,7 +102,7 @@ export function parseTerminalOutput(text: string, context: TerminalContext): Ter
   }
   if (context.taskId && ![...seen].some((tool) => tool !== "nosh_episode_submit")) throw new Error("Task turn requires one terminal outcome");
   if (context.expectedEpisodeType && !seen.has("nosh_episode_submit")) throw new Error("Runtime turn requires one episode draft");
-  return parsed as TerminalOutput;
+  return repaired ? { ...(parsed as TerminalOutput), repaired } : parsed as TerminalOutput;
 }
 export function terminalPrompt(context: TerminalContext): string {
   const schemas = Object.entries(terminalSchemaTools).filter(([, tool]) => context.allowedTools.includes(tool)).map(([schema]) => schema);
@@ -106,7 +126,8 @@ export async function runTerminalTurn(context: TerminalContext, host: TerminalHo
     catch (error) { await host.reject(context, "Non-successful provider stop: prompt failed"); throw error; }
     if (result.cancelled || result.stopReason !== "stop") { await host.reject(context, `Non-successful provider stop: ${result.cancelled ? "cancelled" : result.stopReason}`); throw new Error("Terminal output discarded: cancelled, failed, or truncated provider turn"); }
     let receipt: TerminalReceipt;
-    try { const envelope = parseTerminalOutput(result.text, context); receipt = await host.submit(context, envelope.records); }
+    // An accepted repaired envelope says so in its receipt, which is journaled as agent.terminal_receipt.
+    try { const envelope = parseTerminalOutput(result.text, context); receipt = await host.submit(context, envelope.records); if (envelope.repaired && receipt.accepted) receipt = { ...receipt, repaired: envelope.repaired }; }
     catch (error) { receipt = await host.reject(context, error instanceof Error ? withJsonExcerpt(error, result.text) : "Invalid terminal output"); }
     if (receipt.accepted) return receipt;
     if (!receipt.retryAllowed || attempt === 1) throw new Error(`Terminal output rejected: ${JSON.stringify(receipt).slice(0, 4000)}`);
