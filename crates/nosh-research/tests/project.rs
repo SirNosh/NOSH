@@ -521,3 +521,65 @@ fn converts_markdown_to_the_same_latex() {
         "the figure is copied"
     );
 }
+
+/// Unsafe or unsupported figures refuse the export with the same message as TypeScript.
+#[test]
+fn refuses_the_same_figures() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    initialize_paper_workspace(&repo, "Paper").unwrap();
+    let figures = repo.join("docs").join("figures");
+    std::fs::write(repo.join("docs/outside.png"), "png").unwrap();
+    std::fs::write(figures.join("notes.txt"), "text").unwrap();
+    std::fs::create_dir(figures.join("folder.png")).unwrap();
+    std::fs::create_dir(dir.path().join("elsewhere")).unwrap();
+    std::fs::write(dir.path().join("elsewhere/plot.png"), "png").unwrap();
+    let junction = Command::new("cmd")
+        .args(["/c", "mklink", "/J"])
+        .arg(figures.join("linked"))
+        .arg(dir.path().join("elsewhere"))
+        .output()
+        .unwrap();
+    assert!(junction.status.success());
+    let references = [
+        "figures/nope.png",
+        "../outside.png",
+        "figures/../../outside.png",
+        "C:/Windows/win.ini",
+        "/rooted.png",
+        "https://example.com/plot.png",
+        "figures/notes.txt",
+        "figures/folder.png",
+        "figures/linked/plot.png",
+    ];
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for reference in references {
+        let markdown = format!("# Paper\n\n![figure]({reference})\n");
+        std::fs::write(repo.join("docs/paper.md"), &markdown).unwrap();
+        let theirs = typescript_with(
+            json!([{ "method": "exportPaper", "args": [repo.join("docs/paper.md"), repo.join("docs/paper.bib"), repo.join("build/paper")] }]),
+            |command| {
+                command.arg(root.join("scripts/ts-call.mjs"));
+            },
+        );
+        let staging = repo.join("rust-staging");
+        std::fs::create_dir_all(&staging).unwrap();
+        let ours = markdown_to_latex(
+            &markdown,
+            &mut Vec::new(),
+            &repo.join("docs/paper.bib"),
+            &repo.join("docs/paper.md"),
+            &staging,
+        );
+        assert!(
+            theirs[0]["error"].is_string(),
+            "{reference}: TypeScript accepted it"
+        );
+        assert_eq!(
+            theirs[0]["error"],
+            json!(ours.unwrap_err().to_string()),
+            "{reference}"
+        );
+    }
+}
