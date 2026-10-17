@@ -9,7 +9,7 @@ import { EventStore, type RegisteredProject } from "@nosh/persistence";
 import type { AgentInspection, PiAdapter, PiSessionOptions } from "@nosh/pi-adapter";
 import { isTaskTerminalRecord, schemaUri, sha256, validateRecord, type EventDraft, type JsonValue } from "@nosh/wire";
 import { describe, expect, it, vi } from "vitest";
-import { AutoresearchSupervisor } from "./autoresearch-supervisor.js";
+import { AutoresearchSupervisor, scopeSnapshot } from "./autoresearch-supervisor.js";
 import { ResearchControl } from "./research-control.js";
 
 class ExperimentAgents {
@@ -39,6 +39,26 @@ class ExperimentAgents {
   stop(agentId: string): void { this.sessions.delete(agentId); }
   private submit(session: PiSessionOptions, record: JsonValue): void { this.append({ $schema: schemaUri("event"), schemaVersion: 1, retention: "persistent", type: "record.submitted", source: "fixture", scope: { projectId: session.projectId, missionId: session.missionId, directionId: session.directionId, autoresearchId: session.autoresearchId, experimentId: session.experimentId, runId: session.runId, jobId: session.jobId, agentId: session.agentId }, correlationId: `task:${session.taskId}`, causationId: null, payload: record }); }
 }
+
+describe("proposal grounding", () => {
+  it("shows the proposer the in-scope files as they are at the parent commit", () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-scope-snapshot-"));
+    try {
+      initializeRepository(directory); mkdirSync(join(directory, "src"));
+      writeFileSync(join(directory, "src", "calibrate.mjs"), "export const CALIBRATORS = { none: (s) => s };\n");
+      writeFileSync(join(directory, "config.json"), '{ "calibration": "none" }\n');
+      writeFileSync(join(directory, "evaluate.mjs"), "// frozen\n");
+      git(directory, ["add", "."]); git(directory, ["commit", "-m", "scope fixture"]);
+      const parent = git(directory, ["rev-parse", "HEAD"]);
+      // Later edits on the working tree are not what the variant starts from.
+      writeFileSync(join(directory, "config.json"), '{ "calibration": "isotonic" }\n');
+      const snapshot = scopeSnapshot(directory, parent, ["./src/**", "config.json"]).join("\n");
+      expect(snapshot).toContain("--- src/calibrate.mjs"); expect(snapshot).toContain("none: (s) => s");
+      expect(snapshot).toContain('"calibration": "none"'); expect(snapshot).not.toContain("isotonic");
+      expect(snapshot).not.toContain("evaluate.mjs");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+});
 
 describe("AutoresearchSupervisor", () => {
   it("recovers a two-round frozen Direction experiment lineage with Jobs, Evidence, and reviewed promotion", async () => {
