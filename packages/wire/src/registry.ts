@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { commandSchema } from "./commands.js";
 import { eventEnvelopeSchema } from "./events.js";
 import { templateRegistry } from "./templates.js";
 import { submissionRegistry } from "./submissions.js";
@@ -7,7 +6,6 @@ import { domainRegistry } from "./domain-records.js";
 import { runtimeRegistry } from "./runtime.js";
 
 const entries: Array<[string, z.ZodTypeAny]> = [
-  ["https://nosh.dev/schemas/command/v1", commandSchema],
   ["https://nosh.dev/schemas/event/v1", eventEnvelopeSchema],
   ...Object.entries(templateRegistry),
   ...Object.entries(submissionRegistry),
@@ -41,7 +39,9 @@ export function validateRecord(uri: string, value: unknown):
     if (issue.code === "unrecognized_keys") {
       for (const key of issue.keys) errors.push({ pointer: pointerFor([key]), code: issue.code, message: `Unrecognized key: ${key}` });
     } else {
-      errors.push({ pointer: pointerFor(issue.path), code: issue.code, message: issue.message });
+      // Corrections need the allowed shape, not just "Required": name what was expected and what arrived.
+      const detail = issue.code === "invalid_type" && issue.message === "Required" ? `: missing; expected ${issue.expected}` : "";
+      errors.push({ pointer: pointerFor(issue.path), code: issue.code, message: `${issue.message}${detail}` });
     }
   }
   return { ok: false, errors };

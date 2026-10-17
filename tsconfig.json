@@ -1,25 +1,59 @@
 {
   "files": [],
   "references": [
-    { "path": "./packages/core" },
-    { "path": "./packages/wire" },
-    { "path": "./packages/persistence" },
-    { "path": "./packages/agent-runtime" },
-    { "path": "./packages/pi-adapter" },
-    { "path": "./packages/jobs" },
-    { "path": "./packages/git-workspaces" },
-    { "path": "./packages/graph" },
-    { "path": "./packages/scheduler" },
-    { "path": "./packages/evidence" },
-    { "path": "./packages/templates" },
-    { "path": "./packages/crypto" },
-    { "path": "./packages/episodes" },
-    { "path": "./packages/threads" },
-    { "path": "./packages/skills" },
-    { "path": "./packages/orchestration-runtime" },
-    { "path": "./apps/web" },
-    { "path": "./apps/relay" },
-    { "path": "./apps/cli" },
-    { "path": "./apps/noshd" }
+    {
+      "path": "./packages/core"
+    },
+    {
+      "path": "./packages/wire"
+    },
+    {
+      "path": "./packages/persistence"
+    },
+    {
+      "path": "./packages/agent-runtime"
+    },
+    {
+      "path": "./packages/pi-adapter"
+    },
+    {
+      "path": "./packages/jobs"
+    },
+    {
+      "path": "./packages/git-workspaces"
+    },
+    {
+      "path": "./packages/graph"
+    },
+    {
+      "path": "./packages/scheduler"
+    },
+    {
+      "path": "./packages/evidence"
+    },
+    {
+      "path": "./packages/templates"
+    },
+    {
+      "path": "./packages/episodes"
+    },
+    {
+      "path": "./packages/threads"
+    },
+    {
+      "path": "./packages/skills"
+    },
+    {
+      "path": "./packages/orchestration-runtime"
+    },
+    {
+      "path": "./apps/tui"
+    },
+    {
+      "path": "./apps/cli"
+    },
+    {
+      "path": "./apps/noshd"
+    }
   ]
 }

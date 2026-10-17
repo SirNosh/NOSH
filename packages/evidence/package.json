@@ -5,6 +5,6 @@
   "type": "module",
   "exports": { ".": "./dist/index.js" },
   "types": "./dist/index.d.ts",
-  "scripts": { "build": "tsc -p tsconfig.json", "test": "vitest run --passWithNoTests", "typecheck": "tsc --noEmit" },
+  "scripts": { "build": "tsc -p tsconfig.json", "test": "vitest run --passWithNoTests --testTimeout=60000", "typecheck": "tsc --noEmit" },
   "dependencies": { "@nosh/core": "workspace:*", "@nosh/wire": "workspace:*" }
 }

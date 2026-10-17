@@ -1,9 +1,9 @@
 packages:
-  - apps/*
+  - apps/cli
+  - apps/launcher
+  - apps/noshd
+  - apps/tui
   - packages/*
-
-overrides:
-  electron-to-chromium: 1.5.392
 
 allowBuilds:
   '@google/genai': true
@@ -11,4 +11,3 @@ allowBuilds:
   esbuild: true
   protobufjs: true
   sharp: true
-  workerd: true
