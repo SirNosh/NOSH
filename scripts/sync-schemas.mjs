@@ -130,7 +130,8 @@ async function extractRefinements() {
   const { schemaFor, schemaUris } = await import(pathToFileURL(registryPath).href);
   const { datetimeRegex } = await import(pathToFileURL(createRequire(join(wire, "package.json")).resolve("zod")).href);
 
-  const out = { formats: {}, refinements: [], defaults: [] };
+  const out = { formats: {}, patternMessages: {}, refinements: [], defaults: [] };
+  const patternMessages = new Map();
   const datetimeArgs = new Set();
   const wrappers = new Set();
   const stringChecks = new Set(["min", "max", "regex", "datetime", "date", "url"]);
@@ -184,6 +185,14 @@ async function extractRefinements() {
           for (const c of def.checks) {
             if (!stringChecks.has(c.kind)) throw new Error(`${schema} /${path.join("/")}: unsupported string check ${c.kind}`);
             if (c.kind === "datetime") datetimeArgs.add(JSON.stringify({ offset: c.offset, precision: c.precision, local: c.local }));
+            // A custom message replaces zod's default; only regex messages are mapped (by pattern).
+            if (c.kind === "regex") {
+              const message = c.message ?? null;
+              if (patternMessages.has(c.regex.source) && patternMessages.get(c.regex.source) !== message) throw new Error(`${schema} /${path.join("/")}: pattern ${c.regex.source} has different messages in different places`);
+              patternMessages.set(c.regex.source, message);
+            } else if (c.message) {
+              throw new Error(`${schema} /${path.join("/")}: custom message on a ${c.kind} check is not mapped`);
+            }
           }
           return;
         case "ZodNumber":
@@ -206,6 +215,7 @@ async function extractRefinements() {
   const date = `^${datetime.slice(1, datetime.indexOf("T([01]"))}$`;
   if (!new RegExp(date).test("2024-02-29") || new RegExp(date).test("2023-02-29")) throw new Error("could not derive zod's date regex");
   out.formats = { "date-time": datetime, date };
+  out.patternMessages = Object.fromEntries([...patternMessages].filter(([, message]) => message !== null));
   return out;
 }
 

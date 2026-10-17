@@ -264,7 +264,14 @@ fn issues_from(error: &ValidationError<'_>, document: &Value) -> Vec<Issue> {
                 ),
             }
         }
-        ValidationErrorKind::Pattern { .. } => here("invalid_string", "Invalid".into()),
+        ValidationErrorKind::Pattern { pattern } => here(
+            "invalid_string",
+            EXTRAS
+                .pattern_messages
+                .get(pattern.as_str())
+                .cloned()
+                .unwrap_or_else(|| "Invalid".into()),
+        ),
         ValidationErrorKind::Format { format } => here(
             "invalid_string",
             match format.as_str() {

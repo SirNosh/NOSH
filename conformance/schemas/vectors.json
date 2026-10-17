@@ -1245,6 +1245,32 @@
       }
     },
     {
+      "name": "evidence: malformed reference type (custom regex message)",
+      "schema": "evidence",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/evidence/v1\",\"createdAt\":\"2026-07-17T00:00:00.000Z\",\"createdBy\":\"agent\",\"createdByAgentId\":\"agt_00000000000000000000000000000000\",\"evaluationContractHash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"evidenceId\":\"evd_00000000000000000000000000000000\",\"evidenceType\":\"two_under_scores\",\"polarity\":\"supports\",\"projectId\":\"prj_00000000000000000000000000000000\",\"quality\":{\"confidence\":\"low\",\"reviewId\":\"rev_00000000000000000000000000000000\",\"status\":\"reviewed\"},\"schemaVersion\":1,\"scopeLimitations\":[\"sample\"],\"sourceRefs\":[{\"locator\":\"sample\",\"refId\":\"ref_1\",\"refType\":\"ref_1\"}],\"statement\":\"sample\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/evidenceType",
+          "code": "invalid_string",
+          "message": "Expected a reference: lowercase prefix, exactly one underscore, then lowercase letters, digits, '.', ':' or '-' (e.g. contribution_method-fixture)"
+        }
+      ]
+    },
+    {
+      "name": "librarian: malformed published date (custom regex message)",
+      "schema": "librarian-completion",
+      "input": "{\"$schema\":\"https://nosh.dev/schemas/librarian-completion/v1\",\"bibliographyArtifactId\":\"art_00000000000000000000000000000000\",\"candidateClaimEffects\":[null],\"contradictions\":[null],\"evaluationDifferences\":[null],\"findings\":[{\"confidence\":\"low\",\"findingId\":\"ref_1\",\"noveltyImplication\":\"sample\",\"statement\":\"sample\",\"support\":[{\"artifactId\":\"art_00000000000000000000000000000000\",\"locator\":\"sample\",\"sourceId\":\"ref_1\"}]}],\"knowledgeGaps\":[\"sample\"],\"readyForReview\":true,\"reportArtifactId\":\"art_00000000000000000000000000000000\",\"researchQuestion\":\"sample\",\"schemaVersion\":1,\"searchCoverage\":{\"databases\":[\"sample\"],\"dateRange\":{\"from\":\"2026-07-17\",\"to\":\"2026-07-17\"},\"exclusionCriteria\":[\"sample\"],\"inclusionCriteria\":[\"sample\"],\"language\":[\"sample\"],\"queries\":[\"sample\"]},\"sources\":[{\"accessedAt\":\"2026-07-17T00:00:00.000Z\",\"artifactId\":\"art_00000000000000000000000000000000\",\"authors\":[\"sample\"],\"canonicalUrl\":\"https://example.com/resource\",\"persistentId\":\"sample\",\"primarySource\":true,\"publicationDate\":\"2024-13\",\"relevance\":\"sample\",\"sourceId\":\"ref_1\",\"sourceType\":\"ref_1\",\"title\":\"sample\",\"version\":\"1.0.0\"}],\"taskOutcome\":\"completed\"}",
+      "outcome": "reject",
+      "issues": [
+        {
+          "pointer": "/sources/0/publicationDate",
+          "code": "invalid_string",
+          "message": "Use YYYY, YYYY-MM, or YYYY-MM-DD"
+        }
+      ]
+    },
+    {
       "name": "librarian: real date range",
       "schema": "librarian-completion",
       "input": "{\"$schema\":\"https://nosh.dev/schemas/librarian-completion/v1\",\"bibliographyArtifactId\":\"art_00000000000000000000000000000000\",\"candidateClaimEffects\":[null],\"contradictions\":[null],\"evaluationDifferences\":[null],\"findings\":[{\"confidence\":\"low\",\"findingId\":\"ref_1\",\"noveltyImplication\":\"sample\",\"statement\":\"sample\",\"support\":[{\"artifactId\":\"art_00000000000000000000000000000000\",\"locator\":\"sample\",\"sourceId\":\"ref_1\"}]}],\"knowledgeGaps\":[\"sample\"],\"readyForReview\":true,\"reportArtifactId\":\"art_00000000000000000000000000000000\",\"researchQuestion\":\"sample\",\"schemaVersion\":1,\"searchCoverage\":{\"databases\":[\"sample\"],\"dateRange\":{\"from\":\"2024-02-29\",\"to\":\"2026-12-31\"},\"exclusionCriteria\":[\"sample\"],\"inclusionCriteria\":[\"sample\"],\"language\":[\"sample\"],\"queries\":[\"sample\"]},\"sources\":[{\"accessedAt\":\"2026-07-17T00:00:00.000Z\",\"artifactId\":\"art_00000000000000000000000000000000\",\"authors\":[\"sample\"],\"canonicalUrl\":\"https://example.com/resource\",\"persistentId\":\"sample\",\"primarySource\":true,\"publicationDate\":\"2026-07-17\",\"relevance\":\"sample\",\"sourceId\":\"ref_1\",\"sourceType\":\"ref_1\",\"title\":\"sample\",\"version\":\"1.0.0\"}],\"taskOutcome\":\"completed\"}",

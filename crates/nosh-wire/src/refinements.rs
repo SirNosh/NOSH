@@ -108,6 +108,8 @@ struct Located<T> {
 
 pub(crate) struct Extras {
     pub(crate) formats: BTreeMap<String, String>,
+    /// zod's custom messages for regex checks, by pattern source.
+    pub(crate) pattern_messages: BTreeMap<String, String>,
     refinements: BTreeMap<String, Vec<Located<&'static Rule>>>,
     defaults: BTreeMap<String, Vec<Located<Value>>>,
 }
@@ -174,8 +176,18 @@ impl Extras {
             .iter()
             .map(|(k, v)| (k.clone(), v.as_str().expect("format regex").to_owned()))
             .collect();
+        let pattern_messages = document["patternMessages"]
+            .as_object()
+            .map(|messages| {
+                messages
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.as_str().expect("pattern message").to_owned()))
+                    .collect()
+            })
+            .unwrap_or_default();
         Extras {
             formats,
+            pattern_messages,
             refinements,
             defaults,
         }

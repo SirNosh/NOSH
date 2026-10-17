@@ -38,8 +38,6 @@
     "nosh-research": {
       "synced": null,
       "paths": [
-        "packages/evidence/src/project.ts",
-        "packages/evidence/src/paper.ts",
         "packages/templates/src",
         "apps/noshd/src/research-control.ts"
       ],
@@ -61,6 +59,14 @@
         "packages/episodes/src",
         "packages/threads/src",
         "packages/agent-runtime/src"
+      ],
+      "strict": []
+    },
+    "nosh-research:project": {
+      "synced": "09c63628c4be4962bf4c1b738df1fd3fdb00fb65",
+      "paths": [
+        "packages/evidence/src/project.ts",
+        "packages/evidence/src/paper.ts"
       ],
       "strict": []
     },

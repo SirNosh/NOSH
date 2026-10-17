@@ -5,6 +5,8 @@ pub mod agent_runtime;
 pub mod artifacts;
 pub mod episodes;
 pub mod graph;
+pub mod paper;
+pub mod project;
 pub mod scheduler;
 pub mod skills;
 pub mod threads;
@@ -70,6 +72,16 @@ impl From<nosh_sys::Error> for Error {
         }
     }
 }
+
+/// A lazily compiled regex.
+macro_rules! regex {
+    ($pattern:literal) => {{
+        static RE: std::sync::LazyLock<regex::Regex> =
+            std::sync::LazyLock::new(|| regex::Regex::new($pattern).expect("valid regex"));
+        &*RE
+    }};
+}
+pub(crate) use regex;
 
 pub(crate) fn rejected<T>(message: impl Into<String>) -> Result<T> {
     Err(Error::Rejected(message.into()))

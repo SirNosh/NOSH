@@ -63,6 +63,8 @@
     { "name": "task packet: relative response schema URL", "schema": "task-packet", "set": { "/responseSchema": "schemas/x" }, "expect": "reject" },
     { "name": "task packet: absolute response schema URL", "schema": "task-packet", "set": { "/responseSchema": "https://nosh.dev/schemas/x/v1" }, "expect": "accept" },
 
+    { "name": "evidence: malformed reference type (custom regex message)", "schema": "evidence", "set": { "/evidenceType": "two_under_scores" }, "expect": "reject" },
+    { "name": "librarian: malformed published date (custom regex message)", "schema": "librarian-completion", "set": { "/sources/0/publicationDate": "2024-13" }, "expect": "reject" },
     { "name": "librarian: real date range", "schema": "librarian-completion", "set": { "/searchCoverage/dateRange/from": "2024-02-29", "/searchCoverage/dateRange/to": "2026-12-31" }, "expect": "accept" },
     { "name": "librarian: impossible date", "schema": "librarian-completion", "set": { "/searchCoverage/dateRange/from": "2023-02-29" }, "expect": "reject" },
     { "name": "librarian: bad source URL", "schema": "librarian-completion", "set": { "/sources/0/canonicalUrl": "not a url" }, "expect": "reject" },
