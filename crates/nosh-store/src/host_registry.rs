@@ -2,9 +2,10 @@
 
 use crate::database::open_database;
 use crate::{Result, rejected};
+use nosh_sys::paths::{realpath, resolve};
 use rusqlite::{Connection, params};
 use serde_json::{Value, json};
-use std::path::{Component, Path, PathBuf};
+use std::path::Path;
 
 pub struct HostRegistry {
     connection: Connection,
@@ -25,12 +26,12 @@ impl HostRegistry {
         repository_root: &Path,
         database_path: &Path,
     ) -> Result<Value> {
-        let repository_root = node_realpath(&node_resolve(repository_root)?, 0)?;
+        let repository_root = realpath(repository_root)?;
         if !std::fs::metadata(&repository_root)?.is_dir() {
             return rejected("Project repository root must be a directory");
         }
         let root = repository_root.to_string_lossy().into_owned();
-        let database = node_resolve(database_path)?.to_string_lossy().into_owned();
+        let database = resolve(database_path)?.to_string_lossy().into_owned();
         let registered_at = nosh_wire::now_utc();
         self.connection.execute(
             "INSERT INTO registered_projects (project_id, repository_root, database_path, registered_at) VALUES (?, ?, ?, ?)
@@ -50,37 +51,6 @@ impl HostRegistry {
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
-}
-
-/// Node's `path.resolve`: absolute, `.`/`..` collapsed, separators normalised, no trailing
-/// separator except at a root, and the caller's casing and 8.3 short names kept.
-fn node_resolve(path: &Path) -> Result<PathBuf> {
-    Ok(std::path::absolute(path)?.components().collect())
-}
-
-/// Node's JavaScript `fs.realpathSync` (not `.native`): follows symbolic links and junctions
-/// component by component, but never canonicalises casing or short names.
-fn node_realpath(path: &Path, depth: usize) -> Result<PathBuf> {
-    if depth > 40 {
-        return Err(std::io::Error::other(format!(
-            "ELOOP: too many symbolic links, realpath '{}'",
-            path.display()
-        ))
-        .into());
-    }
-    let mut current = PathBuf::new();
-    for component in path.components() {
-        current.push(component);
-        if !matches!(component, Component::Normal(_)) {
-            continue;
-        }
-        if std::fs::symlink_metadata(&current)?.is_symlink() {
-            let target = std::fs::read_link(&current)?;
-            let base = current.parent().map(Path::to_path_buf).unwrap_or_default();
-            current = node_realpath(&node_resolve(&base.join(target))?, depth + 1)?;
-        }
-    }
-    Ok(current)
 }
 
 #[cfg(test)]

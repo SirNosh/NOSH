@@ -28,11 +28,10 @@
       ]
     },
     "nosh-sys": {
-      "synced": null,
+      "synced": "920131ced8c50810d8494f268ab3c8528cf189ae",
       "paths": [
         "packages/git-workspaces/src",
-        "packages/jobs/src",
-        "packages/evidence/src/project.ts"
+        "packages/jobs/src"
       ],
       "strict": []
     },
@@ -42,7 +41,6 @@
         "packages/graph/src",
         "packages/scheduler/src",
         "packages/evidence/src",
-        "packages/jobs/src",
         "packages/templates/src",
         "packages/skills/src",
         "packages/episodes/src",
