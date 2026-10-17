@@ -786,6 +786,34 @@ export class ResearchControl {
     const latest = matches.at(-1); return latest ? { kind: latest.kind, entityId: latest.entityId, state: latest.state, version: latest.version, attempt: latest.attempt } : null;
   }
   /** Evidence recorded inside a research child's scope (a Direction includes its Autoresearch). */
+  /**
+   * What a Mission node builds on from its finished research children (the spawn nodes it depends on): their Evidence,
+   * each child's question and answer, and each promoted experiment with its change, frozen metric, commit, and code diff.
+   * Workers cannot read other branches, so the diff (bounded, protected state excluded) is what lets them port a winner.
+   */
+  researchInputs(projectId: string, missionId: string, nodeIds: string[]): { evidenceIds: string[]; summaries: string[] } {
+    const clip = (value: unknown, limit: number) => { const text = String(value ?? "").replace(/\s+/g, " ").trim(); return text.length > limit ? `${text.slice(0, limit - 1)}…` : text; };
+    const root = this.project(projectId).repositoryRoot; const evidenceIds: string[] = []; const summaries: string[] = [];
+    const results = this.records(projectId, "experiment-result") as Array<{ autoresearchId?: string; experimentId?: string; promotionDecision?: string; evaluatedCommit?: string; branch?: string; comparison?: { candidateScore?: number } }>;
+    const proposals = this.records(projectId, "experiment-proposal") as Array<{ experimentId?: string; primaryChange?: { description?: string } }>;
+    for (const nodeId of nodeIds) {
+      const child = this.spawnedChild(projectId, missionId, nodeId);
+      if (!child || !["closed", "completed"].includes(child.state)) continue;
+      evidenceIds.push(...this.childEvidenceIds(projectId, child.entityId));
+      const direction = child.kind === "direction" ? this.direction(projectId, child.entityId) : null;
+      const runs = direction ? this.autoresearch(projectId).filter((run) => run.value.directionId === child.entityId).map((run) => run.entityId) : [child.entityId];
+      const closure = direction ? (this.records(projectId, "direction-closure-packet") as Array<{ directionId?: string; questionDisposition?: string; answer?: string }>).filter((record) => record.directionId === child.entityId).at(-1) : undefined;
+      const question = direction ? direction.value.question : this.autoresearchExecution(projectId, child.entityId).value.decisionQuestion;
+      const promoted = [...new Map(results.filter((result) => runs.includes(String(result.autoresearchId)) && result.promotionDecision === "promoted").map((result) => [result.experimentId, result])).values()];
+      const experiments = promoted.map((result) => {
+        const base = runs.length === 1 && !direction ? this.autoresearchExecution(projectId, child.entityId).value.baseCommit : this.autoresearchExecution(projectId, String(result.autoresearchId)).value.baseCommit;
+        const diff = base && result.evaluatedCommit ? (spawnSync("git", ["-C", root, "diff", base, result.evaluatedCommit, "--", ".", ":(exclude).nosh", ":(exclude)docs"], { encoding: "utf8", windowsHide: true }).stdout ?? "") : "";
+        return `${result.experimentId} (${clip(proposals.find((proposal) => proposal.experimentId === result.experimentId)?.primaryChange?.description, 300)}; frozen metric ${result.comparison?.candidateScore}; commit ${result.evaluatedCommit} on branch ${result.branch})${diff ? `\nCode change:\n${diff.slice(0, 4_000)}` : ""}`;
+      });
+      summaries.push(`${child.entityId} (${child.kind}, node ${nodeId}) asked: ${clip(question, 300)}${closure ? ` Answer (${closure.questionDisposition}): ${clip(closure.answer, 600)}` : ""} Promoted experiments: ${experiments.join("\n") || "none"}`);
+    }
+    return { evidenceIds: [...new Set(evidenceIds)], summaries };
+  }
   childEvidenceIds(projectId: string, childId: string): string[] {
     return [...new Set(this.submitted(projectId).filter((entry) => isSchema(entry.record, "evidence") && (entry.event.scope.directionId === childId || entry.event.scope.autoresearchId === childId) && typeof entry.record.evidenceId === "string").map((entry) => entry.record.evidenceId as string))];
   }

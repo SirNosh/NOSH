@@ -170,6 +170,27 @@ describe("Mission research spawning", { timeout: 120_000 }, () => {
     } finally { vi.restoreAllMocks(); cleanup(); }
   });
 
+  it("hands a Mission node its research children's Evidence, answers, and promoted code", async () => {
+    const { daemon, project, running, cleanup } = fixture("nosh-spawn-inputs-");
+    try {
+      const mission = running(daemon.research.createMission(project.projectId, { title: "Inputs", objective: "Build on research", deliverables: ["Result"], successCriteria: ["Reviewed"], researchPlan: { directions: 0, missionAutoresearch: true }, idempotencyKey: "inputs-create" }));
+      const git = (args: string[]) => spawnSync("git", ["-C", project.repositoryRoot, "-c", "user.name=T", "-c", "user.email=t@example.invalid", ...args], { encoding: "utf8", windowsHide: true }).stdout.trim();
+      const base = git(["rev-parse", "HEAD"]);
+      writeFileSync(join(project.repositoryRoot, "calibrate.mjs"), "export const histogram = (bins) => bins;\n"); git(["add", "calibrate.mjs"]); git(["commit", "-qm", "variant"]);
+      const evaluated = git(["rev-parse", "HEAD"]);
+      const node = mission.value.nodes.find((entry) => entry.type === "autoresearch")!;
+      vi.spyOn(daemon.research, "spawnedChild").mockReturnValue({ kind: "autoresearch", entityId: "ar_fixture", state: "completed", version: 3, attempt: 1 });
+      vi.spyOn(daemon.research, "childEvidenceIds").mockReturnValue(["evd_fixture"]);
+      vi.spyOn(daemon.research, "autoresearchExecution").mockReturnValue({ entityId: "ar_fixture", value: { decisionQuestion: "Which calibrator is best?", baseCommit: base } } as unknown as ReturnType<typeof daemon.research.autoresearchExecution>);
+      const records = daemon.research.records.bind(daemon.research);
+      vi.spyOn(daemon.research, "records").mockImplementation((projectId, schema) => schema === "experiment-result" ? [{ autoresearchId: "ar_fixture", experimentId: "exp_fixture", promotionDecision: "promoted", evaluatedCommit: evaluated, branch: "ar/fixture/1", comparison: { candidateScore: 0.005 } }] : schema === "experiment-proposal" ? [{ experimentId: "exp_fixture", primaryChange: { description: "Histogram binning with 10 bins" } }] : records(projectId, schema));
+      const inputs = daemon.research.researchInputs(project.projectId, mission.entityId, [node.id]);
+      expect(inputs.evidenceIds).toEqual(["evd_fixture"]);
+      const summary = inputs.summaries.join("\n");
+      for (const expected of ["ar_fixture", "Which calibrator is best?", "exp_fixture", "Histogram binning with 10 bins", "0.005", evaluated, "export const histogram"]) expect(summary).toContain(expected);
+    } finally { vi.restoreAllMocks(); cleanup(); }
+  });
+
   it("accepts a spawn node when its child closes and retries it when the child stops", async () => {
     const { daemon, project, emit, submit, jobs, running, cleanup } = fixture("nosh-spawn-resolve-");
     try {

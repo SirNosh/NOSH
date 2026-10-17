@@ -297,14 +297,16 @@ export class MissionSupervisor {
         ...(commands.length ? ["tool_nosh.run"] : []),
       ],
     };
+    // Research children this node depends on: their Evidence and outcomes reach the worker, not only the final gate.
+    const research = this.research.researchInputs(project.projectId, mission.entityId, node.hardDependencies);
     const packet: TaskPacketRecord = {
       $schema: schemaUri("task-packet"), schemaVersion: 1, templateVersion: "1.0.0",
       taskId, attempt: node.attempt, taskType: `task_${node.type.replaceAll("_", ".")}`, assignedRole: role, assignedAgentId: agentId,
       scope: { projectId: project.projectId, missionId: mission.entityId, directionId: null, autoresearchId: null, experimentId: null, graphNodeId: node.id },
       goalStack: { projectGoalId: project.projectId, projectGoalSummary: mission.value.objective, missionCriterionIds: node.criterionIds, missionCriterionSummary: acceptanceCriteria.map((criterion) => criterion.statement).join("; "), directionQuestionId: null, directionQuestionSummary: null, nodeObjective: node.title },
       whyNow: "The deterministic Mission frontier selected this ready node.",
-      instructions: [`Complete only ${node.title}`, "Do not modify protected NOSH contracts", ...(mission.value.startingEvidence.length ? [`Read the starting Evidence (${mission.value.startingEvidence.join(", ")}) with nosh_artifact_read; each record cites the Artifacts that hold its measurements`] : []), ...(commands.length ? taskCommandInstructions(commands) : ["You cannot run commands: report only what you verified by reading, and claim a criterion satisfied only as far as that evidence supports"])],
-      inScope: ["**"], outOfScope: [".nosh/contracts/**"], inputArtifactIds: [], inputEvidenceIds: [...mission.value.startingEvidence], // the researcher's starting Evidence (readable with nosh_artifact_read)
+      instructions: [`Complete only ${node.title}`, "Do not modify protected NOSH contracts", ...(research.summaries.length ? ["Build on this Mission's finished research (their Evidence is in inputEvidenceIds, readable with nosh_artifact_read; port a promoted experiment's code change rather than re-deriving it, and cite its measured results):", ...research.summaries] : []), ...(mission.value.startingEvidence.length ? [`Read the starting Evidence (${mission.value.startingEvidence.join(", ")}) with nosh_artifact_read; each record cites the Artifacts that hold its measurements`] : []), ...(commands.length ? taskCommandInstructions(commands) : ["You cannot run commands: report only what you verified by reading, and claim a criterion satisfied only as far as that evidence supports"])],
+      inScope: ["**"], outOfScope: [".nosh/contracts/**"], inputArtifactIds: [], inputEvidenceIds: [...new Set([...mission.value.startingEvidence, ...research.evidenceIds])], // the researcher's starting Evidence and this node's research children's Evidence (readable with nosh_artifact_read)
       requiredOutputs: [{ outputId: `out_${taskId.slice(4)}`, kind: outputKind, required: true }],
       acceptanceCriteria,
       workspace: { worktreeId: tree.worktreeId, branch: tree.branch, startingCommit: head, writeScopes: ["**"], protectedScopes: [".nosh/contracts/**"] },
