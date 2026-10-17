@@ -13,8 +13,13 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 time = { version = "0.3.55", features = ["parsing"] }
 
-[lints]
-workspace = true
+# Not `workspace = true`: the workspace forbids unsafe code, and this crate is the one place
+# allowed a few documented `unsafe` calls into the operating system.
+[lints.rust]
+unsafe_code = "deny"
 
 [dev-dependencies]
 tempfile = "3.27.0"
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }

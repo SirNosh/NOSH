@@ -60,7 +60,7 @@ fn write_value(out: &mut String, value: &Value) {
 /// Gives numbers JavaScript's `JSON.parse` semantics: every number is an f64, so `1.0` is the
 /// integer `1` and integers beyond 2^53 round. Integral values are stored as integers so
 /// `as_u64`/`as_i64` work as callers expect.
-pub(crate) fn normalize_numbers(value: &mut Value) {
+pub fn normalize_numbers(value: &mut Value) {
     match value {
         Value::Number(n) => {
             let f = n

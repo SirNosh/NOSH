@@ -1,6 +1,7 @@
 //! NOSH's operating-system layer: Node-compatible paths, process identity and control, Git, and
 //! the Job supervisor, compatible with `packages/git-workspaces` and `packages/jobs`.
 
+pub mod fs;
 pub mod git;
 pub mod jobs;
 pub mod paths;

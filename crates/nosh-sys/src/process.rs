@@ -95,11 +95,32 @@ pub fn output_with_timeout(
     command: &mut Command,
     timeout: Duration,
 ) -> io::Result<(Option<ExitStatus>, Output)> {
+    run_with_input(command, None, timeout)
+}
+
+/// [`output_with_timeout`] with `input` written to the command's stdin (`spawnSync`'s `input`).
+pub fn run_with_input(
+    command: &mut Command,
+    input: Option<Vec<u8>>,
+    timeout: Duration,
+) -> io::Result<(Option<ExitStatus>, Output)> {
+    let stdin = if input.is_some() {
+        Stdio::piped()
+    } else {
+        Stdio::null()
+    };
     let mut child = command
-        .stdin(Stdio::null())
+        .stdin(stdin)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
+    let writer = input.zip(child.stdin.take()).map(|(bytes, mut pipe)| {
+        std::thread::spawn(move || {
+            use std::io::Write;
+            // A command that exits without reading its input closes the pipe; that is its answer.
+            let _ = pipe.write_all(&bytes);
+        })
+    });
     let stdout = drain(child.stdout.take());
     let stderr = drain(child.stderr.take());
     let status = wait_until(&mut child, Instant::now() + timeout)?;
@@ -109,6 +130,9 @@ pub fn output_with_timeout(
         let _ = child.kill();
     }
     let final_status = child.wait()?;
+    if let Some(writer) = writer {
+        let _ = writer.join();
+    }
     let output = Output {
         status: final_status,
         stdout: stdout.join().unwrap_or_default(),

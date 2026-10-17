@@ -15,7 +15,7 @@ mod time;
 
 pub use events::{EVENT_SCHEMA, validate_event, validate_event_draft};
 pub use ids::{IdPrefix, create_id, is_nosh_id};
-pub use json::{canonical_json, sha256};
+pub use json::{canonical_json, normalize_numbers, sha256};
 pub use registry::{Issue, schema_uris, validate_record};
 pub use submissions::is_task_terminal_record;
 pub use time::now_utc;
