@@ -1,6 +1,8 @@
 //! Submission helpers from `packages/wire/src/submissions.ts`.
 
 use serde_json::Value;
+use std::collections::BTreeMap;
+use std::sync::LazyLock;
 
 const TERMINAL_SCHEMAS: [&str; 7] = [
     "general-worker-completion",
@@ -28,35 +30,23 @@ pub fn is_task_terminal_record(record: &Value) -> bool {
     }
     // TypeScript compares `String(value.status)`, so e.g. ["completed"] also counts.
     schema == uri("response-envelope")
-        && TERMINAL_RESPONSE_STATUSES.contains(&js_string(map.get("status")).as_str())
+        && TERMINAL_RESPONSE_STATUSES.contains(&crate::js::string(map.get("status")).as_str())
 }
 
 fn uri(name: &str) -> String {
     format!("https://nosh.dev/schemas/{name}/v1")
 }
 
-/// JavaScript's `String(value)`.
-fn js_string(value: Option<&Value>) -> String {
-    match value {
-        None => "undefined".into(),
-        Some(Value::Null) => "null".into(),
-        Some(Value::Bool(b)) => b.to_string(),
-        Some(Value::Number(n)) => crate::json::canonical_json(&Value::Number(n.clone())),
-        Some(Value::String(s)) => s.clone(),
-        // Array.prototype.join: null and undefined elements become "".
-        Some(Value::Array(items)) => items
-            .iter()
-            .map(|item| {
-                if item.is_null() {
-                    String::new()
-                } else {
-                    js_string(Some(item))
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(","),
-        Some(Value::Object(_)) => "[object Object]".into(),
-    }
+/// The record schemas (names) each typed submission tool accepts (`submissionToolSchemas`),
+/// vendored from the TypeScript wire package by `scripts/sync-schemas.mjs`.
+pub fn submission_tool_schemas() -> &'static BTreeMap<String, Vec<String>> {
+    static TOOLS: LazyLock<BTreeMap<String, Vec<String>>> = LazyLock::new(|| {
+        serde_json::from_str(include_str!(
+            "../../../conformance/schemas/submission-tools.json"
+        ))
+        .expect("submission-tools.json")
+    });
+    &TOOLS
 }
 
 #[cfg(test)]
@@ -77,14 +67,5 @@ mod tests {
                 case["input"]
             );
         }
-    }
-
-    #[test]
-    fn js_string_matches_javascript() {
-        let s = |text: &str| js_string(Some(&serde_json::from_str(text).unwrap()));
-        assert_eq!(s(r#"[1, null, "a", [2, [3]], true]"#), "1,,a,2,3,true");
-        assert_eq!(s("1.5e21"), "1.5e+21");
-        assert_eq!(s(r#"{"a":1}"#), "[object Object]");
-        assert_eq!(js_string(None), "undefined");
     }
 }

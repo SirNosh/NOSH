@@ -5,8 +5,8 @@
 //! symbolic link or junction. Manifest entries are kept as JSON objects, so fields this build does
 //! not know survive a rewrite.
 
+use crate::{Error, Result};
 use nosh_sys::paths::{extname, relative_inside, resolve};
-use nosh_sys::{Error, Result};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::fmt::Write as _;

@@ -3,7 +3,7 @@
   "tsBranch": "agent/optimize-harness-and-project-intake",
   "crates": {
     "nosh-wire": {
-      "synced": "7723e93dbcb409fe4d96ae6bf04177d71fb94982",
+      "synced": "09c63628c4be4962bf4c1b738df1fd3fdb00fb65",
       "paths": [
         "packages/core/src",
         "packages/wire/src",
@@ -38,14 +38,9 @@
     "nosh-research": {
       "synced": null,
       "paths": [
-        "packages/graph/src",
-        "packages/scheduler/src",
-        "packages/evidence/src",
+        "packages/evidence/src/project.ts",
+        "packages/evidence/src/paper.ts",
         "packages/templates/src",
-        "packages/skills/src",
-        "packages/episodes/src",
-        "packages/threads/src",
-        "packages/agent-runtime/src",
         "apps/noshd/src/research-control.ts"
       ],
       "strict": []
@@ -54,6 +49,18 @@
       "synced": "920131ced8c50810d8494f268ab3c8528cf189ae",
       "paths": [
         "packages/evidence/src/index.ts"
+      ],
+      "strict": []
+    },
+    "nosh-research:domain": {
+      "synced": "09c63628c4be4962bf4c1b738df1fd3fdb00fb65",
+      "paths": [
+        "packages/graph/src",
+        "packages/scheduler/src",
+        "packages/skills/src",
+        "packages/episodes/src",
+        "packages/threads/src",
+        "packages/agent-runtime/src"
       ],
       "strict": []
     },

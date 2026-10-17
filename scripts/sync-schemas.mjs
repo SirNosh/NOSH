@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Copies the TypeScript wire JSON Schemas and golden fixtures into conformance/schemas,
 // recording the source commit in conformance/schemas/SOURCE.json.
-// Syncing also writes conformance/schemas/refinements.json from the built TypeScript registry
+// Syncing also writes conformance/schemas/refinements.json and submission-tools.json from the built TypeScript wire package
 // (packages/wire/dist): the zod refinements, defaults, and date formats that the generated JSON
 // Schemas cannot express, with each refinement's location and source text.
 // --check exits 1 if the vendored schemas or fixtures differ from the TypeScript tree (line endings
@@ -64,6 +64,10 @@ if (check) {
   const refinements = await extractRefinements();
   writeFileSync(join(vendored, "refinements.json"), `${JSON.stringify(refinements, null, 2)}\n`);
   console.log(`recorded ${refinements.refinements.length} refinement locations and ${refinements.defaults.length} defaults`);
+  const { submissionToolSchemas } = await import(pathToFileURL(join(tsRoot, "packages", "wire", "dist", "submission-tools.js")).href);
+  writeFileSync(join(vendored, "submission-tools.json"), `${JSON.stringify(submissionToolSchemas, null, 2)}
+`);
+  console.log(`recorded the schemas of ${Object.keys(submissionToolSchemas).length} submission tools`);
   const vectors = await buildVectors();
   writeFileSync(join(vendored, "vectors.json"), `${JSON.stringify(vectors, null, 2)}\n`);
   console.log(`recorded TypeScript verdicts for ${vectors.records.length} record, ${vectors.canonical.length} canonical-JSON, and ${vectors.taskTerminal.length} task-terminal cases`);

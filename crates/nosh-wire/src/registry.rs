@@ -10,7 +10,8 @@
 
 use crate::refinements::Extras;
 use jsonschema::{
-    Draft, Keyword, PatternOptions, ValidationError, Validator, error::ValidationErrorKind,
+    Draft, Keyword, PatternOptions, ValidationError, Validator,
+    error::{TypeKind, ValidationErrorKind},
     paths::Location,
 };
 use regex::Regex;
@@ -60,8 +61,15 @@ static FORMATS: LazyLock<Formats> = LazyLock::new(|| {
     }
 });
 
-/// Schema URI -> (schema name, validator).
-static VALIDATORS: LazyLock<BTreeMap<String, (String, Validator)>> = LazyLock::new(|| {
+struct Compiled {
+    name: String,
+    validator: Validator,
+    /// The adapted schema document, for resolving the schema of a reported location.
+    document: Value,
+}
+
+/// Schema URI -> compiled schema.
+static VALIDATORS: LazyLock<BTreeMap<String, Compiled>> = LazyLock::new(|| {
     let mut validators = BTreeMap::new();
     for (name, text) in SCHEMAS {
         let mut document: Value =
@@ -82,7 +90,14 @@ static VALIDATORS: LazyLock<BTreeMap<String, (String, Validator)>> = LazyLock::n
             .with_pattern_options(PatternOptions::regex())
             .build(&document)
             .unwrap_or_else(|e| panic!("{name}: {e}"));
-        validators.insert(uri, ((*name).to_owned(), validator));
+        validators.insert(
+            uri,
+            Compiled {
+                name: (*name).to_owned(),
+                validator,
+                document,
+            },
+        );
     }
     validators
 });
@@ -95,25 +110,41 @@ pub fn schema_uris() -> Vec<String> {
 /// Validates `value` as the record type `uri`. On success returns the value with zod defaults
 /// applied, as TypeScript's `validateRecord` returns `result.data`.
 pub fn validate_record(uri: &str, value: &Value) -> Result<Value, Vec<Issue>> {
-    let Some((name, validator)) = VALIDATORS.get(uri) else {
+    let Some(Compiled {
+        name,
+        validator,
+        document,
+    }) = VALIDATORS.get(uri)
+    else {
         return Err(vec![Issue {
             pointer: "/$schema".into(),
             code: "unknown_schema".into(),
             message: format!("Unsupported schema: {uri}"),
         }]);
     };
-    let issues: Vec<Issue> = validator
+    let mut issues: Vec<Issue> = validator
         .iter_errors(value)
-        .flat_map(|error| issues_from(&error))
+        .flat_map(|error| issues_from(&error, document))
         .collect();
-    if !issues.is_empty() {
-        return Err(issues);
-    }
     // zod applies defaults while parsing, so refinements see them.
     let mut value = value.clone();
     crate::json::normalize_numbers(&mut value);
     EXTRAS.apply_defaults(name, &mut value);
-    let issues = EXTRAS.check(name, &value);
+    // A refinement still runs when the value only has "dirty" issues (failed string, size, or
+    // key checks); an aborting issue at or below it (a wrong type, literal, enum, or union, or a
+    // missing key) stops it, as in zod.
+    let aborted: Vec<&str> = issues
+        .iter()
+        .filter(|issue| {
+            !matches!(
+                issue.code.as_str(),
+                "too_small" | "too_big" | "invalid_string" | "unrecognized_keys" | "custom"
+            )
+        })
+        .map(|issue| issue.pointer.as_str())
+        .collect();
+    let refinement_issues = EXTRAS.check(name, &value, &aborted);
+    issues.extend(refinement_issues);
     if issues.is_empty() {
         Ok(value)
     } else {
@@ -121,13 +152,17 @@ pub fn validate_record(uri: &str, value: &Value) -> Result<Value, Vec<Issue>> {
     }
 }
 
-fn issues_from(error: &ValidationError<'_>) -> Vec<Issue> {
+/// zod's issue for a JSON Schema error: the same codes and messages TypeScript's `validateRecord`
+/// returns, which agents read to correct a submission.
+fn issues_from(error: &ValidationError<'_>, document: &Value) -> Vec<Issue> {
     let base = error.instance_path().as_str();
+    let instance: &Value = error.instance();
     let issue = |pointer: String, code: &str, message: String| Issue {
         pointer,
         code: code.into(),
         message,
     };
+    let here = |code: &str, message: String| vec![issue(base.to_owned(), code, message)];
     match error.kind() {
         ValidationErrorKind::AdditionalProperties { unexpected } => unexpected
             .iter()
@@ -141,44 +176,248 @@ fn issues_from(error: &ValidationError<'_>) -> Vec<Issue> {
             .collect(),
         ValidationErrorKind::Required { property } => {
             let key = property.as_str().unwrap_or_default();
-            vec![issue(
-                format!("{base}/{}", escape_pointer(key)),
+            let pointer = format!("{base}/{}", escape_pointer(key));
+            let schema = error
+                .schema_path()
+                .as_str()
+                .strip_suffix("/required")
+                .and_then(|parent| {
+                    document.pointer(&format!("{parent}/properties/{}", escape_pointer(key)))
+                });
+            match schema.map_or(Expected::Union, |schema| expected(document, schema)) {
+                Expected::Literal(value) => vec![issue(
+                    pointer,
+                    "invalid_literal",
+                    format!(
+                        "Invalid literal value, expected {}",
+                        crate::canonical_json(&value)
+                    ),
+                )],
+                Expected::Enum(options) => vec![issue(
+                    pointer,
+                    "invalid_type",
+                    format!("Required: missing; expected {}", join_values(&options)),
+                )],
+                Expected::Type(name) => vec![issue(
+                    pointer,
+                    "invalid_type",
+                    format!("Required: missing; expected {name}"),
+                )],
+                Expected::Union => vec![issue(pointer, "invalid_union", "Invalid input".into())],
+            }
+        }
+        ValidationErrorKind::AnyOf { context } => union_issues(error, base, context, document),
+        ValidationErrorKind::Type { kind } => {
+            // z.literal() and z.enum() check the value in one step: their own issue reports it.
+            let sibling = error
+                .schema_path()
+                .as_str()
+                .strip_suffix("/type")
+                .and_then(|location| document.pointer(location));
+            if sibling
+                .is_some_and(|schema| schema.get("const").is_some() || schema.get("enum").is_some())
+            {
+                return Vec::new();
+            }
+            let expected = match kind {
+                TypeKind::Single(single) => single.to_string(),
+                TypeKind::Multiple(_) => return here("invalid_type", error.to_string()),
+            };
+            // z.number().int(): a string fails as "number", a fraction as "integer"/"float".
+            let expected = if expected == "integer" && !instance.is_number() {
+                "number".to_owned()
+            } else {
+                expected
+            };
+            here(
                 "invalid_type",
-                "Required: missing".into(),
+                format!(
+                    "Expected {expected}, received {}",
+                    received_type(instance, &expected)
+                ),
+            )
+        }
+        ValidationErrorKind::Constant { expected_value } => here(
+            "invalid_literal",
+            format!(
+                "Invalid literal value, expected {}",
+                crate::canonical_json(expected_value)
+            ),
+        ),
+        ValidationErrorKind::Enum { options } => {
+            let options = options.as_array().cloned().unwrap_or_default();
+            match instance.as_str() {
+                Some(received) => here(
+                    "invalid_enum_value",
+                    format!(
+                        "Invalid enum value. Expected {}, received '{received}'",
+                        join_values(&options)
+                    ),
+                ),
+                None => here(
+                    "invalid_type",
+                    format!(
+                        "Expected {}, received {}",
+                        join_values(&options),
+                        received_type(instance, "")
+                    ),
+                ),
+            }
+        }
+        ValidationErrorKind::Pattern { .. } => here("invalid_string", "Invalid".into()),
+        ValidationErrorKind::Format { format } => here(
+            "invalid_string",
+            match format.as_str() {
+                "date-time" => "Invalid datetime",
+                "date" => "Invalid date",
+                "uri" => "Invalid url",
+                _ => "Invalid",
+            }
+            .into(),
+        ),
+        ValidationErrorKind::MinItems { limit } => here(
+            "too_small",
+            format!("Array must contain at least {limit} element(s)"),
+        ),
+        ValidationErrorKind::MaxItems { limit } => here(
+            "too_big",
+            format!("Array must contain at most {limit} element(s)"),
+        ),
+        ValidationErrorKind::Minimum { limit } => here(
+            "too_small",
+            format!(
+                "Number must be greater than or equal to {}",
+                crate::js::string(Some(limit))
+            ),
+        ),
+        ValidationErrorKind::ExclusiveMinimum { limit } => here(
+            "too_small",
+            format!(
+                "Number must be greater than {}",
+                crate::js::string(Some(limit))
+            ),
+        ),
+        ValidationErrorKind::Maximum { limit } => here(
+            "too_big",
+            format!(
+                "Number must be less than or equal to {}",
+                crate::js::string(Some(limit))
+            ),
+        ),
+        ValidationErrorKind::ExclusiveMaximum { limit } => here(
+            "too_big",
+            format!(
+                "Number must be less than {}",
+                crate::js::string(Some(limit))
+            ),
+        ),
+        ValidationErrorKind::Custom { .. } if error.schema_path().as_str().ends_with(MIN_UTF16) => {
+            here("too_small", error.to_string())
+        }
+        ValidationErrorKind::Custom { .. } if error.schema_path().as_str().ends_with(MAX_UTF16) => {
+            here("too_big", error.to_string())
+        }
+        // z.record's key schema: the offending key is the issue's last path segment.
+        ValidationErrorKind::PropertyNames { error: inner } => {
+            let key = inner.instance().as_str().unwrap_or_default().to_owned();
+            vec![issue(
+                format!("{base}/{}", escape_pointer(&key)),
+                "invalid_string",
+                "Invalid".into(),
             )]
         }
-        ValidationErrorKind::AnyOf { context } => union_issues(error, base, context),
-        kind => {
-            let code = match kind {
-                ValidationErrorKind::Type { .. } => "invalid_type",
-                ValidationErrorKind::Enum { .. } => "invalid_enum_value",
-                ValidationErrorKind::Constant { .. } => "invalid_literal",
-                ValidationErrorKind::Pattern { .. } | ValidationErrorKind::Format { .. } => {
-                    "invalid_string"
-                }
-                ValidationErrorKind::MinItems { .. }
-                | ValidationErrorKind::Minimum { .. }
-                | ValidationErrorKind::ExclusiveMinimum { .. } => "too_small",
-                ValidationErrorKind::MaxItems { .. }
-                | ValidationErrorKind::Maximum { .. }
-                | ValidationErrorKind::ExclusiveMaximum { .. } => "too_big",
-                ValidationErrorKind::OneOfNotValid { .. }
-                | ValidationErrorKind::OneOfMultipleValid { .. } => "invalid_union",
-                ValidationErrorKind::Custom { .. }
-                    if error.schema_path().as_str().ends_with(MIN_UTF16) =>
-                {
-                    "too_small"
-                }
-                ValidationErrorKind::Custom { .. }
-                    if error.schema_path().as_str().ends_with(MAX_UTF16) =>
-                {
-                    "too_big"
-                }
-                _ => "invalid",
-            };
-            vec![issue(base.to_owned(), code, error.to_string())]
-        }
+        _ => here("invalid", error.to_string()),
     }
+}
+
+/// What zod expects at a schema location, for reporting a missing key.
+enum Expected {
+    Literal(Value),
+    Enum(Vec<Value>),
+    Type(String),
+    Union,
+}
+
+fn expected(document: &Value, schema: &Value) -> Expected {
+    let schema = resolve_ref(document, schema);
+    if let Some(value) = schema.get("const") {
+        return Expected::Literal(value.clone());
+    }
+    if let Some(Value::Array(options)) = schema.get("enum") {
+        return Expected::Enum(options.clone());
+    }
+    let is_type = |branch: &Value, name: &str| {
+        resolve_ref(document, branch)
+            .get("type")
+            .and_then(Value::as_str)
+            == Some(name)
+    };
+    if let Some(Value::Array(branches)) = schema.get("anyOf") {
+        // `.nullable()` is not a union in zod: the inner schema reports.
+        let inner: Vec<&Value> = branches
+            .iter()
+            .filter(|branch| !is_type(branch, "null"))
+            .collect();
+        if let [only] = inner.as_slice() {
+            return expected(document, only);
+        }
+        // A discriminated union first requires an object.
+        if !inner.is_empty() && inner.iter().all(|branch| is_type(branch, "object")) {
+            return Expected::Type("object".into());
+        }
+        return Expected::Union;
+    }
+    match schema.get("type").and_then(Value::as_str) {
+        Some("integer") => Expected::Type("number".into()),
+        Some(kind) => Expected::Type(kind.to_owned()),
+        None => Expected::Union,
+    }
+}
+
+/// Follows a local `$ref` (`#/...`).
+fn resolve_ref<'a>(document: &'a Value, schema: &'a Value) -> &'a Value {
+    match schema
+        .get("$ref")
+        .and_then(Value::as_str)
+        .and_then(|reference| reference.strip_prefix('#'))
+    {
+        Some(pointer) => document
+            .pointer(pointer)
+            .map_or(schema, |target| resolve_ref(document, target)),
+        None => schema,
+    }
+}
+
+/// zod's `getParsedType` name for a JSON value; a fraction where an integer is expected is "float".
+fn received_type(value: &Value, expected: &str) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+        Value::Number(n)
+            if expected == "integer" && n.as_f64().is_some_and(|f| f.fract() != 0.0) =>
+        {
+            "float"
+        }
+        Value::Number(_) => "number",
+    }
+}
+
+/// zod's `util.joinValues`: strings quoted with `'`, joined by ` | `.
+fn join_values(values: &[Value]) -> String {
+    values
+        .iter()
+        .map(|value| {
+            if let Value::String(text) = value {
+                format!("'{text}'")
+            } else {
+                crate::js::string(Some(value))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" | ")
 }
 
 /// zod reports a failed union the way it parsed it, and agents correct records from these issues:
@@ -191,8 +430,32 @@ fn union_issues(
     error: &ValidationError<'_>,
     base: &str,
     branches: &[Vec<ValidationError<'static>>],
+    document: &Value,
 ) -> Vec<Issue> {
-    // A type mismatch at the union itself (e.g. the `null` branch of a nullable) rules a branch out.
+    // `.nullable()`: the schema's non-null branch reports, whatever its errors are.
+    let schemas = document
+        .pointer(error.schema_path().as_str())
+        .and_then(Value::as_array);
+    let non_null: Vec<&Vec<ValidationError<'static>>> = branches
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| {
+            schemas.and_then(|s| s.get(*index)).is_none_or(|branch| {
+                resolve_ref(document, branch)
+                    .get("type")
+                    .and_then(Value::as_str)
+                    != Some("null")
+            })
+        })
+        .map(|(_, errors)| errors)
+        .collect();
+    if non_null.len() == 1 && branches.len() == 2 {
+        return non_null[0]
+            .iter()
+            .flat_map(|e| issues_from(e, document))
+            .collect();
+    }
+    // A type mismatch at the union itself rules a branch out.
     let candidates: Vec<&Vec<ValidationError<'static>>> = branches
         .iter()
         .filter(|errors| {
@@ -203,7 +466,10 @@ fn union_issues(
         })
         .collect();
     if let [branch] = candidates.as_slice() {
-        return branch.iter().flat_map(issues_from).collect();
+        return branch
+            .iter()
+            .flat_map(|e| issues_from(e, document))
+            .collect();
     }
     // Per branch, the keys directly under the union whose literal value it rejects or that it requires.
     let rejected: Vec<Vec<String>> = candidates
@@ -235,10 +501,27 @@ fn union_issues(
         .flatten()
         .find(|key| rejected.iter().all(|keys| keys.contains(key)))
     {
+        // zod lists every branch's discriminator value.
+        let options: Vec<Value> = document
+            .pointer(error.schema_path().as_str())
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|branch| {
+                resolve_ref(document, branch)
+                    .get("properties")?
+                    .get(key.as_str())?
+                    .get("const")
+                    .cloned()
+            })
+            .collect();
         return vec![Issue {
             pointer: format!("{base}/{key}"),
             code: "invalid_union_discriminator".into(),
-            message: "Invalid discriminator value".into(),
+            message: format!(
+                "Invalid discriminator value. Expected {}",
+                join_values(&options)
+            ),
         }];
     }
     let selected: Vec<_> = candidates
@@ -248,12 +531,15 @@ fn union_issues(
         .map(|(branch, _)| branch)
         .collect();
     if let [branch] = selected.as_slice() {
-        return branch.iter().flat_map(issues_from).collect();
+        return branch
+            .iter()
+            .flat_map(|e| issues_from(e, document))
+            .collect();
     }
     vec![Issue {
         pointer: base.to_owned(),
         code: "invalid_union".into(),
-        message: error.to_string(),
+        message: "Invalid input".into(),
     }]
 }
 
@@ -423,7 +709,8 @@ mod tests {
     }
 
     /// Replays every conformance case recorded from the TypeScript validator, reporting every
-    /// disagreement at once.
+    /// disagreement at once. Rejections must report the same issues: pointer, zod code, and
+    /// message (as a set; zod and JSON Schema visit keys in different orders).
     #[test]
     fn agrees_with_typescript_verdicts() {
         let records = vectors()["records"].as_array().expect("record vectors");
@@ -437,43 +724,39 @@ mod tests {
                 case["schema"].as_str().unwrap()
             );
             let result = validate_record(&uri, &input);
-            let theirs: Vec<(&str, &str)> = case["issues"]
+            let mut theirs: Vec<(String, String, String)> = case["issues"]
                 .as_array()
                 .map(|issues| {
                     issues
                         .iter()
-                        .map(|i| (i["pointer"].as_str().unwrap(), i["code"].as_str().unwrap()))
+                        .map(|i| {
+                            (
+                                i["pointer"].as_str().unwrap().to_owned(),
+                                i["code"].as_str().unwrap().to_owned(),
+                                i["message"].as_str().unwrap().to_owned(),
+                            )
+                        })
                         .collect()
                 })
                 .unwrap_or_default();
+            theirs.sort();
             match (case["outcome"].as_str().unwrap(), &result) {
                 ("accept", Ok(value)) if value != &case["value"] => {
                     failures.push(format!("{name}: parsed value differs: {value}"))
                 }
                 ("accept", Ok(_)) => {}
-                ("custom", Err(issues)) => {
-                    let mut ours: Vec<(&str, &str)> = issues
+                ("custom" | "reject", Err(issues)) => {
+                    let mut ours: Vec<(String, String, String)> = issues
                         .iter()
-                        .map(|i| (i.pointer.as_str(), i.code.as_str()))
+                        .map(|i| (i.pointer.clone(), i.code.clone(), i.message.clone()))
                         .collect();
-                    let mut theirs = theirs.clone();
-                    ours.sort_unstable();
-                    theirs.sort_unstable();
+                    ours.sort();
                     if ours != theirs {
-                        failures.push(format!("{name}: TypeScript {theirs:?}, Rust {ours:?}"));
-                    }
-                }
-                ("reject", Err(issues)) => {
-                    if issues.iter().all(|i| i.code == "custom") {
-                        failures.push(format!("{name}: rejected only by refinements: {issues:?}"));
-                    }
-                    for (pointer, code) in theirs {
-                        let matched = issues.iter().any(|i| {
-                            i.pointer == pointer && (code != "unrecognized_keys" || i.code == code)
-                        });
-                        if !matched {
-                            failures.push(format!("{name}: TypeScript reports {pointer} ({code}); Rust reports {issues:?}"));
-                        }
+                        failures.push(format!(
+                            "{name}:
+      TypeScript {theirs:?}
+      Rust       {ours:?}"
+                        ));
                     }
                 }
                 (expected, result) => failures.push(format!(

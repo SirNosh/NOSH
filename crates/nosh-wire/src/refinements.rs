@@ -199,8 +199,8 @@ impl Extras {
         }
     }
 
-    /// Runs the refinements for `schema` over a schema-valid value.
-    pub(crate) fn check(&self, schema: &str, value: &Value) -> Vec<Issue> {
+    /// Runs the refinements for `schema`, except those at or above an `aborted` issue pointer.
+    pub(crate) fn check(&self, schema: &str, value: &Value, aborted: &[&str]) -> Vec<Issue> {
         let mut issues = Vec::new();
         for refinement in self.refinements.get(schema).into_iter().flatten() {
             for (at, node) in select(value, &refinement.path) {
@@ -209,7 +209,11 @@ impl Extras {
                     Input::Object => node.is_object(),
                     Input::String => node.is_string(),
                 };
-                if !applies || !holds(value, &at, &refinement.when) {
+                let location = pointer(&at, &[]);
+                let blocked = aborted
+                    .iter()
+                    .any(|issue| *issue == location || issue.starts_with(&format!("{location}/")));
+                if !applies || blocked || !holds(value, &at, &refinement.when) {
                     continue;
                 }
                 for (relative, message) in (refinement.item.check)(node) {
@@ -286,15 +290,7 @@ fn is_null(value: Option<&Value>) -> bool {
     matches!(value, Some(Value::Null))
 }
 
-fn truthy(value: Option<&Value>) -> bool {
-    match value {
-        None | Some(Value::Null) => false,
-        Some(Value::Bool(b)) => *b,
-        Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0),
-        Some(Value::String(s)) => !s.is_empty(),
-        Some(Value::Array(_) | Value::Object(_)) => true,
-    }
-}
+use crate::js::truthy;
 
 /// `.length` of an array field (zod has already checked the type).
 fn len(value: &Value, key: &str) -> usize {
@@ -612,30 +608,5 @@ mod tests {
         assert_eq!(at(&["map", "*", "x"]), ["/map/a/x"]);
         assert_eq!(at(&[]), [""]);
         assert!(at(&["missing", "*"]).is_empty());
-    }
-
-    #[test]
-    fn javascript_truthiness() {
-        for falsy in [
-            None,
-            Some(json!(null)),
-            Some(json!(false)),
-            Some(json!(0)),
-            Some(json!(0.0)),
-            Some(json!("")),
-        ] {
-            assert!(!truthy(falsy.as_ref()), "{falsy:?}");
-        }
-        for truthy_value in [
-            json!(true),
-            json!(1),
-            json!(-0.5),
-            json!("x"),
-            json!([]),
-            json!({}),
-        ] {
-            assert!(truthy(Some(&truthy_value)), "{truthy_value}");
-        }
-        assert!(is_null(Some(&json!(null))) && !is_null(None));
     }
 }

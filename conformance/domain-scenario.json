@@ -1,0 +1,1872 @@
+{
+  "$comment": "Domain operations run against the TypeScript packages (scripts/domain-ts.mjs) and Rust by crates/nosh-research/tests/domain.rs. {$node: {...}} expands to a full GraphNode with defaults; {$fixture: \"<schema>/<file>\", set: {pointer: value}, delete: [pointer]} loads a golden fixture. {$ref: [i, ...path]} reads result i (negative counts back).",
+  "groups": [
+    {
+      "name": "versioned plan graphs",
+      "ops": [
+        {
+          "op": "dag.new",
+          "name": "g",
+          "scopeId": "mis_1",
+          "rationale": "initial plan",
+          "initialVersion": 1,
+          "nodes": [
+            {
+              "$node": {
+                "id": "a",
+                "criticalWeight": 2
+              }
+            },
+            {
+              "$node": {
+                "id": "b",
+                "hardDependencies": [
+                  "a"
+                ],
+                "criterionIds": [
+                  "c1"
+                ],
+                "criticalWeight": 5
+              }
+            },
+            {
+              "$node": {
+                "id": "c",
+                "hardDependencies": [
+                  "a"
+                ],
+                "softDependencies": [],
+                "criticalWeight": 5
+              }
+            },
+            {
+              "$node": {
+                "id": "d",
+                "hardDependencies": [
+                  "b",
+                  "c"
+                ],
+                "criticalWeight": 1,
+                "extraField": {
+                  "kept": true
+                }
+              }
+            }
+          ]
+        },
+        {
+          "op": "dag.current",
+          "name": "g"
+        },
+        {
+          "op": "dag.runnable",
+          "name": "g"
+        },
+        {
+          "op": "dag.criticalPath",
+          "name": "g"
+        },
+        {
+          "op": "dag.completionReady",
+          "name": "g"
+        },
+        {
+          "op": "dag.transition",
+          "name": "g",
+          "nodeId": "b",
+          "next": "leased"
+        },
+        {
+          "op": "dag.transition",
+          "name": "g",
+          "nodeId": "a",
+          "next": "accepted"
+        },
+        {
+          "op": "dag.transition",
+          "name": "g",
+          "nodeId": "a",
+          "next": "leased"
+        },
+        {
+          "op": "dag.lease",
+          "name": "g",
+          "nodeId": "a",
+          "lease": {
+            "leaseId": "l1",
+            "ownerId": "agt_1",
+            "version": 1,
+            "expiresAt": "2026-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "op": "dag.lease",
+          "name": "g",
+          "nodeId": "b",
+          "lease": {
+            "leaseId": "l2",
+            "ownerId": "agt_1",
+            "version": 1,
+            "expiresAt": "2026-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "op": "dag.runnable",
+          "name": "g"
+        },
+        {
+          "op": "dag.releaseExpired",
+          "name": "g",
+          "now": 1767225600001
+        },
+        {
+          "op": "dag.transition",
+          "name": "g",
+          "nodeId": "b",
+          "next": "leased"
+        },
+        {
+          "op": "dag.transition",
+          "name": "g",
+          "nodeId": "b",
+          "next": "working"
+        },
+        {
+          "op": "dag.transition",
+          "name": "g",
+          "nodeId": "b",
+          "next": "ready"
+        },
+        {
+          "op": "dag.transition",
+          "name": "g",
+          "nodeId": "b",
+          "next": "working"
+        },
+        {
+          "op": "dag.apply",
+          "name": "g",
+          "baseVersion": 7,
+          "operations": [],
+          "rationale": "stale",
+          "evidenceIds": []
+        },
+        {
+          "op": "dag.apply",
+          "name": "g",
+          "baseVersion": 1,
+          "rationale": "add e",
+          "evidenceIds": [
+            "evd_1"
+          ],
+          "operations": [
+            {
+              "type": "add_node",
+              "node": {
+                "$node": {
+                  "id": "e",
+                  "criticalWeight": 9
+                }
+              }
+            },
+            {
+              "type": "add_hard_edge",
+              "from": "e",
+              "to": "d"
+            }
+          ]
+        },
+        {
+          "op": "dag.apply",
+          "name": "g",
+          "baseVersion": 2,
+          "rationale": "dup",
+          "evidenceIds": [],
+          "operations": [
+            {
+              "type": "add_node",
+              "node": {
+                "$node": {
+                  "id": "a"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "op": "dag.apply",
+          "name": "g",
+          "baseVersion": 2,
+          "rationale": "cycle",
+          "evidenceIds": [],
+          "operations": [
+            {
+              "type": "add_hard_edge",
+              "from": "d",
+              "to": "e"
+            }
+          ]
+        },
+        {
+          "op": "dag.apply",
+          "name": "g",
+          "baseVersion": 2,
+          "rationale": "rewire leased",
+          "evidenceIds": [],
+          "operations": [
+            {
+              "type": "add_hard_edge",
+              "from": "e",
+              "to": "b"
+            }
+          ]
+        },
+        {
+          "op": "dag.apply",
+          "name": "g",
+          "baseVersion": 2,
+          "rationale": "supersede connected",
+          "evidenceIds": [],
+          "operations": [
+            {
+              "type": "supersede_node",
+              "nodeId": "c",
+              "replacementId": null
+            }
+          ]
+        },
+        {
+          "op": "dag.current",
+          "name": "g"
+        },
+        {
+          "op": "dag.apply",
+          "name": "g",
+          "baseVersion": {
+            "$ref": [
+              -1,
+              "version"
+            ]
+          },
+          "rationale": "replace c",
+          "evidenceIds": [],
+          "operations": [
+            {
+              "type": "add_node",
+              "node": {
+                "$node": {
+                  "id": "c2",
+                  "hardDependencies": [
+                    "a"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "supersede_node",
+              "nodeId": "c",
+              "replacementId": "c2"
+            }
+          ]
+        },
+        {
+          "op": "dag.current",
+          "name": "g"
+        },
+        {
+          "op": "dag.apply",
+          "name": "g",
+          "baseVersion": {
+            "$ref": [
+              -1,
+              "version"
+            ]
+          },
+          "rationale": "unknown op type is a supersede",
+          "evidenceIds": [],
+          "operations": [
+            {
+              "type": "add_node",
+              "node": {
+                "$node": {
+                  "id": "lonely"
+                }
+              }
+            },
+            {
+              "type": "something_else",
+              "nodeId": "lonely",
+              "replacementId": null
+            }
+          ]
+        },
+        {
+          "op": "dag.current",
+          "name": "g"
+        },
+        {
+          "op": "dag.apply",
+          "name": "g",
+          "baseVersion": {
+            "$ref": [
+              -1,
+              "version"
+            ]
+          },
+          "rationale": "remove edge",
+          "evidenceIds": [],
+          "operations": [
+            {
+              "type": "remove_hard_edge",
+              "from": "e",
+              "to": "d"
+            }
+          ]
+        },
+        {
+          "op": "dag.diff",
+          "name": "g",
+          "from": 1,
+          "to": 3
+        },
+        {
+          "op": "dag.diff",
+          "name": "g",
+          "from": 4,
+          "to": 5
+        },
+        {
+          "op": "dag.diff",
+          "name": "g",
+          "from": 1,
+          "to": 9
+        },
+        {
+          "op": "dag.criticalPath",
+          "name": "g"
+        },
+        {
+          "op": "dag.versions",
+          "name": "g"
+        },
+        {
+          "op": "dag.new",
+          "name": "bad",
+          "scopeId": "x",
+          "rationale": "r",
+          "initialVersion": 1,
+          "nodes": [
+            {
+              "$node": {
+                "id": "a",
+                "hardDependencies": [
+                  "a"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "op": "dag.new",
+          "name": "bad",
+          "scopeId": "x",
+          "rationale": "r",
+          "initialVersion": 1,
+          "nodes": [
+            {
+              "$node": {
+                "id": "a",
+                "hardDependencies": [
+                  "z"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "op": "dag.new",
+          "name": "bad",
+          "scopeId": "x",
+          "rationale": "r",
+          "initialVersion": 1,
+          "nodes": [
+            {
+              "$node": {
+                "id": "a"
+              }
+            },
+            {
+              "$node": {
+                "id": "b",
+                "hardDependencies": [
+                  "a"
+                ],
+                "softDependencies": [
+                  "a"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "op": "dag.new",
+          "name": "bad",
+          "scopeId": "x",
+          "rationale": "r",
+          "initialVersion": 0,
+          "nodes": []
+        },
+        {
+          "op": "dag.new",
+          "name": "ties",
+          "scopeId": "x",
+          "rationale": "r",
+          "initialVersion": 3,
+          "nodes": [
+            {
+              "$node": {
+                "id": "p",
+                "criticalWeight": 1
+              }
+            },
+            {
+              "$node": {
+                "id": "q",
+                "criticalWeight": 1
+              }
+            },
+            {
+              "$node": {
+                "id": "r",
+                "hardDependencies": [
+                  "q",
+                  "p"
+                ],
+                "criticalWeight": 1
+              }
+            }
+          ]
+        },
+        {
+          "op": "dag.criticalPath",
+          "name": "ties"
+        },
+        {
+          "op": "legal.mission",
+          "current": "running",
+          "next": "pausing"
+        },
+        {
+          "op": "legal.mission",
+          "current": "completed",
+          "next": "running"
+        },
+        {
+          "op": "legal.direction",
+          "current": "reviewing",
+          "next": "closed"
+        },
+        {
+          "op": "legal.direction",
+          "current": "draft",
+          "next": "active"
+        }
+      ]
+    },
+    {
+      "name": "experiment trees",
+      "ops": [
+        {
+          "op": "tree.new",
+          "name": "t",
+          "hash": "sha256:c",
+          "maximumDepth": 2,
+          "maximumChildren": 2
+        },
+        {
+          "op": "tree.add",
+          "name": "t",
+          "experiment": {
+            "experimentId": "exp_root",
+            "parentExperimentId": null,
+            "ideaFingerprint": "i0",
+            "attemptFingerprint": "a0",
+            "evaluationContractHash": "sha256:c",
+            "branch": "ar/root",
+            "evaluatedCommit": null,
+            "depth": 0,
+            "state": "proposed",
+            "reviewId": null,
+            "reviewerAgentId": null,
+            "guardrailsPass": null
+          }
+        },
+        {
+          "op": "tree.add",
+          "name": "t",
+          "experiment": {
+            "experimentId": "exp_child",
+            "parentExperimentId": "exp_root",
+            "ideaFingerprint": "i1",
+            "attemptFingerprint": "a1",
+            "evaluationContractHash": "sha256:c",
+            "branch": "ar/c",
+            "evaluatedCommit": null,
+            "depth": 1,
+            "state": "proposed",
+            "reviewId": null,
+            "reviewerAgentId": null,
+            "guardrailsPass": null
+          }
+        },
+        {
+          "op": "tree.evaluate",
+          "name": "t",
+          "id": "exp_root",
+          "commit": "abc1234",
+          "state": "accepted",
+          "review": {
+            "reviewId": "rev_1",
+            "reviewerAgentId": "agt_r1",
+            "verdict": "REVISE"
+          },
+          "guardrailsPass": true
+        },
+        {
+          "op": "tree.evaluate",
+          "name": "t",
+          "id": "exp_root",
+          "commit": "abc1234",
+          "state": "accepted",
+          "review": {
+            "reviewId": "rev_1",
+            "reviewerAgentId": "agt_r1",
+            "verdict": "PASS"
+          },
+          "guardrailsPass": true
+        },
+        {
+          "op": "tree.evaluate",
+          "name": "t",
+          "id": "exp_root",
+          "commit": "def5678",
+          "state": "accepted",
+          "review": null,
+          "guardrailsPass": true
+        },
+        {
+          "op": "tree.add",
+          "name": "t",
+          "experiment": {
+            "experimentId": "exp_child",
+            "parentExperimentId": "exp_root",
+            "ideaFingerprint": "i1",
+            "attemptFingerprint": "a1",
+            "evaluationContractHash": "sha256:c",
+            "branch": "ar/c",
+            "evaluatedCommit": null,
+            "depth": 1,
+            "state": "proposed",
+            "reviewId": null,
+            "reviewerAgentId": null,
+            "guardrailsPass": null,
+            "note": "kept"
+          }
+        },
+        {
+          "op": "tree.add",
+          "name": "t",
+          "experiment": {
+            "experimentId": "exp_dup",
+            "parentExperimentId": "exp_root",
+            "ideaFingerprint": "i1",
+            "attemptFingerprint": "a2",
+            "evaluationContractHash": "sha256:c",
+            "branch": "ar/d",
+            "evaluatedCommit": null,
+            "depth": 1,
+            "state": "proposed",
+            "reviewId": null,
+            "reviewerAgentId": null,
+            "guardrailsPass": null
+          }
+        },
+        {
+          "op": "tree.add",
+          "name": "t",
+          "experiment": {
+            "experimentId": "exp_deep",
+            "parentExperimentId": "exp_root",
+            "ideaFingerprint": "i3",
+            "attemptFingerprint": "a3",
+            "evaluationContractHash": "sha256:c",
+            "branch": "ar/x",
+            "evaluatedCommit": null,
+            "depth": 2,
+            "state": "proposed",
+            "reviewId": null,
+            "reviewerAgentId": null,
+            "guardrailsPass": null
+          }
+        },
+        {
+          "op": "tree.add",
+          "name": "t",
+          "experiment": {
+            "experimentId": "exp_other",
+            "parentExperimentId": "exp_root",
+            "ideaFingerprint": "i4",
+            "attemptFingerprint": "a4",
+            "evaluationContractHash": "sha256:other",
+            "branch": "ar/y",
+            "evaluatedCommit": null,
+            "depth": 1,
+            "state": "proposed",
+            "reviewId": null,
+            "reviewerAgentId": null,
+            "guardrailsPass": null
+          }
+        },
+        {
+          "op": "tree.add",
+          "name": "t",
+          "experiment": {
+            "experimentId": "exp_second_root",
+            "parentExperimentId": null,
+            "ideaFingerprint": "i5",
+            "attemptFingerprint": "a5",
+            "evaluationContractHash": "sha256:c",
+            "branch": "ar/z",
+            "evaluatedCommit": null,
+            "depth": 0,
+            "state": "proposed",
+            "reviewId": null,
+            "reviewerAgentId": null,
+            "guardrailsPass": null
+          }
+        },
+        {
+          "op": "tree.evaluate",
+          "name": "t",
+          "id": "exp_child",
+          "commit": "c111111",
+          "state": "accepted",
+          "review": {
+            "reviewId": "rev_2",
+            "reviewerAgentId": "agt_r1",
+            "verdict": "PASS"
+          },
+          "guardrailsPass": true
+        },
+        {
+          "op": "tree.evaluate",
+          "name": "t",
+          "id": "exp_child",
+          "commit": "c111111",
+          "state": "rejected",
+          "review": {
+            "reviewId": "rev_2",
+            "reviewerAgentId": "agt_r2",
+            "verdict": "REVISE"
+          },
+          "guardrailsPass": false
+        },
+        {
+          "op": "tree.add",
+          "name": "t",
+          "experiment": {
+            "experimentId": "exp_c2",
+            "parentExperimentId": "exp_root",
+            "ideaFingerprint": "i6",
+            "attemptFingerprint": "a6",
+            "evaluationContractHash": "sha256:c",
+            "branch": "ar/c2",
+            "evaluatedCommit": null,
+            "depth": 1,
+            "state": "proposed",
+            "reviewId": null,
+            "reviewerAgentId": null,
+            "guardrailsPass": null
+          }
+        },
+        {
+          "op": "tree.add",
+          "name": "t",
+          "experiment": {
+            "experimentId": "exp_c3",
+            "parentExperimentId": "exp_root",
+            "ideaFingerprint": "i7",
+            "attemptFingerprint": "a7",
+            "evaluationContractHash": "sha256:c",
+            "branch": "ar/c3",
+            "evaluatedCommit": null,
+            "depth": 1,
+            "state": "proposed",
+            "reviewId": null,
+            "reviewerAgentId": null,
+            "guardrailsPass": null
+          }
+        },
+        {
+          "op": "tree.get",
+          "name": "t",
+          "id": "exp_child"
+        },
+        {
+          "op": "tree.get",
+          "name": "t",
+          "id": "exp_none"
+        },
+        {
+          "op": "tree.all",
+          "name": "t"
+        },
+        {
+          "op": "tree.frontier",
+          "name": "t"
+        },
+        {
+          "op": "tree.shapeWarnings",
+          "name": "t"
+        }
+      ]
+    },
+    {
+      "name": "scheduling and focus",
+      "ops": [
+        {
+          "op": "dag.new",
+          "name": "weights",
+          "scopeId": "mis_w",
+          "rationale": "r",
+          "initialVersion": 1,
+          "nodes": [
+            {
+              "$node": {
+                "id": "p15",
+                "priority": 15,
+                "criticalWeight": 0
+              }
+            },
+            {
+              "$node": {
+                "id": "w2",
+                "priority": 0,
+                "criticalWeight": 2
+              }
+            },
+            {
+              "$node": {
+                "id": "young",
+                "priority": 0,
+                "criticalWeight": 1,
+                "createdAt": "2026-01-05T00:00:00.000Z"
+              }
+            }
+          ]
+        },
+        {
+          "op": "scheduler.new",
+          "name": "wsch"
+        },
+        {
+          "op": "scheduler.frontier",
+          "name": "wsch",
+          "dag": "weights",
+          "now": 1767657600000,
+          "context": {
+            "paused": false,
+            "workspaceConflicts": [],
+            "availableRoles": [
+              "general_worker"
+            ],
+            "available": {
+              "agents": 1
+            }
+          }
+        },
+        {
+          "op": "dag.new",
+          "name": "s",
+          "scopeId": "mis_2",
+          "rationale": "r",
+          "initialVersion": 1,
+          "nodes": [
+            {
+              "$node": {
+                "id": "lit",
+                "type": "literature_review",
+                "priority": 1,
+                "criticalWeight": 1,
+                "createdAt": "2026-01-01T00:00:00.000Z"
+              }
+            },
+            {
+              "$node": {
+                "id": "impl",
+                "type": "implementation",
+                "priority": 2,
+                "criticalWeight": 1,
+                "createdAt": "2026-01-02T00:00:00.000Z"
+              }
+            },
+            {
+              "$node": {
+                "id": "rev",
+                "type": "review",
+                "priority": 0,
+                "criticalWeight": 2,
+                "createdAt": "not a date"
+              }
+            },
+            {
+              "$node": {
+                "id": "blocked",
+                "type": "review",
+                "createdAt": "2026-01-01T00:00:00.000Z"
+              }
+            }
+          ]
+        },
+        {
+          "op": "scheduler.new",
+          "name": "sch"
+        },
+        {
+          "op": "scheduler.frontier",
+          "name": "sch",
+          "dag": "s",
+          "now": 1767312000000,
+          "context": {
+            "paused": false,
+            "workspaceConflicts": [
+              "blocked"
+            ],
+            "availableRoles": [
+              "literature_review",
+              "review"
+            ],
+            "available": {
+              "agents": 2
+            }
+          }
+        },
+        {
+          "op": "scheduler.record",
+          "name": "sch",
+          "nodeId": "lit"
+        },
+        {
+          "op": "scheduler.record",
+          "name": "sch",
+          "nodeId": "lit"
+        },
+        {
+          "op": "scheduler.frontier",
+          "name": "sch",
+          "dag": "s",
+          "now": 1767312000000,
+          "context": {
+            "paused": false,
+            "workspaceConflicts": [],
+            "availableRoles": [
+              "general_worker"
+            ],
+            "available": {
+              "agents": 1
+            }
+          }
+        },
+        {
+          "op": "scheduler.frontier",
+          "name": "sch",
+          "dag": "s",
+          "now": 1767312000000,
+          "context": {
+            "paused": true,
+            "workspaceConflicts": [],
+            "availableRoles": [
+              "general_worker"
+            ],
+            "available": {
+              "agents": 1
+            }
+          }
+        },
+        {
+          "op": "scheduler.frontier",
+          "name": "sch",
+          "dag": "s",
+          "now": 1767312000000,
+          "context": {
+            "paused": false,
+            "workspaceConflicts": [],
+            "availableRoles": [
+              "general_worker"
+            ],
+            "available": {
+              "agents": 0.5
+            }
+          }
+        },
+        {
+          "op": "scheduler.restore",
+          "name": "sch",
+          "distribution": {
+            "impl": 3,
+            "rev": -1,
+            "lit": 1.5
+          }
+        },
+        {
+          "op": "scheduler.distribution",
+          "name": "sch"
+        },
+        {
+          "op": "scheduler.activate",
+          "name": "sch",
+          "projectId": "prj_1",
+          "missionId": "mis_a"
+        },
+        {
+          "op": "scheduler.activate",
+          "name": "sch",
+          "projectId": "prj_1",
+          "missionId": "mis_b"
+        },
+        {
+          "op": "scheduler.release",
+          "name": "sch",
+          "projectId": "prj_1",
+          "missionId": "mis_b"
+        },
+        {
+          "op": "scheduler.activate",
+          "name": "sch",
+          "projectId": "prj_1",
+          "missionId": "mis_b"
+        },
+        {
+          "op": "scheduler.release",
+          "name": "sch",
+          "projectId": "prj_1",
+          "missionId": "mis_a"
+        },
+        {
+          "op": "scheduler.activate",
+          "name": "sch",
+          "projectId": "prj_1",
+          "missionId": "mis_b"
+        },
+        {
+          "op": "focus.new",
+          "name": "f"
+        },
+        {
+          "op": "focus.fingerprint",
+          "name": "f",
+          "input": {
+            "projectId": "prj_1",
+            "missionId": null,
+            "directionId": null,
+            "nodeId": "n1",
+            "parentExperimentId": null,
+            "taskType": "implementation",
+            "hypothesisFamilyTags": [
+              "b",
+              "a",
+              "é",
+              "Z"
+            ],
+            "commandClass": "test",
+            "inScopeFiles": [
+              "src/z.ts",
+              "src/a.ts"
+            ],
+            "inputArtifactHashes": [],
+            "diffHash": null,
+            "evaluationContractHash": null,
+            "intendedDecision": "ship",
+            "expectedOutputType": "patch"
+          }
+        },
+        {
+          "op": "focus.record",
+          "name": "f",
+          "input": {
+            "nodeId": "n1",
+            "hypothesisFamilyTags": [],
+            "inScopeFiles": [],
+            "inputArtifactHashes": []
+          },
+          "delta": {}
+        },
+        {
+          "op": "focus.record",
+          "name": "f",
+          "input": {
+            "nodeId": "n1",
+            "hypothesisFamilyTags": [],
+            "inScopeFiles": [],
+            "inputArtifactHashes": []
+          },
+          "delta": {
+            "artifactHash": ""
+          }
+        },
+        {
+          "op": "focus.record",
+          "name": "f",
+          "input": {
+            "nodeId": "n1",
+            "hypothesisFamilyTags": [],
+            "inScopeFiles": [],
+            "inputArtifactHashes": []
+          },
+          "delta": {},
+          "override": "replication"
+        },
+        {
+          "op": "focus.record",
+          "name": "f",
+          "input": {
+            "nodeId": "n1",
+            "hypothesisFamilyTags": [
+              "x"
+            ],
+            "inScopeFiles": [],
+            "inputArtifactHashes": []
+          },
+          "delta": {}
+        },
+        {
+          "op": "focus.record",
+          "name": "f",
+          "input": {
+            "nodeId": "n1",
+            "hypothesisFamilyTags": [
+              "y"
+            ],
+            "inScopeFiles": [],
+            "inputArtifactHashes": []
+          },
+          "delta": {
+            "evidenceId": "evd_1"
+          }
+        },
+        {
+          "op": "focus.record",
+          "name": "f",
+          "input": {
+            "nodeId": "n2",
+            "hypothesisFamilyTags": [
+              "q"
+            ],
+            "inScopeFiles": [],
+            "inputArtifactHashes": []
+          },
+          "delta": {
+            "decisionId": "dec_1"
+          }
+        },
+        {
+          "op": "focus.clear",
+          "name": "f",
+          "nodeId": "n1",
+          "proof": {
+            "graphVersion": 0
+          }
+        },
+        {
+          "op": "focus.clear",
+          "name": "f",
+          "nodeId": "n1",
+          "proof": {
+            "reviewId": "rev_1"
+          }
+        },
+        {
+          "op": "focus.record",
+          "name": "f",
+          "input": {
+            "nodeId": "n1",
+            "hypothesisFamilyTags": [],
+            "inScopeFiles": [],
+            "inputArtifactHashes": []
+          },
+          "delta": {}
+        },
+        {
+          "op": "focus.fingerprint",
+          "name": "f",
+          "input": {
+            "nodeId": "n1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "skills and programs",
+      "ops": [
+        {
+          "op": "skills.new",
+          "name": "k"
+        },
+        {
+          "op": "skills.add",
+          "name": "k",
+          "input": {
+            "$fixture": "skill-manifest/full.valid"
+          }
+        },
+        {
+          "op": "skills.add",
+          "name": "k",
+          "input": {
+            "$fixture": "skill-manifest/full.valid",
+            "set": {
+              "/skillId": "skl_11111111111111111111111111111111",
+              "/activation/roles": [
+                "general_worker",
+                "reviewer"
+              ],
+              "/activation/requiredCapabilities": [
+                "cap_a",
+                "cap_b"
+              ]
+            }
+          }
+        },
+        {
+          "op": "skills.add",
+          "name": "k",
+          "input": {
+            "$fixture": "skill-manifest/full.valid",
+            "set": {
+              "/name": "Renamed"
+            }
+          }
+        },
+        {
+          "op": "skills.add",
+          "name": "k",
+          "input": {
+            "$fixture": "skill-manifest/missing.invalid"
+          }
+        },
+        {
+          "op": "skills.list",
+          "name": "k"
+        },
+        {
+          "op": "skills.get",
+          "name": "k",
+          "skillId": "skl_missing"
+        },
+        {
+          "op": "skills.applicable",
+          "name": "k",
+          "skillId": "skl_11111111111111111111111111111111",
+          "thread": {
+            "role": "nosh",
+            "capabilities": []
+          }
+        },
+        {
+          "op": "skills.applicable",
+          "name": "k",
+          "skillId": "skl_11111111111111111111111111111111",
+          "thread": {
+            "role": "reviewer",
+            "capabilities": [
+              "cap_b"
+            ]
+          }
+        },
+        {
+          "op": "skills.applicable",
+          "name": "k",
+          "skillId": "skl_11111111111111111111111111111111",
+          "thread": {
+            "role": "reviewer",
+            "capabilities": [
+              "cap_b",
+              "cap_a"
+            ]
+          }
+        },
+        {
+          "op": "compileProgram",
+          "input": {
+            "$fixture": "orchestration-program/full.valid",
+            "set": {
+              "/steps/0/background": false,
+              "/steps/0/outputStateKey": "item",
+              "/state/initial/item": "start"
+            }
+          }
+        },
+        {
+          "op": "compileProgram",
+          "input": {
+            "$fixture": "orchestration-program/full.valid",
+            "set": {
+              "/state/initial/item": "start"
+            }
+          }
+        },
+        {
+          "op": "compileProgram",
+          "input": {
+            "$fixture": "orchestration-program/full.valid"
+          }
+        },
+        {
+          "op": "compileProgram",
+          "input": {
+            "$fixture": "orchestration-program/full.valid",
+            "set": {
+              "/startStepId": "ref_missing",
+              "/state/initial/item": "x"
+            }
+          }
+        },
+        {
+          "op": "compileProgram",
+          "input": {
+            "$fixture": "orchestration-program/full.valid",
+            "set": {
+              "/steps/0/nextStepId": "ref_nowhere",
+              "/state/initial/item": "x"
+            }
+          }
+        },
+        {
+          "op": "compileProgram",
+          "input": {
+            "$fixture": "orchestration-program/full.valid",
+            "set": {
+              "/steps/0/background": false,
+              "/steps/0/outputStateKey": "undeclared",
+              "/state/initial/item": "x"
+            }
+          }
+        },
+        {
+          "op": "compileProgram",
+          "input": {
+            "$fixture": "orchestration-program/unknown.invalid"
+          }
+        },
+        {
+          "op": "validateState",
+          "schema": {
+            "a": "string",
+            "n": "number",
+            "b": "boolean",
+            "r": "ref",
+            "j": "json"
+          },
+          "values": {
+            "a": "x",
+            "n": 1.5,
+            "b": false,
+            "r": "ref_1",
+            "j": [
+              {
+                "deep": null
+              }
+            ]
+          }
+        },
+        {
+          "op": "validateState",
+          "schema": {
+            "a": "string"
+          },
+          "values": {
+            "a": null
+          }
+        },
+        {
+          "op": "validateState",
+          "schema": {
+            "a": "string"
+          },
+          "values": {}
+        },
+        {
+          "op": "validateState",
+          "schema": {
+            "a": "string"
+          },
+          "values": {
+            "a": "x",
+            "extra": 1
+          }
+        },
+        {
+          "op": "validateState",
+          "schema": {
+            "r": "ref"
+          },
+          "values": {
+            "r": "Bad_ref"
+          }
+        },
+        {
+          "op": "validateState",
+          "schema": {
+            "a": "string"
+          },
+          "values": {
+            "a": "x",
+            "toString": "y"
+          }
+        },
+        {
+          "op": "validateState",
+          "schema": {
+            "toString": "string"
+          },
+          "values": {}
+        },
+        {
+          "op": "validateState",
+          "schema": {
+            "toString": "json"
+          },
+          "values": {}
+        }
+      ]
+    },
+    {
+      "name": "episodes and threads",
+      "ops": [
+        {
+          "op": "createEpisode",
+          "input": {
+            "$fixture": "episode/full.valid",
+            "delete": [
+              "/$schema",
+              "/schemaVersion",
+              "/episodeHash"
+            ]
+          }
+        },
+        {
+          "op": "episodeIntegrity",
+          "episode": {
+            "$ref": [
+              -1
+            ]
+          }
+        },
+        {
+          "op": "renderEpisode",
+          "episode": {
+            "$ref": [
+              -2
+            ]
+          }
+        },
+        {
+          "op": "createEpisode",
+          "input": {
+            "$fixture": "episode/full.valid",
+            "delete": [
+              "/$schema",
+              "/schemaVersion",
+              "/episodeHash",
+              "/facts/0/confidence"
+            ],
+            "set": {
+              "/episodeId": "epi_11111111111111111111111111111111"
+            }
+          }
+        },
+        {
+          "op": "episodeIntegrity",
+          "episode": {
+            "$ref": [
+              -1
+            ]
+          }
+        },
+        {
+          "op": "createEpisode",
+          "input": {
+            "$fixture": "episode/full.valid",
+            "delete": [
+              "/$schema",
+              "/schemaVersion",
+              "/episodeHash",
+              "/objective"
+            ]
+          }
+        },
+        {
+          "op": "renderEpisode",
+          "episode": {
+            "$fixture": "episode/full.valid",
+            "set": {
+              "/summary": {
+                "$repeat": [
+                  "😀",
+                  300
+                ]
+              },
+              "/objective": {
+                "$repeat": [
+                  "ab",
+                  250
+                ]
+              },
+              "/facts": [
+                {
+                  "statement": "first",
+                  "evidenceRefs": [],
+                  "confidence": "high"
+                },
+                {
+                  "statement": "second",
+                  "evidenceRefs": [
+                    "r1",
+                    "r2",
+                    "r3",
+                    "r4",
+                    "r5",
+                    "r6",
+                    "r7",
+                    "r8",
+                    "r9"
+                  ],
+                  "confidence": "low"
+                },
+                {
+                  "statement": "third",
+                  "evidenceRefs": [],
+                  "confidence": "low"
+                },
+                {
+                  "statement": "fourth",
+                  "evidenceRefs": [],
+                  "confidence": "low"
+                },
+                {
+                  "statement": "fifth",
+                  "evidenceRefs": [],
+                  "confidence": "low"
+                }
+              ],
+              "/unresolvedQuestions": [
+                "q1",
+                "q2",
+                "q3",
+                "q4",
+                "q5"
+              ],
+              "/artifactIds": []
+            }
+          }
+        },
+        {
+          "op": "fallbackEpisodeDraft",
+          "episodeType": "episode_general-worker",
+          "summary": "  \t "
+        },
+        {
+          "op": "fallbackEpisodeDraft",
+          "episodeType": "episode_reviewer",
+          "summary": "  done  "
+        },
+        {
+          "op": "createThread",
+          "instruction": {
+            "$fixture": "runtime-instruction/full.valid"
+          }
+        },
+        {
+          "op": "createThread",
+          "instruction": {
+            "$fixture": "runtime-instruction/full.valid",
+            "set": {
+              "/executionMode": "foreground_fork",
+              "/operation": "THREAD_FORK",
+              "/controllingThreadId": "thr_99999999999999999999999999999999"
+            }
+          }
+        },
+        {
+          "op": "ensureCanStep",
+          "thread": {
+            "$fixture": "execution-thread/full.valid"
+          }
+        },
+        {
+          "op": "ensureCanStep",
+          "thread": {
+            "$fixture": "execution-thread/full.valid",
+            "set": {
+              "/activeInstructionId": null
+            }
+          }
+        },
+        {
+          "op": "ensureCanStep",
+          "thread": {
+            "$fixture": "execution-thread/full.valid",
+            "set": {
+              "/activeInstructionId": null,
+              "/budget": {
+                "maximumToolCalls": 5,
+                "maximumModelTokens": 5,
+                "maximumWallClockSeconds": 1
+              }
+            }
+          }
+        },
+        {
+          "op": "ensureCanStep",
+          "thread": {
+            "$fixture": "execution-thread/full.valid",
+            "set": {
+              "/activeInstructionId": null,
+              "/budget": {
+                "maximumToolCalls": 5,
+                "maximumModelTokens": 5,
+                "maximumWallClockSeconds": 5
+              }
+            }
+          }
+        },
+        {
+          "op": "ensureCanStep",
+          "thread": {
+            "$fixture": "execution-thread/full.valid",
+            "set": {
+              "/state": "completed"
+            }
+          }
+        },
+        {
+          "op": "renderThreadContext",
+          "thread": {
+            "$fixture": "execution-thread/full.valid",
+            "set": {
+              "/inputRefs": [
+                "epi_00000000000000000000000000000000",
+                "ref_other",
+                "epi_00000000000000000000000000000000"
+              ],
+              "/budget": {
+                "maximumToolCalls": 10,
+                "maximumModelTokens": 1e+21,
+                "maximumWallClockSeconds": 0.5
+              }
+            }
+          },
+          "episodes": [
+            {
+              "$fixture": "episode/full.valid"
+            }
+          ],
+          "extraRefs": [
+            "ref_extra",
+            "ref_other"
+          ],
+          "skillPrompts": [
+            "Use the checklist.",
+            "Cite sources."
+          ]
+        },
+        {
+          "op": "renderThreadContext",
+          "thread": {
+            "$fixture": "execution-thread/full.valid",
+            "set": {
+              "/inputRefs": []
+            }
+          },
+          "episodes": [],
+          "extraRefs": [],
+          "skillPrompts": []
+        }
+      ]
+    },
+    {
+      "name": "typed submissions and teachbacks",
+      "ops": [
+        {
+          "op": "gate.new",
+          "name": "gate"
+        },
+        {
+          "op": "gate.submit",
+          "name": "gate",
+          "tool": "nosh_response_submit",
+          "key": "task_1",
+          "record": {
+            "$fixture": "task-failure/full.valid"
+          }
+        },
+        {
+          "op": "gate.submit",
+          "name": "gate",
+          "tool": "nosh_response_submit",
+          "key": "task_2",
+          "record": {
+            "$fixture": "task-failure/missing.invalid"
+          }
+        },
+        {
+          "op": "gate.submit",
+          "name": "gate",
+          "tool": "nosh_response_submit",
+          "key": "task_2",
+          "record": {
+            "$fixture": "task-failure/unknown.invalid"
+          }
+        },
+        {
+          "op": "gate.submit",
+          "name": "gate",
+          "tool": "nosh_response_submit",
+          "key": "task_2",
+          "record": {
+            "$fixture": "task-failure/full.valid"
+          }
+        },
+        {
+          "op": "gate.submit",
+          "name": "gate",
+          "tool": "nosh_review_submit",
+          "key": "task_3",
+          "record": {
+            "$fixture": "task-failure/full.valid"
+          }
+        },
+        {
+          "op": "gate.submit",
+          "name": "gate",
+          "tool": "nosh_unknown_tool",
+          "key": "task_4",
+          "record": {
+            "$fixture": "task-failure/full.valid"
+          }
+        },
+        {
+          "op": "gate.submit",
+          "name": "gate",
+          "tool": "nosh_response_submit",
+          "key": "task_5",
+          "record": "not an object"
+        },
+        {
+          "op": "gate.submit",
+          "name": "gate",
+          "tool": "nosh_response_submit",
+          "key": "task_5",
+          "record": {
+            "$schema": [
+              "https://nosh.dev/schemas/task-failure/v1"
+            ]
+          }
+        },
+        {
+          "op": "gate.submit",
+          "name": "gate",
+          "tool": "nosh_episode_submit",
+          "key": "task_6",
+          "record": {
+            "$fixture": "episode-draft/full.valid",
+            "delete": [
+              "/facts/0/confidence"
+            ]
+          }
+        },
+        {
+          "op": "gate.supported",
+          "name": "gate"
+        },
+        {
+          "op": "validateTeachback",
+          "state": {
+            "handoffId": "hnd_1",
+            "logicalOwnerId": "owner_1",
+            "goalStack": {
+              "projectGoalId": "goal_1",
+              "missionCriterionIds": [
+                "c2",
+                "c1"
+              ],
+              "directionQuestionId": null,
+              "currentGraphNodeId": "n1"
+            },
+            "observedVersions": {
+              "graph": 3,
+              "contract": "v2"
+            },
+            "branchHead": "abc",
+            "defectIds": [
+              "d1"
+            ],
+            "blockerIds": [],
+            "readyNodeIds": [
+              "n2"
+            ]
+          },
+          "teachback": {
+            "handoffId": "hnd_1",
+            "logicalOwnerId": "owner_1",
+            "understoodGoalStack": {
+              "projectGoalId": "goal_1",
+              "missionCriterionIds": [
+                "c1",
+                "c2"
+              ],
+              "directionQuestionId": null,
+              "currentGraphNodeId": "n1"
+            },
+            "decision": "accepted",
+            "observedVersions": {
+              "contract": "v2",
+              "graph": 3.0
+            },
+            "observedBranchHead": "abc",
+            "acknowledgedDefectIds": [
+              "d1"
+            ],
+            "acknowledgedBlockerIds": [],
+            "selectedNextNodeId": "n2",
+            "conflicts": []
+          }
+        },
+        {
+          "op": "validateTeachback",
+          "state": {
+            "handoffId": "hnd_1",
+            "logicalOwnerId": "owner_1",
+            "goalStack": {
+              "projectGoalId": "goal_1",
+              "missionCriterionIds": [
+                "c1"
+              ],
+              "directionQuestionId": null,
+              "currentGraphNodeId": "n1"
+            },
+            "observedVersions": {
+              "graph": 3
+            },
+            "branchHead": "abc",
+            "defectIds": [
+              "d1"
+            ],
+            "blockerIds": [
+              "b1"
+            ],
+            "readyNodeIds": [
+              "n2"
+            ]
+          },
+          "teachback": {
+            "handoffId": "hnd_2",
+            "logicalOwnerId": "owner_1",
+            "understoodGoalStack": {
+              "projectGoalId": "goal_1",
+              "missionCriterionIds": [
+                "c1",
+                "c1"
+              ],
+              "directionQuestionId": null,
+              "currentGraphNodeId": "n9"
+            },
+            "decision": "accepted",
+            "observedVersions": {
+              "graph": "3"
+            },
+            "observedBranchHead": "def",
+            "acknowledgedDefectIds": [],
+            "acknowledgedBlockerIds": [
+              "b1"
+            ],
+            "selectedNextNodeId": "n3",
+            "conflicts": [
+              "x"
+            ]
+          }
+        },
+        {
+          "op": "validateTeachback",
+          "state": {
+            "handoffId": "hnd_1",
+            "logicalOwnerId": "owner_1",
+            "goalStack": {
+              "projectGoalId": "goal_1",
+              "missionCriterionIds": [],
+              "directionQuestionId": null,
+              "currentGraphNodeId": null
+            },
+            "observedVersions": {},
+            "branchHead": "abc",
+            "defectIds": [],
+            "blockerIds": [],
+            "readyNodeIds": []
+          },
+          "teachback": {
+            "handoffId": "hnd_1",
+            "logicalOwnerId": "owner_1",
+            "understoodGoalStack": {
+              "projectGoalId": "goal_1",
+              "missionCriterionIds": [],
+              "directionQuestionId": null,
+              "currentGraphNodeId": null
+            },
+            "decision": "rejected_conflict",
+            "observedVersions": {},
+            "observedBranchHead": "abc",
+            "acknowledgedDefectIds": [],
+            "acknowledgedBlockerIds": [],
+            "selectedNextNodeId": null,
+            "conflicts": []
+          }
+        },
+        {
+          "op": "validateTeachback",
+          "state": {
+            "handoffId": "hnd_1",
+            "logicalOwnerId": "owner_1",
+            "goalStack": {
+              "projectGoalId": "goal_1",
+              "missionCriterionIds": [],
+              "directionQuestionId": null,
+              "currentGraphNodeId": null
+            },
+            "observedVersions": {},
+            "branchHead": "abc",
+            "defectIds": [],
+            "blockerIds": [],
+            "readyNodeIds": []
+          },
+          "teachback": {
+            "handoffId": "hnd_1",
+            "logicalOwnerId": "owner_1",
+            "understoodGoalStack": {
+              "projectGoalId": "goal_1",
+              "missionCriterionIds": [],
+              "directionQuestionId": null,
+              "currentGraphNodeId": null
+            },
+            "decision": "maybe",
+            "observedVersions": {},
+            "observedBranchHead": "abc",
+            "acknowledgedDefectIds": [],
+            "acknowledgedBlockerIds": [],
+            "selectedNextNodeId": null,
+            "conflicts": []
+          }
+        }
+      ]
+    }
+  ]
+}

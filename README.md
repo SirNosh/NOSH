@@ -50,7 +50,7 @@ node scripts/drift.mjs --check
 | P1 | `nosh-wire`: IDs, time, canonical JSON + hashes, schema validation | done |
 | P2 | `nosh-store`: SQLite migrations, event store, host registry | done |
 | P3 | `nosh-sys`: Windows paths, processes, jobs, git, artifacts, backups | done |
-| P4 | Domain: graph, scheduler, research control, episodes, threads | next |
+| P4 | Domain: graph, scheduler, research control, episodes, threads | in progress |
 | P5 | `nosh-agent`: tools, `nosh_code`, Pi sidecar | — |
 | P6 | `nosh-orchestration` and `nosh-server`: supervisors, HTTP, WebSocket | — |
 | P7 | `nosh` CLI | — |
