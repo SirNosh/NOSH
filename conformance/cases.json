@@ -1,5 +1,5 @@
 {
-  "$comment": "Hand-written conformance cases. scripts/sync-schemas.mjs runs each through the TypeScript validator or canonicalizer and writes the verdicts to schemas/vectors.json; it throws if TypeScript disagrees with 'expect'. A record case starts from fixture '<schema>/<base>.json' (base defaults to full.valid), keeps only 'pick' keys if given, applies 'delete' then 'set' (JSON Pointers), serializes, then applies 'rawReplace' to the JSON text. expect: accept | custom (rejected only by zod refinements) | reject (rejected by the schema).",
+  "$comment": "Hand-written conformance cases. scripts/sync-schemas.mjs runs each through the TypeScript validator or canonicalizer and writes the verdicts to schemas/vectors.json; it throws if TypeScript disagrees with 'expect'. A record case starts from fixture '<schema>/<base>.json' (base defaults to full.valid), keeps only 'pick' keys if given, applies 'delete' then 'set' (JSON Pointers), serializes, then applies 'rawReplace' to the JSON text. expect: accept | custom (rejected only by zod refinements) | reject (rejected by the schema). 'taskTerminal' inputs record isTaskTerminalRecord's answer.",
   "records": [
     { "name": "event: fixture", "schema": "event", "expect": "accept" },
     { "name": "event: missing.invalid fixture", "schema": "event", "base": "missing.invalid", "expect": "reject" },
@@ -96,6 +96,35 @@
 
     { "name": "orchestration program: step branch with ..", "schema": "orchestration-program", "set": { "/steps/0/instruction/taskWorkspace/branch": "x..y" }, "expect": "custom" },
     { "name": "orchestration program: step awaits duplicate threads", "schema": "orchestration-program", "set": { "/steps/0/instruction": { "operation": "THREAD_AWAIT", "threadIds": ["thr_00000000000000000000000000000000", "thr_00000000000000000000000000000000"], "policy": "all", "minimumCount": null, "deadline": null } }, "expect": "custom" }
+  ],
+  "taskTerminal": [
+    null,
+    [],
+    "x",
+    0,
+    {},
+    {"$schema": "https://nosh.dev/schemas/general-worker-completion/v1"},
+    {"$schema": "https://nosh.dev/schemas/librarian-completion/v1"},
+    {"$schema": "https://nosh.dev/schemas/task-failure/v1"},
+    {"$schema": "https://nosh.dev/schemas/mission-director-cycle/v1"},
+    {"$schema": "https://nosh.dev/schemas/research-director-cycle/v1"},
+    {"$schema": "https://nosh.dev/schemas/review-verdict/v1"},
+    {"$schema": "https://nosh.dev/schemas/experiment-proposal/v1"},
+    {"$schema": "https://nosh.dev/schemas/task-packet/v1"},
+    {"$schema": "https://nosh.dev/schemas/blocker/v1"},
+    {"$schema": 123},
+    {"$schema": "https://nosh.dev/schemas/response-envelope/v1"},
+    {"$schema": "https://nosh.dev/schemas/response-envelope/v1", "status": "completed"},
+    {"$schema": "https://nosh.dev/schemas/response-envelope/v1", "status": "failed"},
+    {"$schema": "https://nosh.dev/schemas/response-envelope/v1", "status": "cancelled"},
+    {"$schema": "https://nosh.dev/schemas/response-envelope/v1", "status": "superseded"},
+    {"$schema": "https://nosh.dev/schemas/response-envelope/v1", "status": "open"},
+    {"$schema": "https://nosh.dev/schemas/response-envelope/v1", "status": null},
+    {"$schema": "https://nosh.dev/schemas/response-envelope/v1", "status": ["completed"]},
+    {"$schema": "https://nosh.dev/schemas/response-envelope/v1", "status": [["failed"]]},
+    {"$schema": "https://nosh.dev/schemas/response-envelope/v1", "status": ["completed", "x"]},
+    {"$schema": "https://nosh.dev/schemas/response-envelope/v1", "status": "Completed"},
+    [{"$schema": "https://nosh.dev/schemas/task-failure/v1"}]
   ],
   "canonical": [
     "{\"b\":1,\"a\":2,\"c\":{\"z\":null,\"y\":[3,2,1]}}",

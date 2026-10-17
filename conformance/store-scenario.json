@@ -1,0 +1,1339 @@
+{
+  "$comment": "Store operations run against both the TypeScript and Rust stores by crates/nosh-store/tests/differential.rs. Groups follow packages/persistence/src/event-store.test.ts. A 'draft' or 'records' entry with a 'project' key is shorthand that the test expands to a full event draft (type, retention, payload, missionId, correlationId may be overridden). {tmp} and {tmpLower} are the test's temporary directory, as given and lowercased. {$ref: [i, ...path]} is a field of result i.",
+  "groups": [
+    {
+      "name": "bootstraps recent history then pages every new delta in order",
+      "ops": [
+        {
+          "op": "replayPage",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 0,
+          "limit": 3,
+          "recent": true
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.started"
+          }
+        },
+        {
+          "op": "replayPage",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 0,
+          "limit": 3,
+          "recent": false
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.started"
+          }
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.started"
+          }
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.started"
+          }
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.started"
+          }
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.started"
+          }
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.started"
+          }
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.started"
+          }
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.started"
+          }
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.started"
+          }
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "B",
+            "type": "agent.started"
+          }
+        },
+        {
+          "op": "replayPage",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 0,
+          "limit": 3,
+          "recent": true
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.completed"
+          }
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.completed"
+          }
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.completed"
+          }
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.completed"
+          }
+        },
+        {
+          "op": "replayPage",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 10,
+          "limit": 3,
+          "recent": false
+        },
+        {
+          "op": "replayPage",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 13,
+          "limit": 3,
+          "recent": false
+        },
+        {
+          "op": "replay",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 0
+        },
+        {
+          "op": "replay",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 12
+        },
+        {
+          "op": "replayPage",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 10,
+          "limit": 3,
+          "recent": true
+        }
+      ]
+    },
+    {
+      "name": "pages durable events with stable cursors and bounded validation",
+      "ops": [
+        {
+          "op": "replayPage",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 14,
+          "limit": 3,
+          "recent": false
+        },
+        {
+          "op": "replayPage",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 0,
+          "limit": 0,
+          "recent": false
+        },
+        {
+          "op": "replayPage",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 0,
+          "limit": -1,
+          "recent": false
+        },
+        {
+          "op": "replayPage",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 0,
+          "limit": 1001,
+          "recent": false
+        },
+        {
+          "op": "replayPage",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": -1,
+          "limit": 3,
+          "recent": false
+        },
+        {
+          "op": "replayPage",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 0,
+          "limit": 1000,
+          "recent": false
+        },
+        {
+          "op": "currentSequence",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "op": "currentSequence",
+          "projectId": "prj_cccccccccccccccccccccccccccccccc"
+        }
+      ]
+    },
+    {
+      "name": "replays persistent events exactly once across a restart",
+      "ops": [
+        {
+          "op": "appendIdempotent",
+          "key": "idempotency-key-0001",
+          "draft": {
+            "project": "A",
+            "type": "job.started"
+          }
+        },
+        {
+          "op": "appendIdempotent",
+          "key": "idempotency-key-0001",
+          "draft": {
+            "project": "A",
+            "type": "job.started"
+          }
+        },
+        {
+          "op": "appendIdempotent",
+          "key": "idempotency-key-0001",
+          "draft": {
+            "project": "A",
+            "type": "job.finished"
+          }
+        },
+        {
+          "op": "appendIdempotent",
+          "key": "idempotency-key-0002",
+          "draft": {
+            "project": "A",
+            "type": "job.started",
+            "retention": "ephemeral"
+          }
+        },
+        {
+          "op": "writeSnapshot",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sequence": 15,
+          "state": {
+            "missions": [],
+            "weight": 1.5,
+            "note": "é😀"
+          }
+        },
+        {
+          "op": "writeSnapshot",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sequence": 16,
+          "state": {
+            "missions": []
+          }
+        },
+        {
+          "op": "reopen"
+        },
+        {
+          "op": "replay",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 13
+        },
+        {
+          "op": "latestSnapshot",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "op": "latestSnapshot",
+          "projectId": "prj_cccccccccccccccccccccccccccccccc"
+        },
+        {
+          "op": "commandReceipt",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "key": "idempotency-key-0001"
+        },
+        {
+          "op": "commandReceipt",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "key": "missing-key-000001"
+        },
+        {
+          "op": "appendIdempotent",
+          "key": "idempotency-key-0001",
+          "draft": {
+            "project": "A",
+            "type": "job.started"
+          }
+        }
+      ]
+    },
+    {
+      "name": "never persists ephemeral events",
+      "ops": [
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.text_delta",
+            "retention": "ephemeral"
+          }
+        },
+        {
+          "op": "currentSequence",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "Not.Valid"
+          }
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "agent.started",
+            "payload": {
+              "weight": 2.0,
+              "big": 9007199254740993,
+              "nested": [
+                1,
+                {
+                  "z": 1,
+                  "a": 2
+                }
+              ],
+              "huge": 1e+21,
+              "tiny": 1e-07,
+              "�": 1,
+              "😀": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "permits only one terminal schema per task tool across retrying store handles",
+      "ops": [
+        {
+          "op": "appendTerminalSubmission",
+          "taskId": "tsk_11111111111111111111111111111111",
+          "toolName": "nosh_response_submit",
+          "schemaUri": "https://nosh.dev/schemas/general-worker-completion/v1",
+          "record": {
+            "$schema": "https://nosh.dev/schemas/general-worker-completion/v1",
+            "marker": "worker"
+          },
+          "draft": {
+            "project": "A",
+            "type": "record.submitted",
+            "correlationId": "task:tsk_11111111111111111111111111111111",
+            "payload": {
+              "$schema": "https://nosh.dev/schemas/general-worker-completion/v1",
+              "marker": "worker"
+            }
+          }
+        },
+        {
+          "op": "appendTerminalSubmission",
+          "taskId": "tsk_11111111111111111111111111111111",
+          "toolName": "nosh_response_submit",
+          "schemaUri": "https://nosh.dev/schemas/general-worker-completion/v1",
+          "record": {
+            "$schema": "https://nosh.dev/schemas/general-worker-completion/v1",
+            "marker": "worker"
+          },
+          "draft": {
+            "project": "A",
+            "type": "record.submitted",
+            "correlationId": "task:tsk_11111111111111111111111111111111",
+            "payload": {
+              "$schema": "https://nosh.dev/schemas/general-worker-completion/v1",
+              "marker": "worker"
+            }
+          }
+        },
+        {
+          "op": "appendTerminalSubmission",
+          "taskId": "tsk_11111111111111111111111111111111",
+          "toolName": "nosh_response_submit",
+          "schemaUri": "https://nosh.dev/schemas/librarian-completion/v1",
+          "record": {
+            "$schema": "https://nosh.dev/schemas/librarian-completion/v1",
+            "marker": "librarian"
+          },
+          "draft": {
+            "project": "A",
+            "type": "record.submitted",
+            "correlationId": "task:tsk_11111111111111111111111111111111",
+            "payload": {
+              "$schema": "https://nosh.dev/schemas/librarian-completion/v1",
+              "marker": "librarian"
+            }
+          }
+        },
+        {
+          "op": "appendTerminalSubmission",
+          "taskId": "tsk_22222222222222222222222222222222",
+          "toolName": "nosh_response_submit",
+          "schemaUri": "https://nosh.dev/schemas/general-worker-completion/v1",
+          "record": {
+            "$schema": "https://nosh.dev/schemas/general-worker-completion/v1",
+            "marker": "worker"
+          },
+          "draft": {
+            "project": "A",
+            "type": "record.submitted",
+            "payload": {
+              "$schema": "https://nosh.dev/schemas/general-worker-completion/v1",
+              "marker": "other"
+            }
+          }
+        },
+        {
+          "op": "appendTerminalSubmission",
+          "taskId": "tsk_22222222222222222222222222222222",
+          "toolName": "nosh_response_submit",
+          "schemaUri": "https://nosh.dev/schemas/task-packet/v1",
+          "record": {
+            "$schema": "https://nosh.dev/schemas/task-packet/v1"
+          },
+          "draft": {
+            "project": "A",
+            "type": "record.submitted",
+            "payload": {
+              "$schema": "https://nosh.dev/schemas/task-packet/v1"
+            }
+          }
+        },
+        {
+          "op": "appendTerminalSubmission",
+          "taskId": "tsk_22222222222222222222222222222222",
+          "toolName": "nosh_response_submit",
+          "schemaUri": "https://nosh.dev/schemas/general-worker-completion/v1",
+          "record": {
+            "$schema": "https://nosh.dev/schemas/general-worker-completion/v1"
+          },
+          "draft": {
+            "project": "A",
+            "type": "record.submitted",
+            "retention": "ephemeral",
+            "payload": {
+              "$schema": "https://nosh.dev/schemas/general-worker-completion/v1"
+            }
+          }
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "record.submitted",
+            "payload": {
+              "$schema": "https://nosh.dev/schemas/response-envelope/v1",
+              "status": "completed"
+            }
+          }
+        },
+        {
+          "op": "appendIdempotent",
+          "key": "terminal-through-idem",
+          "draft": {
+            "project": "A",
+            "type": "record.submitted",
+            "payload": {
+              "$schema": "https://nosh.dev/schemas/task-failure/v1"
+            }
+          }
+        },
+        {
+          "op": "append",
+          "draft": {
+            "project": "A",
+            "type": "record.submitted",
+            "payload": {
+              "$schema": "https://nosh.dev/schemas/response-envelope/v1",
+              "status": "open"
+            }
+          }
+        },
+        {
+          "op": "reopen"
+        },
+        {
+          "op": "appendTerminalSubmission",
+          "taskId": "tsk_11111111111111111111111111111111",
+          "toolName": "nosh_response_submit",
+          "schemaUri": "https://nosh.dev/schemas/general-worker-completion/v1",
+          "record": {
+            "$schema": "https://nosh.dev/schemas/general-worker-completion/v1",
+            "marker": "worker"
+          },
+          "draft": {
+            "project": "A",
+            "type": "record.submitted",
+            "correlationId": "task:tsk_11111111111111111111111111111111",
+            "payload": {
+              "$schema": "https://nosh.dev/schemas/general-worker-completion/v1",
+              "marker": "worker"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "commits projection companion records, graph versions, and receipts atomically",
+      "ops": [
+        {
+          "op": "mutateProjection",
+          "key": "projection-records-0001",
+          "expectedVersion": 0,
+          "draft": {
+            "project": "A",
+            "type": "mission.created",
+            "missionId": "mis_11111111111111111111111111111111"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_11111111111111111111111111111111",
+            "state": "draft",
+            "value": {
+              "title": "Test"
+            },
+            "records": [
+              {
+                "project": "A",
+                "type": "record.submitted",
+                "missionId": "mis_11111111111111111111111111111111"
+              }
+            ]
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-records-0001",
+          "expectedVersion": 0,
+          "draft": {
+            "project": "A",
+            "type": "mission.created",
+            "missionId": "mis_11111111111111111111111111111111"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_11111111111111111111111111111111",
+            "state": "draft",
+            "value": {
+              "title": "Test"
+            },
+            "records": [
+              {
+                "project": "A",
+                "type": "record.submitted",
+                "missionId": "mis_11111111111111111111111111111111"
+              }
+            ]
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-command-0001",
+          "expectedVersion": 0,
+          "draft": {
+            "project": "A",
+            "type": "mission.created",
+            "missionId": "mis_22222222222222222222222222222222"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_22222222222222222222222222222222",
+            "state": "draft",
+            "value": {
+              "title": "Test"
+            },
+            "graph": {
+              "scopeType": "mission",
+              "version": 1,
+              "value": {
+                "nodes": []
+              },
+              "rationale": "initial"
+            }
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-command-0001",
+          "expectedVersion": 0,
+          "draft": {
+            "project": "A",
+            "type": "mission.created",
+            "missionId": "mis_22222222222222222222222222222222"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_22222222222222222222222222222222",
+            "state": "draft",
+            "value": {
+              "title": "Test"
+            },
+            "graph": {
+              "scopeType": "mission",
+              "version": 1,
+              "value": {
+                "nodes": []
+              },
+              "rationale": "initial"
+            }
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-command-0001",
+          "expectedVersion": 0,
+          "draft": {
+            "project": "A",
+            "type": "mission.created",
+            "missionId": "mis_22222222222222222222222222222222"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_22222222222222222222222222222222",
+            "state": "running",
+            "value": {
+              "title": "Test"
+            }
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-command-0002",
+          "expectedVersion": 0,
+          "draft": {
+            "project": "A",
+            "type": "mission.updated"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_22222222222222222222222222222222",
+            "state": "running",
+            "value": {
+              "title": "Test"
+            }
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-command-0003",
+          "expectedVersion": null,
+          "draft": {
+            "project": "A",
+            "type": "mission.updated"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_33333333333333333333333333333333",
+            "state": "draft",
+            "value": {}
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-command-0004",
+          "expectedVersion": 1,
+          "draft": {
+            "project": "A",
+            "type": "mission.updated"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_22222222222222222222222222222222",
+            "state": "running",
+            "value": {
+              "title": "Test",
+              "progress": 0.25
+            },
+            "graph": {
+              "scopeType": "mission",
+              "version": 3,
+              "value": {
+                "nodes": [
+                  "n1"
+                ]
+              },
+              "rationale": "skip"
+            }
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-command-0005",
+          "expectedVersion": 1,
+          "draft": {
+            "project": "A",
+            "type": "mission.updated"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_22222222222222222222222222222222",
+            "state": "running",
+            "value": {
+              "title": "Test",
+              "progress": 0.25
+            },
+            "graph": {
+              "scopeType": "mission",
+              "version": 2,
+              "value": {
+                "nodes": [
+                  "n1"
+                ]
+              },
+              "rationale": "plan"
+            }
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-command-0006",
+          "expectedVersion": 2,
+          "draft": {
+            "project": "A",
+            "type": "mission.updated"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_22222222222222222222222222222222",
+            "state": "paused",
+            "value": {
+              "title": "Test"
+            },
+            "records": [
+              {
+                "project": "A",
+                "type": "record.submitted",
+                "retention": "ephemeral"
+              }
+            ]
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-command-0007",
+          "expectedVersion": 2,
+          "draft": {
+            "project": "A",
+            "type": "mission.updated"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_22222222222222222222222222222222",
+            "state": "paused",
+            "value": {
+              "title": "Test"
+            },
+            "records": [
+              {
+                "project": "B",
+                "type": "record.submitted"
+              }
+            ]
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-command-0008",
+          "expectedVersion": 2,
+          "draft": {
+            "project": "A",
+            "type": "mission.updated",
+            "retention": "ephemeral"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_22222222222222222222222222222222",
+            "state": "paused",
+            "value": {}
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-command-0009",
+          "expectedVersion": 2,
+          "draft": {
+            "project": "A",
+            "type": "mission.updated"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_22222222222222222222222222222222",
+            "state": "paused",
+            "value": {
+              "title": "Test"
+            },
+            "intent": {
+              "custom": "intent"
+            }
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-command-0009",
+          "expectedVersion": 3,
+          "draft": {
+            "project": "A",
+            "type": "mission.updated"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_22222222222222222222222222222222",
+            "state": "anything",
+            "value": {
+              "changed": true
+            },
+            "intent": {
+              "custom": "intent"
+            }
+          }
+        },
+        {
+          "op": "reopen"
+        },
+        {
+          "op": "projection",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "entityType": "mission",
+          "entityId": "mis_22222222222222222222222222222222"
+        },
+        {
+          "op": "projection",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "entityType": "mission",
+          "entityId": "mis_99999999999999999999999999999999"
+        },
+        {
+          "op": "projections",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "entityType": "mission"
+        },
+        {
+          "op": "graphVersions",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "scopeType": "mission",
+          "scopeId": "mis_22222222222222222222222222222222"
+        },
+        {
+          "op": "replay",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 20
+        }
+      ]
+    },
+    {
+      "name": "recovers durable external-operation intents without accepting key reuse",
+      "ops": [
+        {
+          "op": "beginOperation",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operationType": "job.launch",
+          "key": "launch-job-1",
+          "request": {
+            "jobId": "job_1",
+            "command": [
+              "node"
+            ]
+          }
+        },
+        {
+          "op": "beginOperation",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operationType": "job.launch",
+          "key": "launch-job-1",
+          "request": {
+            "command": [
+              "node"
+            ],
+            "jobId": "job_1"
+          }
+        },
+        {
+          "op": "beginOperation",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operationType": "job.launch",
+          "key": "launch-job-1",
+          "request": {
+            "jobId": "job_2"
+          }
+        },
+        {
+          "op": "beginOperation",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operationType": "job.stop",
+          "key": "launch-job-1",
+          "request": {
+            "jobId": "job_1",
+            "command": [
+              "node"
+            ]
+          }
+        },
+        {
+          "op": "beginOperation",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operationType": " \t",
+          "key": "launch-job-2",
+          "request": {}
+        },
+        {
+          "op": "reopen"
+        },
+        {
+          "op": "operationIntents",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "pending"
+        },
+        {
+          "op": "completeOperation",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "intentId": {
+            "$ref": [
+              -7,
+              "intentId"
+            ]
+          },
+          "result": {
+            "jobId": "job_1",
+            "verified": true
+          }
+        },
+        {
+          "op": "completeOperation",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "intentId": {
+            "$ref": [
+              -8,
+              "intentId"
+            ]
+          },
+          "result": {
+            "verified": true,
+            "jobId": "job_1"
+          }
+        },
+        {
+          "op": "completeOperation",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "intentId": {
+            "$ref": [
+              -9,
+              "intentId"
+            ]
+          },
+          "result": {
+            "jobId": "job_9"
+          }
+        },
+        {
+          "op": "operationIntents",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "pending"
+        },
+        {
+          "op": "operationIntents",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "completed"
+        },
+        {
+          "op": "failOperation",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "intentId": "cmd_00000000000000000000000000000000",
+          "error": "boom"
+        },
+        {
+          "op": "beginOperation",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operationType": "job.launch",
+          "key": "launch-job-3",
+          "request": {
+            "jobId": "job_3"
+          }
+        },
+        {
+          "op": "failOperation",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "intentId": {
+            "$ref": [
+              -1,
+              "intentId"
+            ]
+          },
+          "error": ""
+        },
+        {
+          "op": "failOperation",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "intentId": {
+            "$ref": [
+              -2,
+              "intentId"
+            ]
+          },
+          "error": "operation_failed"
+        },
+        {
+          "op": "operationIntents",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "name": "keeps the host-owned terminal turn journal",
+      "ops": [
+        {
+          "op": "terminalTurn",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "turnId": "turn-1",
+          "context": {
+            "taskId": "tsk_1",
+            "attempt": 1
+          }
+        },
+        {
+          "op": "terminalTurn",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "turnId": "turn-1",
+          "context": {
+            "attempt": 1,
+            "taskId": "tsk_1"
+          }
+        },
+        {
+          "op": "terminalTurn",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "turnId": "turn-1",
+          "context": {
+            "taskId": "tsk_1",
+            "attempt": 2
+          }
+        },
+        {
+          "op": "saveTerminalTurn",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "turnId": "turn-1",
+          "receipt": {
+            "failures": 1,
+            "closed": true,
+            "records": [
+              {
+                "a": 1
+              }
+            ],
+            "results": [],
+            "status": "completed",
+            "generations": 2
+          }
+        },
+        {
+          "op": "terminalTurn",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "turnId": "turn-1",
+          "context": {
+            "taskId": "tsk_1",
+            "attempt": 1
+          }
+        },
+        {
+          "op": "saveTerminalTurn",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "turnId": "turn-missing",
+          "receipt": {
+            "failures": 0,
+            "closed": false,
+            "records": null,
+            "results": [],
+            "status": "open"
+          }
+        }
+      ]
+    },
+    {
+      "name": "verifies snapshot checksums on read",
+      "ops": [
+        {
+          "op": "exec",
+          "sql": "UPDATE snapshots SET snapshot_json = '{\"missions\":[1]}' WHERE sequence = 16"
+        },
+        {
+          "op": "latestSnapshot",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "op": "writeSnapshot",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sequence": 16,
+          "state": {
+            "missions": []
+          }
+        },
+        {
+          "op": "latestSnapshot",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "op": "writeSnapshot",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "sequence": 999,
+          "state": {}
+        }
+      ]
+    },
+    {
+      "name": "registers projects with Node-style paths",
+      "ops": [
+        {
+          "op": "register",
+          "projectId": "prj_11111111111111111111111111111111",
+          "repositoryRoot": "{tmp}\\repo-a",
+          "databasePath": "{tmp}\\data\\a.sqlite"
+        },
+        {
+          "op": "register",
+          "projectId": "prj_22222222222222222222222222222222",
+          "repositoryRoot": "{tmpLower}/repo-b/",
+          "databasePath": "{tmpLower}/data/./b.sqlite"
+        },
+        {
+          "op": "register",
+          "projectId": "prj_33333333333333333333333333333333",
+          "repositoryRoot": "{tmp}\\repo-a\\..\\repo-c",
+          "databasePath": "{tmp}\\data\\x\\..\\c.sqlite"
+        },
+        {
+          "op": "register",
+          "projectId": "prj_44444444444444444444444444444444",
+          "repositoryRoot": "{tmp}\\repo-a\\file.txt",
+          "databasePath": "{tmp}\\d.sqlite"
+        },
+        {
+          "op": "register",
+          "projectId": "prj_55555555555555555555555555555555",
+          "repositoryRoot": "{tmp}\\missing",
+          "databasePath": "{tmp}\\e.sqlite"
+        },
+        {
+          "op": "register",
+          "projectId": "prj_66666666666666666666666666666666",
+          "repositoryRoot": "{tmp}\\repo-a",
+          "databasePath": "{tmp}\\data\\f.sqlite"
+        },
+        {
+          "op": "register",
+          "projectId": "prj_77777777777777777777777777777777",
+          "repositoryRoot": "{tmp}\\link-to-c",
+          "databasePath": "{tmp}\\data\\g.sqlite"
+        },
+        {
+          "op": "register",
+          "projectId": "prj_88888888888888888888888888888888",
+          "repositoryRoot": "C:\\PROGRA~1",
+          "databasePath": "{tmp}\\data\\h.sqlite"
+        },
+        {
+          "op": "register",
+          "projectId": "prj_11111111111111111111111111111111",
+          "repositoryRoot": "{tmp}\\repo-c\\..\\repo-d",
+          "databasePath": "{tmp}\\data\\a2.sqlite"
+        },
+        {
+          "op": "list"
+        }
+      ]
+    },
+    {
+      "name": "replays every receipt the other implementation wrote",
+      "ops": [
+        {
+          "op": "appendIdempotent",
+          "key": "idempotency-key-0001",
+          "draft": {
+            "project": "A",
+            "type": "job.started"
+          }
+        },
+        {
+          "op": "appendTerminalSubmission",
+          "taskId": "tsk_11111111111111111111111111111111",
+          "toolName": "nosh_response_submit",
+          "schemaUri": "https://nosh.dev/schemas/general-worker-completion/v1",
+          "record": {
+            "$schema": "https://nosh.dev/schemas/general-worker-completion/v1",
+            "marker": "worker"
+          },
+          "draft": {
+            "project": "A",
+            "type": "record.submitted",
+            "correlationId": "task:tsk_11111111111111111111111111111111",
+            "payload": {
+              "$schema": "https://nosh.dev/schemas/general-worker-completion/v1",
+              "marker": "worker"
+            }
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-records-0001",
+          "expectedVersion": 0,
+          "draft": {
+            "project": "A",
+            "type": "mission.created",
+            "missionId": "mis_11111111111111111111111111111111"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_11111111111111111111111111111111",
+            "state": "draft",
+            "value": {
+              "title": "Test"
+            },
+            "records": [
+              {
+                "project": "A",
+                "type": "record.submitted",
+                "missionId": "mis_11111111111111111111111111111111"
+              }
+            ]
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-command-0001",
+          "expectedVersion": 0,
+          "draft": {
+            "project": "A",
+            "type": "mission.created",
+            "missionId": "mis_22222222222222222222222222222222"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_22222222222222222222222222222222",
+            "state": "draft",
+            "value": {
+              "title": "Test"
+            },
+            "graph": {
+              "scopeType": "mission",
+              "version": 1,
+              "value": {
+                "nodes": []
+              },
+              "rationale": "initial"
+            }
+          }
+        },
+        {
+          "op": "mutateProjection",
+          "key": "projection-command-0009",
+          "expectedVersion": 2,
+          "draft": {
+            "project": "A",
+            "type": "mission.updated"
+          },
+          "input": {
+            "entityType": "mission",
+            "entityId": "mis_22222222222222222222222222222222",
+            "state": "paused",
+            "value": {
+              "title": "Test"
+            },
+            "intent": {
+              "custom": "intent"
+            }
+          }
+        },
+        {
+          "op": "beginOperation",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operationType": "job.launch",
+          "key": "launch-job-1",
+          "request": {
+            "jobId": "job_1",
+            "command": [
+              "node"
+            ]
+          }
+        },
+        {
+          "op": "beginOperation",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "operationType": "job.launch",
+          "key": "launch-job-3",
+          "request": {
+            "jobId": "job_3"
+          }
+        },
+        {
+          "op": "terminalTurn",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "turnId": "turn-1",
+          "context": {
+            "taskId": "tsk_1",
+            "attempt": 1
+          }
+        },
+        {
+          "op": "appendIdempotent",
+          "key": "idempotency-key-0001",
+          "draft": {
+            "project": "A",
+            "type": "job.finished"
+          }
+        },
+        {
+          "op": "replay",
+          "projectId": "prj_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "after": 30
+        }
+      ]
+    }
+  ]
+}

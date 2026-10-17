@@ -66,7 +66,7 @@ if (check) {
   console.log(`recorded ${refinements.refinements.length} refinement locations and ${refinements.defaults.length} defaults`);
   const vectors = await buildVectors();
   writeFileSync(join(vendored, "vectors.json"), `${JSON.stringify(vectors, null, 2)}\n`);
-  console.log(`recorded TypeScript verdicts for ${vectors.records.length} record cases and ${vectors.canonical.length} canonical-JSON cases`);
+  console.log(`recorded TypeScript verdicts for ${vectors.records.length} record, ${vectors.canonical.length} canonical-JSON, and ${vectors.taskTerminal.length} task-terminal cases`);
 }
 
 // Runs conformance/cases.json through the TypeScript validator and canonicalizer.
@@ -74,6 +74,7 @@ async function buildVectors() {
   const dist = join(tsRoot, "packages", "wire", "dist");
   const { validateRecord } = await import(pathToFileURL(join(dist, "registry.js")).href);
   const { canonicalJson, sha256 } = await import(pathToFileURL(join(dist, "json.js")).href);
+  const { isTaskTerminalRecord } = await import(pathToFileURL(join(dist, "submissions.js")).href);
   const cases = JSON.parse(readFileSync(join(rustRoot, "conformance", "cases.json"), "utf8"));
   const records = cases.records.map((c) => {
     let record = JSON.parse(readFileSync(join(tsRoot, "fixtures", "schemas", c.schema, `${c.base ?? "full.valid"}.json`), "utf8"));
@@ -101,7 +102,8 @@ async function buildVectors() {
     const value = JSON.parse(input);
     return { input, canonical: canonicalJson(value), sha256: sha256(value) };
   });
-  return { records, canonical };
+  const taskTerminal = cases.taskTerminal.map((input) => ({ input, terminal: isTaskTerminalRecord(input) }));
+  return { records, canonical, taskTerminal };
 }
 
 function locate(root, pointer) {

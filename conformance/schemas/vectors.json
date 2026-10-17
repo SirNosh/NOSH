@@ -1875,5 +1875,180 @@
       "canonical": "{\"a\":{\"a\":{\"a\":[]}},\"b\":{},\"c\":[true,false,null]}",
       "sha256": "sha256:485ad1c1ae128e16427dc05c2c5616320fd21b1470573ca3658204966db7c20a"
     }
+  ],
+  "taskTerminal": [
+    {
+      "input": null,
+      "terminal": false
+    },
+    {
+      "input": [],
+      "terminal": false
+    },
+    {
+      "input": "x",
+      "terminal": false
+    },
+    {
+      "input": 0,
+      "terminal": false
+    },
+    {
+      "input": {},
+      "terminal": false
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/general-worker-completion/v1"
+      },
+      "terminal": true
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/librarian-completion/v1"
+      },
+      "terminal": true
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/task-failure/v1"
+      },
+      "terminal": true
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/mission-director-cycle/v1"
+      },
+      "terminal": true
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/research-director-cycle/v1"
+      },
+      "terminal": true
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/review-verdict/v1"
+      },
+      "terminal": true
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/experiment-proposal/v1"
+      },
+      "terminal": true
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/task-packet/v1"
+      },
+      "terminal": false
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/blocker/v1"
+      },
+      "terminal": false
+    },
+    {
+      "input": {
+        "$schema": 123
+      },
+      "terminal": false
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/response-envelope/v1"
+      },
+      "terminal": false
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/response-envelope/v1",
+        "status": "completed"
+      },
+      "terminal": true
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/response-envelope/v1",
+        "status": "failed"
+      },
+      "terminal": true
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/response-envelope/v1",
+        "status": "cancelled"
+      },
+      "terminal": true
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/response-envelope/v1",
+        "status": "superseded"
+      },
+      "terminal": true
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/response-envelope/v1",
+        "status": "open"
+      },
+      "terminal": false
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/response-envelope/v1",
+        "status": null
+      },
+      "terminal": false
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/response-envelope/v1",
+        "status": [
+          "completed"
+        ]
+      },
+      "terminal": true
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/response-envelope/v1",
+        "status": [
+          [
+            "failed"
+          ]
+        ]
+      },
+      "terminal": true
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/response-envelope/v1",
+        "status": [
+          "completed",
+          "x"
+        ]
+      },
+      "terminal": false
+    },
+    {
+      "input": {
+        "$schema": "https://nosh.dev/schemas/response-envelope/v1",
+        "status": "Completed"
+      },
+      "terminal": false
+    },
+    {
+      "input": [
+        {
+          "$schema": "https://nosh.dev/schemas/task-failure/v1"
+        }
+      ],
+      "terminal": false
+    }
   ]
 }

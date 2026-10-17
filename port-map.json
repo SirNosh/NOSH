@@ -3,7 +3,7 @@
   "tsBranch": "agent/optimize-harness-and-project-intake",
   "crates": {
     "nosh-wire": {
-      "synced": "3fd5f6c852e83a00d66a8ebd0c96f6c89ce39a86",
+      "synced": "7723e93dbcb409fe4d96ae6bf04177d71fb94982",
       "paths": [
         "packages/core/src",
         "packages/wire/src",
@@ -18,7 +18,7 @@
       ]
     },
     "nosh-store": {
-      "synced": null,
+      "synced": "7723e93dbcb409fe4d96ae6bf04177d71fb94982",
       "paths": [
         "packages/persistence/src"
       ],

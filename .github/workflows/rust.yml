@@ -24,19 +24,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { path: rust }
-      # The TypeScript implementation is the reference. Only the committed schemas and fixtures are
-      # checked out; full history lets drift.mjs compare against each crate's sync commit.
+      # The TypeScript implementation is the reference: tests compare against its sources, and the
+      # differential tests run its built store. Full history lets drift.mjs compare against each
+      # crate's sync commit.
       - uses: actions/checkout@v4
         with:
           ref: agent/optimize-harness-and-project-intake
           path: ts
           fetch-depth: 0
-          sparse-checkout: |
-            packages/core/src
-            packages/wire/src/schemas
-            fixtures/schemas
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.28.0 }
       - uses: actions/setup-node@v4
-        with: { node-version: 22.19.0 }
+        with: { node-version-file: ts/.nvmrc, cache: pnpm, cache-dependency-path: ts/pnpm-lock.yaml }
+      - name: Build the TypeScript reference
+        working-directory: ts
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: rust }
       - name: Format

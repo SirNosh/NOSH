@@ -25,7 +25,12 @@ Scripts and tests find the TypeScript tree through `--ts-root`, then `NOSH_TS_RO
 - **`port-map.json`** records, for each crate, the TypeScript paths it mirrors and the commit it was last synced to.
   - `node scripts/drift.mjs` lists TypeScript changes since then.
   - `--check` fails when a *strict* path changed after the sync. Strict paths hold logic that no fixture captures, such as zod refinements, migrations and the terminal-output protocol.
-- **CI** (`.github/workflows/rust.yml`) runs the Rust gates and both checks against the live TypeScript branch.
+- **Differential tests** run the same operations through the TypeScript implementation and the Rust one, and compare the results.
+  - `conformance/store-scenario.json` drives both stores; the TypeScript side runs through `scripts/store-ts.mjs`.
+  - Generated IDs and timestamps are masked; hashes, sequences, receipts and error messages must match exactly.
+  - Runs that switch implementation partway through one database prove each side continues the other's data.
+  - These tests need a built TypeScript tree.
+- **CI** (`.github/workflows/rust.yml`) builds the live TypeScript branch, then runs the Rust gates, the differential tests and both checks against it.
 
 ## Checks
 
@@ -42,8 +47,8 @@ node scripts/drift.mjs --check
 | Phase | Scope | State |
 |---|---|---|
 | P0 | Workspace, drift tracking, CI | done |
-| P1 | `nosh-wire`: IDs, time, canonical JSON + hashes, schema validation | in progress |
-| P2 | `nosh-store`: SQLite migrations, event store, host registry | — |
+| P1 | `nosh-wire`: IDs, time, canonical JSON + hashes, schema validation | done |
+| P2 | `nosh-store`: SQLite migrations, event store, host registry | in progress |
 | P3 | `nosh-sys`: Windows paths, processes, jobs, git, artifacts, backups | — |
 | P4 | Domain: graph, scheduler, research control, episodes, threads | — |
 | P5 | `nosh-agent`: tools, `nosh_code`, Pi sidecar | — |
