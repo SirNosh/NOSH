@@ -16,6 +16,8 @@ import { DirectorSlip, directionAutoresearchOutcomes, directionBrief, directorRe
 import { CHILD_BLOCKED_MS, MIN_AUTORESEARCH_TOKENS, frozenEvaluationFiles, runEvaluationJob, scopeIssues, spawnDirectionAutoresearch, type DirectionSpawn } from "./research-spawner.js";
 /** Autoresearch a Direction starts on its own per hypothesis node; after that it waits for its user. */
 const MAX_AUTONOMOUS_AUTORESEARCH = 2;
+/** A schema-valid Research Director cycle that judged the selected node should not run. */
+class DirectorHalt extends Error {}
 import { createTaskWorktree, taskWorktreePath } from "./task-worktree.js";
 import { completionInstructions, generalWorkerCompletionTemplate, librarianInstructions, reviewerInstructions, type DaemonEvaluation } from "./task-templates.js";
 import type { JobRecord, JobSpec } from "@nosh/jobs";
@@ -59,7 +61,7 @@ export class DirectionSupervisor {
     const record = this.research.terminalRecord(project.projectId, taskId, "research-director-cycle") as { cycleId?: string; directorAgentId?: string; directionId?: string; observedGraphVersion?: number; evaluationContractHash?: string; questionCheck?: { currentWorkContributes?: boolean }; spawn?: DirectionSpawn } | undefined;
     if (!record || record.cycleId !== brief.ids.cycleId || record.directorAgentId !== agentId || record.directionId !== direction.entityId || record.observedGraphVersion !== direction.value.graphVersion || record.evaluationContractHash !== direction.value.evaluationContractHash) throw new DirectorSlip("Research Director did not submit the current cycle record");
     // A valid "does not contribute" decision is the director halting work, not a supervisor fault.
-    if (record.questionCheck?.currentWorkContributes !== true) { this.emit(event(project.projectId, direction.entityId, direction.value.missionId, "direction.director_halted", { cycleId: record.cycleId, nodeId: node.id })); throw new Error("Research Director halted the selected node; user attention required"); }
+    if (record.questionCheck?.currentWorkContributes !== true) { this.emit(event(project.projectId, direction.entityId, direction.value.missionId, "direction.director_halted", { cycleId: record.cycleId, nodeId: node.id })); throw new DirectorHalt("Research Director halted the selected node; user attention required"); }
     return record.spawn ? { spawn: record.spawn } : {};
   }
   /**
@@ -81,8 +83,10 @@ export class DirectionSupervisor {
     const finished = runs.find((run) => ["failed", "stopped"].includes(run.state));
     // A first Autoresearch that improved nothing is not the answer yet while a second, distinct one can still run.
     // Only when a second one actually starts; otherwise the completed one answers the node, as before.
-    if (completed && !finished && !completed.value.acceptedFrontierExperimentIds?.length && this.mayStartAnother(projectId, id, node.id) && this.autoresearchTokens(projectId, direction) >= MIN_AUTORESEARCH_TOKENS && await this.spawnAutoresearch(project, direction, node)) {
-      this.emit(event(projectId, id, direction.value.missionId, "direction.hypothesis_continued", { nodeId: node.id, autoresearchId: completed.entityId })); return;
+    if (completed && !finished && !completed.value.acceptedFrontierExperimentIds?.length && this.mayStartAnother(projectId, id, node.id) && this.autoresearchTokens(projectId, direction) >= MIN_AUTORESEARCH_TOKENS) {
+      const next = await this.spawnAutoresearch(project, direction, node);
+      if (next === "spawned") { this.emit(event(projectId, id, direction.value.missionId, "direction.hypothesis_continued", { nodeId: node.id, autoresearchId: completed.entityId })); return; }
+      if (next === "concluded") return;
     }
     if (!completed && !finished) {
       if (!runs.length && await this.spawnAutoresearch(project, direction, node)) return;
@@ -120,7 +124,24 @@ export class DirectionSupervisor {
    * Starts this Direction's next Autoresearch without a human: a Mission-spawned Direction's first one follows the
    * Mission's spec; otherwise the Research Director specifies a distinct one. Returns false when none may start.
    */
-  private async spawnAutoresearch(project: RegisteredProject, direction: Stored<DirectionProjection>, node: GraphNode): Promise<boolean> {
+  /**
+   * The Research Director judged that more exploration does not contribute. With measured results for this node, the
+   * hypothesis is resolved on them (the latest completed run with an experiment result), so synthesis and the
+   * independent closure Review judge the evidence; without any, the halt stands and the Direction waits for the user.
+   */
+  private concludeOnEvidence(projectId: string, direction: Stored<DirectionProjection>, node: GraphNode): boolean {
+    const results = this.research.records(projectId, "experiment-result") as Array<{ autoresearchId?: string }>;
+    const source = this.research.autoresearch(projectId).filter((run) => run.value.origin?.scopeType === "direction" && run.value.origin.scopeId === direction.entityId && run.value.origin.nodeId === node.id && run.state === "completed" && results.some((result) => result.autoresearchId === run.entityId)).at(-1);
+    if (!source) return false;
+    const id = direction.entityId; const key = `direction-concluded-${node.id}-${source.entityId}`; this.awaiting.delete(node.id);
+    let current = this.research.transitionDirectionNode(projectId, id, direction.version, node.id, "leased", `${key}-leased`, { leaseId: `lease_${source.entityId.slice(3)}`, ownerId: source.entityId, version: direction.version, expiresAt: new Date(Date.now() + 60_000).toISOString() });
+    current = this.research.transitionDirectionNode(projectId, id, current.version, node.id, "working", `${key}-working`);
+    this.emit(event(projectId, id, direction.value.missionId, "direction.director_concluded", { nodeId: node.id, autoresearchId: source.entityId }));
+    this.emit(event(projectId, id, direction.value.missionId, "direction.hypothesis_resolved", { nodeId: node.id, autoresearchId: source.entityId, outcome: "accepted", concludedBy: "research_director" }));
+    for (const next of ["postflight", "reviewing", "accepted"] as const) current = this.research.transitionDirectionNode(projectId, id, current.version, node.id, next, `${key}-${next}`);
+    return true;
+  }
+  private async spawnAutoresearch(project: RegisteredProject, direction: Stored<DirectionProjection>, node: GraphNode): Promise<"spawned" | "concluded" | false> {
     const projectId = project.projectId; const ordinal = this.autonomousRuns(projectId, direction.entityId, node.id) + 1;
     if (!this.mayStartAnother(projectId, direction.entityId, node.id)) return false;
     const tokens = this.autoresearchTokens(projectId, direction); if (tokens < MIN_AUTORESEARCH_TOKENS) return false;
@@ -132,7 +153,10 @@ export class DirectionSupervisor {
       const missionSpec = this.research.externalOperation(projectId, `child-spawn:${direction.value.origin.scopeId}:${direction.value.origin.nodeId}:${direction.value.origin.attempt}`)?.request as { spawn?: { familyTags?: string[]; scope?: string[] } } | undefined;
       spawn = { nodeId: node.id, kind: "autoresearch", question: direction.value.question, familyTags: missionSpec?.spawn?.familyTags ?? ["direction"], scope: missionSpec?.spawn?.scope ?? ["**"] };
     }
-    if (!spawn) spawn = (await this.director(project, direction, node, { siblings: this.research.autoresearch(projectId).filter((run) => run.value.directionId === direction.entityId).map((run) => `${run.entityId} (${run.state}): ${run.value.decisionQuestion}; familyTags ${(run.value.familyTags ?? []).join(", ")}; scope ${(run.value.scope ?? []).join(", ")}`), rejections: rejections.map((entry) => String((entry.payload as { issues?: string[] }).issues?.join("; ") ?? "")) })).spawn;
+    if (!spawn) {
+      try { spawn = (await this.director(project, direction, node, { siblings: this.research.autoresearch(projectId).filter((run) => run.value.directionId === direction.entityId).map((run) => `${run.entityId} (${run.state}): ${run.value.decisionQuestion}; familyTags ${(run.value.familyTags ?? []).join(", ")}; scope ${(run.value.scope ?? []).join(", ")}`), rejections: rejections.map((entry) => String((entry.payload as { issues?: string[] }).issues?.join("; ") ?? "")) })).spawn; }
+      catch (error) { if (error instanceof DirectorHalt && this.concludeOnEvidence(projectId, direction, node)) return "concluded"; throw error; }
+    }
     try {
       if (!spawn || spawn.nodeId !== node.id) throw new Error(`the Research Director did not fill spawn for node ${node.id}`);
       const evaluation = (direction.value.evaluationContract as { execution?: { command: string[]; resultPath: string } } | null)?.execution;
@@ -140,7 +164,7 @@ export class DirectionSupervisor {
       if (scopeProblems.length) throw new Error(scopeProblems.join("; "));
       const childId = spawnDirectionAutoresearch(this.research, projectId, { directionId: direction.entityId, missionId: direction.value.missionId, nodeId: node.id, ordinal, spawn, maximumModelTokens: tokens });
       this.emit(event(projectId, direction.entityId, direction.value.missionId, "direction.autoresearch_spawned", { nodeId: node.id, ordinal, autoresearchId: childId }));
-      return true;
+      return "spawned";
     } catch (error) {
       this.emit(event(projectId, direction.entityId, direction.value.missionId, "research.spawn_rejected", { nodeId: node.id, ordinal, issues: [error instanceof Error ? error.message : String(error)] }));
       return false;

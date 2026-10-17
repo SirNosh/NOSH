@@ -15,6 +15,8 @@ import { MissionSupervisor } from "./mission-supervisor.js";
 /** Directors that answer from the brief: Mission Directors fill spawn when the brief asks for a research child. */
 class Directors {
   readonly sessions = new Map<string, PiSessionOptions>(); readonly prompts: string[] = [];
+  /** A Research Director that judges further work does not contribute (it halts the selected node). */
+  halts = false;
   constructor(private readonly submit: (session: PiSessionOptions, record: JsonValue) => void, private readonly spec: (nodeId: string, prompt: string) => JsonValue | undefined) {}
   inspect(): AgentInspection[] { return [...this.sessions.values()].map((session) => ({ ...session, piSessionId: `pi_${session.agentId}`, status: "running" })) as unknown as AgentInspection[]; }
   async start(options: PiSessionOptions): Promise<AgentInspection> { this.sessions.set(options.agentId, options); return this.inspect().find((agent) => agent.agentId === options.agentId)!; }
@@ -26,7 +28,7 @@ class Directors {
     const spawn = missionNode ? this.spec(missionNode, prompt) : directionNode ? this.spec(directionNode, prompt) : undefined;
     const record = session.role === "mission_director"
       ? { $schema: schemaUri("mission-director-cycle"), ...common, missionId: session.missionId, northStarCheck: { currentWorkContributes: true }, ...(spawn ? { spawn } : {}) }
-      : { $schema: schemaUri("research-director-cycle"), ...common, directionId: session.directionId, evaluationContractHash: /sha256:[0-9a-f]{64}/.exec(prompt)?.[0] ?? "", questionCheck: { currentWorkContributes: true }, ...(spawn ? { spawn } : {}) };
+      : { $schema: schemaUri("research-director-cycle"), ...common, directionId: session.directionId, evaluationContractHash: /sha256:[0-9a-f]{64}/.exec(prompt)?.[0] ?? "", questionCheck: { currentWorkContributes: !this.halts }, ...(spawn ? { spawn } : {}) };
     this.submit(session, record as JsonValue);
   }
 }
@@ -191,6 +193,42 @@ describe("Mission research spawning", { timeout: 120_000 }, () => {
       expect(daemon.research.scopedEvents(project.projectId, mission.entityId, "research.spawn_rejected").map((entry) => entry.payload)).toEqual([]);
       expect(daemon.research.directions(project.projectId)).toHaveLength(3);
     } finally { vi.restoreAllMocks(); cleanup(); }
+  });
+
+  it("concludes a hypothesis on measured results when the Research Director stops exploring, and halts only without any", async () => {
+    for (const measured of [true, false]) {
+      const { daemon, project, emit, submit, jobs, running, cleanup } = fixture(`nosh-spawn-conclude-${measured}-`);
+      try {
+        running(daemon.research.createMission(project.projectId, { title: "Conclude", objective: "Stop exploring on evidence", deliverables: ["Result"], successCriteria: ["Reviewed"], researchPlan: { directions: 1, missionAutoresearch: false }, idempotencyKey: `conclude-create-${measured}` }));
+        const directors = new Directors(submit, (nodeId) => nodeId.startsWith("dnode_") ? { nodeId, kind: "autoresearch", question: "A distinct question", familyTags: ["family-next"], scope: ["src/**"] } : spec("research_direction")(nodeId));
+        const supervisor = new MissionSupervisor(daemon.research, directors as unknown as PiAdapter, () => [project], ".", emit, undefined, jobs);
+        for (const deadline = Date.now() + 90_000; Date.now() < deadline && !daemon.research.directions(project.projectId).length;) { await supervisor.tick(); await new Promise((resolve) => setTimeout(resolve, 50)); }
+        let child = daemon.research.directions(project.projectId)[0]!;
+        const direction = daemon.research.direction.bind(daemon.research);
+        vi.spyOn(daemon.research, "direction").mockImplementation((projectId, id) => { const value = direction(projectId, id); return id === child.entityId ? { ...value, value: { ...value.value, acceptedBaseline: { commit: value.value.baseCommit!, reviewId: "rev_fixture" } } } : value; });
+        const baseline = child.value.nodes.find((node) => node.title === "Reproduce accepted baseline")!;
+        const path = ["pending", "ready", "leased", "working", "postflight", "reviewing", "accepted"] as const;
+        for (let step = path.indexOf(baseline.state as typeof path[number]) + 1; step < path.length; step += 1) { child = daemon.research.direction(project.projectId, child.entityId); child = daemon.research.transitionDirectionNode(project.projectId, child.entityId, child.version, baseline.id, path[step]!, `fixture-conclude-baseline-${path[step]}`, path[step] === "leased" ? { leaseId: "tsk_fixture", ownerId: "agt_fixture", version: child.version, expiresAt: new Date(Date.now() + 60_000).toISOString() } : undefined); }
+        const directions = new DirectionSupervisor(daemon.research, directors as unknown as PiAdapter, () => [project], ".", emit, undefined, jobs);
+        for (const deadline = Date.now() + 60_000; Date.now() < deadline && !daemon.research.autoresearch(project.projectId).length;) { await directions.tick(); await new Promise((resolve) => setTimeout(resolve, 50)); }
+        const run = daemon.research.autoresearch(project.projectId)[0]!;
+        // The first run finished without a promoted winner; with `measured` it evaluated one experiment.
+        const autoresearch = daemon.research.autoresearch.bind(daemon.research);
+        vi.spyOn(daemon.research, "autoresearch").mockImplementation((projectId) => autoresearch(projectId).map((entry) => entry.entityId === run.entityId ? { ...entry, state: "completed" } : entry));
+        const records = daemon.research.records.bind(daemon.research);
+        vi.spyOn(daemon.research, "records").mockImplementation((projectId, schema) => schema === "experiment-result" ? (measured ? [{ autoresearchId: run.entityId }] : []) : records(projectId, schema));
+        directors.halts = true;
+        for (let tick = 0; tick < 20 && !["blocked"].includes(daemon.research.direction(project.projectId, child.entityId).state) && !daemon.research.scopedEvents(project.projectId, child.value.missionId!, "direction.director_concluded").length; tick += 1) { await directions.tick(); await new Promise((resolve) => setTimeout(resolve, 50)); }
+        const hypothesis = daemon.research.direction(project.projectId, child.entityId).value.nodes.find((node) => node.title === "Evaluate bounded hypothesis families")!;
+        if (measured) {
+          expect(daemon.research.scopedEvents(project.projectId, child.value.missionId!, "direction.director_concluded").map((entry) => (entry.payload as { autoresearchId: string }).autoresearchId)).toEqual([run.entityId]);
+          expect(hypothesis.state).toBe("accepted");
+          expect(daemon.research.direction(project.projectId, child.entityId).state).not.toBe("blocked");
+        } else {
+          expect(daemon.research.direction(project.projectId, child.entityId).state).toBe("blocked");
+        }
+      } finally { vi.restoreAllMocks(); cleanup(); }
+    }
   });
 
   it("lets a Mission-spawned Direction start its own Autoresearch, and stops its children when the Mission stops", async () => {

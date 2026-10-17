@@ -20,6 +20,10 @@ describe("director briefs", () => {
       const { prompt, ids } = directionBrief({ research: daemon.research, project, direction, node, agentId });
 
       for (const expected of ["Does a bounded threshold improve score?", "Adopt one configuration or not.", direction.value.evaluationContractHash, `Selected by the deterministic scheduler to run next: ${node.id}`, "Failure ledger:", "Event digest", ids.cycleId, "research-director-cycle.v1.schema.json", episodeTypeForRole("research_director")]) expect(prompt).toContain(expected);
+      // Live, a director read one run's exhausted budget as the Direction's and halted: the brief states both.
+      expect(prompt).toMatch(/Budget: this Direction has used \d+ of \S+ model tokens/);
+      expect(prompt).toContain("one exhausting its own budget does not exhaust this Direction");
+      expect(prompt).toContain("resolved on them");
       for (const item of direction.value.nodes) expect(prompt).toContain(item.id);
       expect(ids.consumedEventRange.toSequence).toBeGreaterThanOrEqual(ids.consumedEventRange.fromSequence);
       expect(prompt).not.toContain("nosh_response_submit");
