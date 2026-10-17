@@ -155,6 +155,8 @@ describe("JobSupervisor", { timeout: 20_000 }, () => {
       while (!jobs.tail(started.jobId, "stdout").includes("ready")) await sleep(50);
       expect((await jobs.resourceSnapshot(started.jobId)).residentBytes).toBeGreaterThan(200 * 1024 * 1024);
       jobs.cancel(started.jobId);
+      // Windows keeps the folder locked until the killed process has exited; wait for that before cleanup.
+      for (let attempt = 0; attempt < 100 && !["cancelled", "failed", "completed", "lost"].includes(jobs.get(started.jobId).state); attempt++) await sleep(100);
     } finally { jobs.close(); rmSync(directory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); }
   });
 
