@@ -335,6 +335,21 @@ describe("MissionSupervisor", { timeout: 90_000 }, () => { // Real git worktrees
       expect(direction.value.nodes[0]).toMatchObject({ state: "ready", maximumAttempts: exhausted.attempt + 1 });
     } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
   });
+  it("hands research results to a worker through an Artifact, keeping the Task Packet schema-valid", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-research-inputs-")); const repositoryRoot = join(directory, "repository"); mkdirSync(repositoryRoot); initializeRepository(repositoryRoot); const projectId = createId("prj"); const project: RegisteredProject = { projectId, repositoryRoot, databasePath: join(directory, "project.sqlite"), registeredAt: new Date().toISOString() }; const store = new EventStore(project.databasePath); const research = new ResearchControl(() => store, () => project, () => undefined); const fixture = new FixtureAgents((draft) => { appendFixtureEvent(store, draft); });
+    // Live: summaries with code diffs exceeded the packet's 1,000-character instruction limit and every packet was refused.
+    vi.spyOn(research, "researchInputs").mockReturnValue({ evidenceIds: [], summaries: [`ar_fixture (autoresearch) asked: which calibrator? Promoted experiments: exp_fixture\nCode change:\n${"+ line of a diff\n".repeat(400)}`] });
+    try {
+      let mission = research.createMission(projectId, { title: "Inputs", objective: "Build on research", deliverables: ["Reviewed result"], successCriteria: ["Every node is accepted"], idempotencyKey: "inputs-create" }); for (const next of ["planning", "awaiting_approval", "running"] as const) mission = research.transitionMission(projectId, mission.entityId, mission.version, next, `inputs-${next}`);
+      const supervisor = new MissionSupervisor(research, fixture as unknown as PiAdapter, () => [project], join(directory, "pi-package"), (draft) => { appendFixtureEvent(store, draft); });
+      for (let tick = 0; tick < 40 && !(research.records(projectId, "task-packet") as Array<{ assignedRole?: string }>).some((packet) => packet.assignedRole !== "reviewer"); tick += 1) { await supervisor.tick(); await new Promise((resolve) => setTimeout(resolve, 20)); }
+      expect(research.scopedEvents(projectId, mission.entityId, "task.execution_failed").map((entry) => (entry.payload as { message?: string }).message)).toEqual([]);
+      const packet = (research.records(projectId, "task-packet") as Array<{ assignedRole?: string; inputArtifactIds: string[]; instructions: string[] }>).find((entry) => entry.assignedRole !== "reviewer")!;
+      expect(packet.inputArtifactIds).toHaveLength(1);
+      expect(packet.instructions.join(" ")).toContain(packet.inputArtifactIds[0]!);
+      expect(packet.instructions.every((line) => line.length <= 1_000)).toBe(true);
+    } finally { vi.restoreAllMocks(); store.close(); rmSync(directory, { recursive: true, force: true }); }
+  });
   it("retries transient worker failures without a focus alarm, so a node gets all its attempts", async () => {
     const directory = mkdtempSync(join(tmpdir(), "nosh-transient-")); const repositoryRoot = join(directory, "repository"); mkdirSync(repositoryRoot); initializeRepository(repositoryRoot); const projectId = createId("prj"); const project: RegisteredProject = { projectId, repositoryRoot, databasePath: join(directory, "project.sqlite"), registeredAt: new Date().toISOString() }; const store = new EventStore(project.databasePath); const research = new ResearchControl(() => store, () => project, () => undefined); const fixture = new FixtureAgents((draft) => { appendFixtureEvent(store, draft); });
     fixture.transientWorkerFailures = 2;
