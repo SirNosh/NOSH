@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { daemonTaskFacts, declaredTaskCommands, librarianNetworkAllowed, librarianResearchHosts, taskCommandInstructions, taskCommandRuns, type DirectionProjection, type ResearchControl, type Stored } from "./research-control.js";
 import { completionRunIssues, validateGitCompletion, writeUpOnly } from "./task-postflight.js";
 import { DirectorSlip, directionAutoresearchOutcomes, directionBrief, directorRetryAllowed } from "./director-brief.js";
-import { CHILD_BLOCKED_MS, MIN_AUTORESEARCH_TOKENS, runEvaluationJob, spawnDirectionAutoresearch, type DirectionSpawn } from "./research-spawner.js";
+import { CHILD_BLOCKED_MS, MIN_AUTORESEARCH_TOKENS, frozenEvaluationFiles, runEvaluationJob, scopeIssues, spawnDirectionAutoresearch, type DirectionSpawn } from "./research-spawner.js";
 /** Autoresearch a Direction starts on its own per hypothesis node; after that it waits for its user. */
 const MAX_AUTONOMOUS_AUTORESEARCH = 2;
 import { createTaskWorktree, taskWorktreePath } from "./task-worktree.js";
@@ -135,6 +135,9 @@ export class DirectionSupervisor {
     if (!spawn) spawn = (await this.director(project, direction, node, { siblings: this.research.autoresearch(projectId).filter((run) => run.value.directionId === direction.entityId).map((run) => `${run.entityId} (${run.state}): ${run.value.decisionQuestion}; familyTags ${(run.value.familyTags ?? []).join(", ")}; scope ${(run.value.scope ?? []).join(", ")}`), rejections: rejections.map((entry) => String((entry.payload as { issues?: string[] }).issues?.join("; ") ?? "")) })).spawn;
     try {
       if (!spawn || spawn.nodeId !== node.id) throw new Error(`the Research Director did not fill spawn for node ${node.id}`);
+      const evaluation = (direction.value.evaluationContract as { execution?: { command: string[]; resultPath: string } } | null)?.execution;
+      const scopeProblems = evaluation ? scopeIssues(spawn.scope, frozenEvaluationFiles(project.repositoryRoot, evaluation)) : [];
+      if (scopeProblems.length) throw new Error(scopeProblems.join("; "));
       const childId = spawnDirectionAutoresearch(this.research, projectId, { directionId: direction.entityId, missionId: direction.value.missionId, nodeId: node.id, ordinal, spawn, maximumModelTokens: tokens });
       this.emit(event(projectId, direction.entityId, direction.value.missionId, "direction.autoresearch_spawned", { nodeId: node.id, ordinal, autoresearchId: childId }));
       return true;

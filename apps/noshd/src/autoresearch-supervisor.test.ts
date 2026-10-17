@@ -107,6 +107,8 @@ describe("AutoresearchSupervisor", () => {
       expect(run.errors).toEqual([]);
       expect(run.records.find((record) => record.$schema === schemaUri("experiment-result"))).toMatchObject({ deterministicValidation: "pass", guardrails: [{ metric: "guardrail_pass", value: false, passed: false }], promotionDecision: "rejected" });
       expect(run.records.find((record) => record.$schema === schemaUri("evidence"))).toMatchObject({ evidenceType: "evidence_negative.result", statement: expect.stringContaining("violated contract guardrails: guardrail_pass=false violates >= 1") });
+      // The experiment cannot write the frozen evaluation's files: its program (none here) and its result file.
+      expect(run.records.find((record) => record.$schema === schemaUri("task-packet") && (record as { taskType?: string }).taskType === "task_experiment.implementation")).toMatchObject({ workspace: { protectedScopes: expect.arrayContaining([".nosh/**", "metrics.json"]) } });
     } finally {
       run.cleanup();
     }

@@ -51,6 +51,20 @@ function fixture(prefix: string) {
 }
 const spec = (kind: string) => (nodeId: string): JsonValue => ({ nodeId, kind, question: `Does change ${nodeId} lower the score?`, decisionUse: kind === "research_direction" ? "Choose what the Mission builds on." : null, evaluation: { commandId: "command_evaluate", resultPath: "metrics.json", primaryMetric: { name: "score", objective: "minimize", minimumEffect: 0.01 }, guardrails: [{ name: "f1", direction: "maximize", threshold: -0.05 }], target: null, maximumNoProgressRounds: 1 }, familyTags: [`family-${nodeId.slice(-6)}`], scope: ["src/**"] });
 
+describe("frozen evaluation files", () => {
+  it("names the evaluation program files and the result file, and refuses a scope made only of them", async () => {
+    const { frozenEvaluationFiles, scopeIssues } = await import("./research-spawner.js");
+    const root = mkdtempSync(join(tmpdir(), "nosh-frozen-"));
+    try {
+      writeFileSync(join(root, "evaluate.mjs"), "// evaluator\n");
+      const frozen = frozenEvaluationFiles(root, { command: ["node", "evaluate.mjs", "--split=dev"], resultPath: "./metrics.json" });
+      expect(frozen.sort()).toEqual(["evaluate.mjs", "metrics.json"]);
+      expect(scopeIssues(["evaluate.mjs", "./metrics.json"], frozen).join(" ")).toContain("frozen evaluation");
+      expect(scopeIssues(["src/calibrate.mjs", "evaluate.mjs"], frozen)).toEqual([]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
+
 describe("Mission research spawning", { timeout: 120_000 }, () => {
   it("spawns its Research Directions and its own Autoresearch from Director specs, with a measured baseline", async () => {
     const { daemon, project, emit, submit, jobs, running, cleanup } = fixture("nosh-spawn-");
@@ -184,7 +198,8 @@ describe("Mission research spawning", { timeout: 120_000 }, () => {
     try {
       const mission = running(daemon.research.createMission(project.projectId, { title: "Direction child", objective: "Let the Direction search", deliverables: ["Result"], successCriteria: ["Reviewed"], researchPlan: { directions: 1, missionAutoresearch: false }, idempotencyKey: "direction-child-create" }));
       let directionSpecs = 0;
-      const directors = new Directors(submit, (nodeId) => nodeId.startsWith("dnode_") ? { nodeId, kind: "autoresearch", question: `Distinct question ${++directionSpecs}`, familyTags: [`family-${directionSpecs}`], scope: ["src/**"] } : spec("research_direction")(nodeId));
+      // The first Director spec scopes the search to the frozen evaluation's result file only, which is refused with a reason.
+      const directors = new Directors(submit, (nodeId) => nodeId.startsWith("dnode_") ? { nodeId, kind: "autoresearch", question: `Distinct question ${++directionSpecs}`, familyTags: [`family-${directionSpecs}`], scope: directionSpecs === 1 ? ["metrics.json"] : ["src/**"] } : spec("research_direction")(nodeId));
       const supervisor = new MissionSupervisor(daemon.research, directors as unknown as PiAdapter, () => [project], ".", emit, undefined, jobs);
       for (const deadline = Date.now() + 90_000; Date.now() < deadline && !daemon.research.directions(project.projectId).length;) { await supervisor.tick(); await new Promise((resolve) => setTimeout(resolve, 50)); }
       let child = daemon.research.directions(project.projectId)[0]!;
@@ -208,6 +223,7 @@ describe("Mission research spawning", { timeout: 120_000 }, () => {
       // Runs stopped before evaluating anything did no research, so they do not use up the Direction's Autoresearch cap.
       const nextRun = async (count: number) => { for (let tick = 0; tick < 40 && daemon.research.autoresearch(project.projectId).length < count; tick += 1) { await directions.tick(); await new Promise((resolve) => setTimeout(resolve, 50)); } };
       await nextRun(2);
+      expect(JSON.stringify(daemon.research.scopedEvents(project.projectId, mission.entityId, "research.spawn_rejected").map((entry) => entry.payload))).toContain("frozen evaluation");
       const second = daemon.research.autoresearch(project.projectId).find((run) => run.entityId !== blocked.entityId)!;
       expect(second).toBeDefined();
       daemon.research.transitionAutoresearch(project.projectId, second.entityId, second.version, "blocked", "fixture-ar-blocked-2");

@@ -13,7 +13,7 @@ import type { PiAdapter, PiSessionOptions } from "@nosh/pi-adapter";
 import type { OrchestrationRuntime } from "@nosh/orchestration-runtime";
 import { canonicalJson, schemaUri, sha256, validateRecord, type EventDraft, type JsonValue, type TaskPermissions, episodeTypeForRole, schemaDocumentPath } from "@nosh/wire";
 import { declaredTaskCommands, taskCommandInstructions, taskCommandRuns, type AutoresearchBudgetUse, type AutoresearchProjection, type ResearchControl, type Stored } from "./research-control.js";
-import { isEvaluationVariant } from "./research-spawner.js";
+import { frozenEvaluationFiles, isEvaluationVariant } from "./research-spawner.js";
 import { completionRunIssues, validateGitCompletion, writeUpOnly } from "./task-postflight.js";
 
 type Contract = { primaryMetric: { name: string; objective: "maximize" | "minimize"; minimumEffect: number }; baselineMetrics: Record<string, number>; guardrails?: Array<{ name: string; direction: "maximize" | "minimize"; threshold: number }>; roundWidths?: number[]; stopConditions?: { target?: number; maximumNoProgressRounds?: number }; execution: { runner: "native" | "wsl2"; distribution?: string | null; command: string[]; resultPath: string; timeoutSeconds: number; checkpointCommand?: string[] | null; usesGpu?: boolean } };
@@ -261,7 +261,9 @@ export class AutoresearchSupervisor {
   private submit(project: RegisteredProject, execution: AutoresearchProjection, correlationId: string, record: JsonValue, idempotencyKey: string, agentId: string | null, experimentId: string | null = null, runId: string | null = null, jobId: string | null = null) { return this.research.submitDaemonRecord(project.projectId, { projectId: project.projectId, missionId: execution.missionId, directionId: execution.directionId, autoresearchId: execution.autoresearchId, experimentId, runId, jobId, agentId }, correlationId, record, idempotencyKey); }
   private taskPacket(project: RegisteredProject, execution: Stored<AutoresearchProjection>, proposal: Proposal, taskId: string, agentId: string, branch: string, startingCommit: string): TaskPacket {
     // The frozen evaluation and its other splits are the daemon's to run; the worker only implements and tests.
-    const now = Date.now(); const frozen = (execution.value.evaluationContract as { execution?: { command?: string[] } } | null)?.execution?.command ?? []; const commands = declaredTaskCommands(project).filter((command) => !isEvaluationVariant(command.argv, frozen));
+    // Its files (program and result) are protected too, so a variant cannot change how it is measured.
+    const now = Date.now(); const evaluation = (execution.value.evaluationContract as { execution?: { command?: string[]; resultPath?: string } } | null)?.execution; const frozen = evaluation?.command ?? []; const commands = declaredTaskCommands(project).filter((command) => !isEvaluationVariant(command.argv, frozen));
+    const frozenFiles = evaluation?.command && evaluation.resultPath ? frozenEvaluationFiles(project.repositoryRoot, { command: evaluation.command, resultPath: evaluation.resultPath }) : [];
     return {
       $schema: schemaUri("task-packet"), schemaVersion: 1, templateVersion: "1.0.0",
       taskId, attempt: 1, taskType: "task_experiment.implementation", assignedRole: "general_worker", assignedAgentId: agentId,
@@ -272,7 +274,7 @@ export class AutoresearchSupervisor {
       inScope: execution.value.scope.length ? execution.value.scope : ["**"], outOfScope: [".nosh/**"], inputArtifactIds: [], inputEvidenceIds: [],
       requiredOutputs: [{ outputId: `output_${proposal.experimentId.slice(4)}`, kind: "output_code.commit", required: true }],
       acceptanceCriteria: [{ criterionId: `criterion_${proposal.experimentId.slice(4)}`, statement: `The proposed change is implemented exactly and committed within scope: ${proposal.primaryChange.description.slice(0, 1_500)} (the hypothesis itself is judged afterwards by the frozen evaluation Job, not by this task)`, validatorIds: ["validator_git.postflight"], reviewRubricIds: ["rubric_experiment.correctness"], required: true }],
-      workspace: { worktreeId: `wt_${proposal.experimentId.slice(4)}`, branch, startingCommit, writeScopes: execution.value.scope.length ? execution.value.scope : ["**"], protectedScopes: [".nosh/**"] },
+      workspace: { worktreeId: `wt_${proposal.experimentId.slice(4)}`, branch, startingCommit, writeScopes: execution.value.scope.length ? execution.value.scope : ["**"], protectedScopes: [".nosh/**", ...frozenFiles] },
       permissions: { network: "disabled", subprocess: commands.length ? "allowlisted" : "disabled", gitCommit: true, gitPush: false, delegation: "request_only", networkAllowlist: [], allowedToolIds: ["tool_nosh.response.submit", "tool_nosh.blocker.submit", "tool_nosh.delegation.request", "tool_pi.read", "tool_pi.edit", "tool_pi.write", "tool_nosh.git.commit", ...(commands.length ? ["tool_nosh.run"] : [])] },
       budget: { deadline: new Date(now + 7_200_000).toISOString(), maximumWallClockSeconds: 7_200, maximumModelTokens: Math.min(60_000, execution.value.maximumModelTokens), maximumToolCalls: 100, maximumRepairAttempts: 1 },
       progressPolicy: { milestoneIntervalSeconds: 900, emitOnFirstDurableDelta: true, emitOnBlocker: true, emitOnAnomaly: true, maximumSilentSeconds: 1_200 },

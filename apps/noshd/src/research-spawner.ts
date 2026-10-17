@@ -6,7 +6,7 @@
  * instead of duplicating work.
  */
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { createId } from "@nosh/core";
 import { loadNativeEvaluation, type JobRecord, type JobSpec } from "@nosh/jobs";
 import type { RegisteredProject } from "@nosh/persistence";
@@ -60,6 +60,21 @@ export function isEvaluationVariant(argv: string[], evaluation: string[]): boole
   return program(argv) === program(evaluation);
 }
 
+const repositoryPath = (path: string): string => path.replaceAll("\\", "/").replace(/^(\.\/)+/, "");
+/**
+ * The frozen evaluation's own repository files: its program (non-flag command arguments that are files in the
+ * repository) and its result file. Experiments never write them, or a variant could change how it is measured.
+ */
+export function frozenEvaluationFiles(root: string, execution: { command: string[]; resultPath: string }): string[] {
+  const program = execution.command.filter((arg) => !arg.startsWith("-") && !isAbsolute(arg) && existsSync(join(root, arg)) && statSync(join(root, arg)).isFile());
+  return [...new Set([...program, execution.resultPath].map(repositoryPath))];
+}
+/** A scope naming only frozen evaluation files leaves the search nothing it may change. */
+export function scopeIssues(scope: string[], frozen: string[]): string[] {
+  if (!scope.length || !scope.every((entry) => frozen.includes(repositoryPath(entry)))) return [];
+  return [`scope ${scope.join(", ")} names only the frozen evaluation (${frozen.join(", ")}), which experiments never change; name the files a variant edits instead, such as the method's source and configuration`];
+}
+
 /** Structural checks a spawn must pass before anything runs; the probe then checks it against a real evaluation. */
 export function spawnIssues(project: RegisteredProject, spawn: MissionSpawn, nodeId: string, nodeType: string): string[] {
   const issues: string[] = [];
@@ -68,6 +83,8 @@ export function spawnIssues(project: RegisteredProject, spawn: MissionSpawn, nod
   if (!declaredTaskCommands(project).some((command) => command.commandId === spawn.evaluation.commandId)) issues.push(`spawn.evaluation.commandId ${spawn.evaluation.commandId} is not a command declared in the Project contract (declared: ${declaredTaskCommands(project).map((command) => command.commandId).join(", ") || "none"})`);
   const path = spawn.evaluation.resultPath;
   if (/^[a-zA-Z]:|^[\\/]/.test(path) || path.split(/[\\/]/).includes("..")) issues.push("spawn.evaluation.resultPath must be a relative path inside the repository");
+  const command = declaredTaskCommands(project).find((entry) => entry.commandId === spawn.evaluation.commandId);
+  if (command) issues.push(...scopeIssues(spawn.scope, frozenEvaluationFiles(project.repositoryRoot, { command: command.argv, resultPath: path })));
   // A guardrail threshold is a change from the measured baseline; one the baseline itself fails would refuse every experiment.
   for (const guardrail of spawn.evaluation.guardrails) if (guardrail.direction === "maximize" ? guardrail.threshold > 0 : guardrail.threshold < 0) issues.push(`guardrail ${guardrail.name}: threshold is the allowed change from the measured baseline, so for ${guardrail.direction} it must be ${guardrail.direction === "maximize" ? "zero or negative (-0.005 allows a 0.005 drop)" : "zero or positive (0.005 allows a 0.005 rise)"}`);
   return issues;
