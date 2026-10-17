@@ -577,6 +577,17 @@ name = "nosh"
 version = "0.0.0"
 
 [[package]]
+name = "nosh-research"
+version = "0.0.0"
+dependencies = [
+ "nosh-sys",
+ "nosh-wire",
+ "serde_json",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "nosh-store"
 version = "0.0.0"
 dependencies = [

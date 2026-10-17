@@ -50,6 +50,13 @@
       ],
       "strict": []
     },
+    "nosh-research:artifacts": {
+      "synced": "920131ced8c50810d8494f268ab3c8528cf189ae",
+      "paths": [
+        "packages/evidence/src/index.ts"
+      ],
+      "strict": []
+    },
     "nosh-agent": {
       "synced": null,
       "paths": [

@@ -60,9 +60,112 @@ pub fn forward_slashes(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+/// The part of `target` below `root` when `target` is `root` or inside it, comparing as Node's
+/// win32 `path.relative` does (case-insensitively); `None` when it escapes. Both are resolved first.
+pub fn relative_inside(root: &Path, target: &Path) -> io::Result<Option<PathBuf>> {
+    let (root, target) = (resolve(root)?, resolve(target)?);
+    let key = |component: Component<'_>| component.as_os_str().to_string_lossy().to_lowercase();
+    let mut remaining = target.components();
+    for component in root.components() {
+        match remaining.next() {
+            Some(next) if key(next) == key(component) => {}
+            _ => return Ok(None),
+        }
+    }
+    Ok(Some(remaining.collect()))
+}
+
+/// Node's win32 `path.extname`: from the last `.` of the last segment, except for dotfiles
+/// (`.bashrc` → ``), `..`, and names without a dot; `file.` → `.`.
+pub fn extname(path: &str) -> &str {
+    let chars: Vec<(usize, char)> = path.char_indices().collect();
+    let separator = |c: char| c == '/' || c == '\\';
+    let mut start = 0;
+    if chars.len() >= 2 && chars[1].1 == ':' && chars[0].1.is_ascii_alphabetic() {
+        start = 2;
+    }
+    let (mut start_dot, mut start_part, mut end, mut matched_slash, mut pre_dot_state) =
+        (None, start, None, true, 0);
+    for i in (start..chars.len()).rev() {
+        let c = chars[i].1;
+        if separator(c) {
+            if !matched_slash {
+                start_part = i + 1;
+                break;
+            }
+            continue;
+        }
+        if end.is_none() {
+            matched_slash = false;
+            end = Some(i + 1);
+        }
+        if c == '.' {
+            if start_dot.is_none() {
+                start_dot = Some(i);
+            } else if pre_dot_state != 1 {
+                pre_dot_state = 1;
+            }
+        } else if start_dot.is_some() {
+            pre_dot_state = -1;
+        }
+    }
+    let (Some(dot), Some(end)) = (start_dot, end) else {
+        return "";
+    };
+    if pre_dot_state == 0 || (pre_dot_state == 1 && dot == end - 1 && dot == start_part + 1) {
+        return "";
+    }
+    let byte = |index: usize| chars.get(index).map_or(path.len(), |(offset, _)| *offset);
+    &path[byte(dot)..byte(end)]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extname_matches_node() {
+        for (path, expected) in [
+            ("C:\\a\\b.txt", ".txt"),
+            ("C:\\a\\archive.tar.gz", ".gz"),
+            ("C:\\a\\.bashrc", ""),
+            ("C:\\a\\file.", "."),
+            ("C:\\a\\..foo", ".foo"),
+            ("C:\\a\\..", ""),
+            ("C:\\a\\noext", ""),
+            ("C:\\dir.d\\noext", ""),
+            ("C:\\a\\é.ünï", ".ünï"),
+            ("C:\\a\\b.txt\\", ".txt"),
+        ] {
+            assert_eq!(extname(path), expected, "{path}");
+        }
+    }
+
+    #[test]
+    fn relative_inside_ignores_case_like_node() {
+        let inside = relative_inside(
+            Path::new(r"C:\Root\Store"),
+            Path::new(r"c:\root\store\ab\file"),
+        )
+        .unwrap();
+        assert_eq!(inside, Some(PathBuf::from(r"ab\file")));
+        assert_eq!(
+            relative_inside(Path::new(r"C:\Root"), Path::new(r"C:\Root")).unwrap(),
+            Some(PathBuf::new())
+        );
+        assert_eq!(
+            relative_inside(Path::new(r"C:\Root"), Path::new(r"C:\Root\..\Other")).unwrap(),
+            None
+        );
+        assert_eq!(
+            relative_inside(Path::new(r"C:\Root"), Path::new(r"C:\RootX")).unwrap(),
+            None
+        );
+        assert_eq!(
+            relative_inside(Path::new(r"C:\Root"), Path::new(r"D:\Root")).unwrap(),
+            None
+        );
+    }
 
     #[test]
     fn resolve_matches_node() {
