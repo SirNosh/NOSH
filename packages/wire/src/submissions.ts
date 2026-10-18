@@ -156,7 +156,7 @@ const spawnFamilyTags = z.array(z.string().min(1).max(200)).min(1).max(8);
 const spawnScope = z.array(z.string().min(1).max(500)).min(1).max(32);
 const missionSpawnSchema = z.object({
   nodeId: ref, kind: z.enum(["research_direction", "autoresearch"]), question: text, decisionUse: text.nullable(),
-  evaluation: z.object({ commandId: ref, resultPath: z.string().min(1).max(500), primaryMetric: spawnMetric, guardrails: z.array(spawnGuardrail).max(8), target: z.number().nullable(), maximumNoProgressRounds: z.number().int().min(1).max(3) }).strict(),
+  evaluation: z.object({ commandId: ref, resultPath: z.string().min(1).max(500), primaryMetric: spawnMetric, guardrails: z.array(spawnGuardrail).max(8), target: z.number().nullable(), maximumNoProgressRounds: z.number().int().min(1).max(20) }).strict(),
   familyTags: spawnFamilyTags, scope: spawnScope,
 }).strict().superRefine((value, context) => { if (value.kind === "research_direction" && !value.decisionUse) context.addIssue({ code: z.ZodIssueCode.custom, path: ["decisionUse"], message: "A research_direction spawn needs decisionUse: what the answer will decide" }); });
 /** A further Autoresearch a Research Director starts under its Direction's frozen evaluation contract. */

@@ -28,6 +28,8 @@ export type DirectionSpawn = { nodeId: string; kind: "autoresearch"; question: s
 /** Smallest model-token allocations worth spawning; below them a child cannot finish its own reviewed closure. */
 const MIN_DIRECTION_TOKENS = 300_000;
 export const MIN_AUTORESEARCH_TOKENS = 150_000;
+/** A spawned Autoresearch hill-climbs one experiment per round; its evaluations are cheap, so it gets many (tokens still bound it). */
+const SPAWNED_EXPERIMENTS = 30;
 /** How long a spawned child may sit blocked or paused, with no agent working on it, before its parent stops it. */
 export const CHILD_BLOCKED_MS = 10 * 60_000;
 /** Share of the Mission ceiling kept for the Mission's own nodes and reviews. */
@@ -162,7 +164,7 @@ export function spawnMissionChild(research: ResearchControl, projectId: string, 
   if (intent.state === "completed") return String((intent.result as { childId?: string }).childId);
   const childId = input.spawn.kind === "research_direction"
     ? research.createDirection(projectId, { question: input.spawn.question, decisionUse: input.spawn.decisionUse ?? input.spawn.question, missionId: input.mission.entityId, evaluationContract: input.evaluationContract, idempotencyKey: `${key}:create` }, { origin, baseCommit: input.baseCommit, budget: input.budget }).entityId
-    : research.createAutoresearch(projectId, { decisionQuestion: input.spawn.question, missionId: input.mission.entityId, familyTags: input.spawn.familyTags, scope: input.spawn.scope, evaluationContract: input.evaluationContract, maximumModelTokens: input.budget.maximumModelTokens, maximumWallClockSeconds: input.budget.maximumWallClockSeconds, maximumGpuSeconds: 0, maximumExperiments: 6, maximumRounds: 4, idempotencyKey: `${key}:create` }, { invokedByRole: "mission_director", origin, baseCommit: input.baseCommit }).entityId;
+    : research.createAutoresearch(projectId, { decisionQuestion: input.spawn.question, missionId: input.mission.entityId, familyTags: input.spawn.familyTags, scope: input.spawn.scope, evaluationContract: input.evaluationContract, maximumModelTokens: input.budget.maximumModelTokens, maximumWallClockSeconds: input.budget.maximumWallClockSeconds, maximumGpuSeconds: 0, maximumExperiments: SPAWNED_EXPERIMENTS, maximumRounds: SPAWNED_EXPERIMENTS, idempotencyKey: `${key}:create` }, { invokedByRole: "mission_director", origin, baseCommit: input.baseCommit }).entityId;
   startChild(research, projectId, childId, key);
   research.completeExternalOperation(projectId, intent.intentId, { childId });
   return childId;
@@ -174,7 +176,7 @@ export function spawnDirectionAutoresearch(research: ResearchControl, projectId:
   const origin: SpawnOrigin = { scopeType: "direction", scopeId: input.directionId, nodeId: input.nodeId, attempt: input.ordinal };
   const intent = research.beginExternalOperation(projectId, "research.child_spawn", key, { origin: origin as unknown as JsonValue, spawn: input.spawn as unknown as JsonValue, maximumModelTokens: input.maximumModelTokens });
   if (intent.state === "completed") return String((intent.result as { childId?: string }).childId);
-  const childId = research.createAutoresearch(projectId, { decisionQuestion: input.spawn.question, directionId: input.directionId, missionId: input.missionId, familyTags: input.spawn.familyTags, scope: input.spawn.scope, maximumModelTokens: input.maximumModelTokens, maximumGpuSeconds: 0, maximumExperiments: 6, maximumRounds: 4, idempotencyKey: `${key}:create` }, { invokedByRole: "research_director", origin, baseCommit: null }).entityId;
+  const childId = research.createAutoresearch(projectId, { decisionQuestion: input.spawn.question, directionId: input.directionId, missionId: input.missionId, familyTags: input.spawn.familyTags, scope: input.spawn.scope, maximumModelTokens: input.maximumModelTokens, maximumGpuSeconds: 0, maximumExperiments: SPAWNED_EXPERIMENTS, maximumRounds: SPAWNED_EXPERIMENTS, idempotencyKey: `${key}:create` }, { invokedByRole: "research_director", origin, baseCommit: null }).entityId;
   startChild(research, projectId, childId, key);
   research.completeExternalOperation(projectId, intent.intentId, { childId });
   return childId;

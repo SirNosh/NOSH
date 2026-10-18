@@ -11,15 +11,16 @@ import { describe, expect, it, vi } from "vitest";
 import { NoshDaemon } from "./daemon.js";
 import { DirectionSupervisor } from "./direction-supervisor.js";
 import { MissionSupervisor } from "./mission-supervisor.js";
+import { autoresearcherId } from "./autoresearch-supervisor.js";
 
 /** Directors that answer from the brief: Mission Directors fill spawn when the brief asks for a research child. */
 class Directors {
-  readonly sessions = new Map<string, PiSessionOptions>(); readonly prompts: string[] = [];
+  readonly sessions = new Map<string, PiSessionOptions>(); readonly prompts: string[] = []; readonly agentIds: string[] = [];
   /** A Research Director that judges further work does not contribute (it halts the selected node). */
   halts = false;
   constructor(private readonly submit: (session: PiSessionOptions, record: JsonValue) => void, private readonly spec: (nodeId: string, prompt: string) => JsonValue | undefined) {}
   inspect(): AgentInspection[] { return [...this.sessions.values()].map((session) => ({ ...session, piSessionId: `pi_${session.agentId}`, status: "running" })) as unknown as AgentInspection[]; }
-  async start(options: PiSessionOptions): Promise<AgentInspection> { this.sessions.set(options.agentId, options); return this.inspect().find((agent) => agent.agentId === options.agentId)!; }
+  async start(options: PiSessionOptions): Promise<AgentInspection> { this.sessions.set(options.agentId, options); this.agentIds.push(options.agentId); return this.inspect().find((agent) => agent.agentId === options.agentId)!; }
   stop(agentId: string): void { this.sessions.delete(agentId); }
   async prompt(agentId: string, prompt: string): Promise<void> {
     const session = this.sessions.get(agentId)!; this.prompts.push(prompt);
@@ -84,6 +85,8 @@ describe("Mission research spawning", { timeout: 120_000 }, () => {
       for (const direction of directions) expect(direction.value).toMatchObject({ createdBy: "mission_director", missionId: mission.entityId, origin: { scopeType: "mission", scopeId: mission.entityId, attempt: 1 } });
       expect(directions.every((direction) => direction.state === "active")).toBe(true);
       expect(runs[0]!.value).toMatchObject({ directionId: null, missionId: mission.entityId, invokedByRole: "mission_director", state: "running" });
+      // The Autoresearch is run by its own autoresearcher, never by the Director that specified it.
+      expect(directors.agentIds).not.toContain(autoresearcherId(runs[0]!.entityId));
       // The baseline is what the declared command measured, never a number from the Director.
       expect((runs[0]!.value.evaluationContract as { baselineMetrics: Record<string, number> }).baselineMetrics).toEqual({ score: 0.5, f1: 0.9 });
       // A spawn guardrail is a change from that baseline: "f1 may drop 0.05" freezes as f1 >= 0.85.

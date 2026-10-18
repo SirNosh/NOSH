@@ -15,15 +15,18 @@ import { ResearchControl } from "./research-control.js";
 class ExperimentAgents {
   private readonly sessions = new Map<string, PiSessionOptions>();
   readonly reviewedEvidenceCandidates: Record<string, JsonValue>[] = [];
-  constructor(private readonly append: (draft: EventDraft) => void, private readonly transformReview: (record: Record<string, JsonValue>) => Record<string, JsonValue> = (record) => record, private failProposals = 0) {}
+  readonly started: PiSessionOptions[] = []; readonly proposalPrompts: string[] = [];
+  /** Implementation sessions that end without a completion record, like a worker that crashed. */
+  failImplementations = 0;
+  constructor(private readonly append: (draft: EventDraft) => void, private readonly transformReview: (record: Record<string, JsonValue>) => Record<string, JsonValue> = (record) => record, private failProposals = 0, private readonly scores: number[] = [2, 3, 5, 1]) {}
   inspect(): AgentInspection[] { return [...this.sessions.values()].map((session) => ({ ...session, piSessionId: `pi_${session.agentId}`, status: "running", currentTool: null, activeToolIds: [], startedAt: new Date().toISOString(), lastEventAt: new Date().toISOString(), modelProvider: session.model?.provider ?? null, modelId: session.model?.id ?? null, modelName: null, thinkingLevel: session.thinkingLevel ?? "medium", contextTokens: null, contextWindow: null, contextPercent: null })); }
-  async start(options: PiSessionOptions): Promise<AgentInspection> { this.sessions.set(options.agentId, options); return this.inspect().find((agent) => agent.agentId === options.agentId)!; }
+  async start(options: PiSessionOptions): Promise<AgentInspection> { this.sessions.set(options.agentId, options); this.started.push(options); return this.inspect().find((agent) => agent.agentId === options.agentId)!; }
   async prompt(agentId: string, prompt: string): Promise<void> {
     const session = this.sessions.get(agentId)!; const now = new Date().toISOString();
     // Live models sometimes return a malformed proposal envelope; the host rejects it after its one correction.
     if (prompt.includes(schemaUri("experiment-proposal")) && this.failProposals > 0) { this.failProposals -= 1; throw new Error('Terminal output rejected: {"accepted":false,"retryAllowed":false,"error":"Expected \',\' or \']\' after array element in JSON"}'); }
-    if (prompt.includes(schemaUri("experiment-proposal"))) { const experimentId = required(prompt, /(?:experimentId=|"experimentId":")(exp_[0-9a-f]{32})/); const autoresearchId = required(prompt, /(?:autoresearchId=|"autoresearchId":")(ar_[0-9a-f]{32})/); const parentExperimentId = required(prompt, /(?:parentExperimentId=|"parentExperimentId":")(exp_[0-9a-f]{32})/); const round = Number(required(prompt, /(?:round=|"round":)(\d+)/)); const evaluationContractHash = required(prompt, /(?:evaluationContractHash=|"evaluationContractHash":")(sha256:[0-9a-f]{64})/); this.submit(session, { $schema: schemaUri("experiment-proposal"), schemaVersion: 1, proposalId: `proposal_${experimentId.slice(4)}`, autoresearchId, experimentId, parentExperimentId, round, hypothesis: `Variant ${experimentId.slice(4, 10)} improves the primary metric`, rationale: "Exercise the frozen evaluation contract", primaryChange: { category: "change_variant", description: "Write the bounded variant input", expectedFiles: ["variant.json"] }, expectedEffect: { score: "measurable" }, guardrailRisks: ["Fixture only"], novelty: { ideaFingerprint: sha256({ experimentId }), nearestAttemptFingerprint: null, difference: "Distinct fixture ordinal", duplicateStatus: "distinct" }, evaluationContractHash, estimatedGpuSeconds: 0, proposedByAgentId: agentId, submittedAt: now }); return; }
-    const packetText = prompt.includes(". Implement exactly") ? prompt.split("Task Packet: ")[1]?.split(". Implement exactly")[0] : undefined; if (packetText) { const packet = JSON.parse(packetText) as { taskId: string; attempt: number; assignedAgentId: string; requiredOutputs: Array<{ outputId: string }>; acceptanceCriteria: Array<{ criterionId: string }>; workspace: { startingCommit: string; branch: string }; lease: { leaseId: string } }; const ordinal = Number(required(prompt, /variantOrdinal=(\d+)/)); const score = [2, 3, 5, 1][ordinal - 1]!; writeFileSync(join(session.cwd, "variant.json"), `${JSON.stringify({ score })}\n`); /* stands in for the daemon's completion commit */ git(session.cwd, ["add", "--", "variant.json"]); git(session.cwd, ["commit", "-m", `experiment variant ${ordinal}`]); const endingCommit = git(session.cwd, ["rev-parse", "HEAD"]); const validator = `validator_${packet.taskId.slice(4)}`; this.submit(session, { $schema: schemaUri("general-worker-completion"), schemaVersion: 1, taskOutcome: "completed", workPerformed: [{ action: "action_implementation", subject: "Bounded variant", artifactIds: [] }], codeChanges: { startingCommit: packet.workspace.startingCommit, endingCommit, changedPaths: ["variant.json"], diffArtifactId: null, branch: packet.workspace.branch }, commands: [{ commandId: validator, displayCommand: "fixture validation", exitCode: 0, resultArtifactId: null }], criteria: [{ criterionId: packet.acceptanceCriteria[0]!.criterionId, workerClaim: "satisfied", validatorRunIds: [validator], artifactIds: [], notes: "Fixture passed" }], scientificImpact: { claimIds: [], evidenceIds: [], interpretation: "Fixture variant" }, deviations: [], newRisks: [], unresolvedItems: [], suggestedNextActions: [], readyForDeterministicPostflight: true, readyForReview: true }); return; }
+    if (prompt.includes(schemaUri("experiment-proposal"))) { this.proposalPrompts.push(prompt); const experimentId = required(prompt, /(?:experimentId=|"experimentId":")(exp_[0-9a-f]{32})/); const autoresearchId = required(prompt, /(?:autoresearchId=|"autoresearchId":")(ar_[0-9a-f]{32})/); const parentExperimentId = required(prompt, /(?:parentExperimentId=|"parentExperimentId":")(exp_[0-9a-f]{32})/); const round = Number(required(prompt, /(?:round=|"round":)(\d+)/)); const evaluationContractHash = required(prompt, /(?:evaluationContractHash=|"evaluationContractHash":")(sha256:[0-9a-f]{64})/); this.submit(session, { $schema: schemaUri("experiment-proposal"), schemaVersion: 1, proposalId: `proposal_${experimentId.slice(4)}`, autoresearchId, experimentId, parentExperimentId, round, hypothesis: `Variant ${experimentId.slice(4, 10)} improves the primary metric`, rationale: "Exercise the frozen evaluation contract", primaryChange: { category: "change_variant", description: "Write the bounded variant input", expectedFiles: ["variant.json"] }, expectedEffect: { score: "measurable" }, guardrailRisks: ["Fixture only"], novelty: { ideaFingerprint: sha256({ experimentId }), nearestAttemptFingerprint: null, difference: "Distinct fixture ordinal", duplicateStatus: "distinct" }, evaluationContractHash, estimatedGpuSeconds: 0, proposedByAgentId: agentId, submittedAt: now }); return; }
+    const packetText = prompt.includes(". Implement exactly") ? prompt.split("Task Packet: ")[1]?.split(". Implement exactly")[0] : undefined; if (packetText) { const packet = JSON.parse(packetText) as { taskId: string; attempt: number; assignedAgentId: string; requiredOutputs: Array<{ outputId: string }>; acceptanceCriteria: Array<{ criterionId: string }>; workspace: { startingCommit: string; branch: string }; lease: { leaseId: string } }; if (this.failImplementations > 0) { this.failImplementations -= 1; return; } const ordinal = Number(required(prompt, /variantOrdinal=(\d+)/)); const score = this.scores[ordinal - 1]!; writeFileSync(join(session.cwd, "variant.json"), `${JSON.stringify({ score })}\n`); /* stands in for the daemon's completion commit */ git(session.cwd, ["add", "--", "variant.json"]); git(session.cwd, ["commit", "-m", `experiment variant ${ordinal}`]); const endingCommit = git(session.cwd, ["rev-parse", "HEAD"]); const validator = `validator_${packet.taskId.slice(4)}`; this.submit(session, { $schema: schemaUri("general-worker-completion"), schemaVersion: 1, taskOutcome: "completed", workPerformed: [{ action: "action_implementation", subject: "Bounded variant", artifactIds: [] }], codeChanges: { startingCommit: packet.workspace.startingCommit, endingCommit, changedPaths: ["variant.json"], diffArtifactId: null, branch: packet.workspace.branch }, commands: [{ commandId: validator, displayCommand: "fixture validation", exitCode: 0, resultArtifactId: null }], criteria: [{ criterionId: packet.acceptanceCriteria[0]!.criterionId, workerClaim: "satisfied", validatorRunIds: [validator], artifactIds: [], notes: "Fixture passed" }], scientificImpact: { claimIds: [], evidenceIds: [], interpretation: "Fixture variant" }, deviations: [], newRisks: [], unresolvedItems: [], suggestedNextActions: [], readyForDeterministicPostflight: true, readyForReview: true }); return; }
     const requestText = prompt.split("Review Request: ")[1]?.split(". Submit")[0]; if (requestText) { const request = JSON.parse(requestText) as { reviewId: string; reviewRequestId: string; reviewType: string; target: JsonValue; criteria: Array<{ criterionId: string; required: boolean }>; requiredArtifactIds: string[]; requiredEvidenceIds: string[] };
       if (request.reviewType === "experiment") {
         const candidateText = prompt.split("Review this candidate Evidence for publication with your exact disposition: ")[1]?.split(" Review Request: ")[0];
@@ -58,6 +61,48 @@ describe("proposal grounding", () => {
       expect(snapshot).not.toContain("evaluate.mjs");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
+});
+
+describe("Autoresearch hill climbing", () => {
+  // Scores the fixture's variants produce, in order; lower is better and the baseline is 10.
+  const climbContract = (stop: number): JsonValue => ({ primaryMetric: { name: "score", objective: "minimize", minimumEffect: 0.5 }, baselineMetrics: { score: 10 }, stopConditions: { maximumNoProgressRounds: stop }, execution: { runner: "native", command: [process.execPath, "-e", "require('fs').copyFileSync('variant.json','metrics.json')"], resultPath: "metrics.json", timeoutSeconds: 30, usesGpu: false } });
+
+  it("climbs greedily from the current best, reviewing only the keeps, run by one dedicated autoresearcher", async () => {
+    const run = await runAutoresearchFixture(climbContract(6), { scores: [8, 9, 9, 9, 9, 6, 7, 4], maximumExperiments: 8, maximumRounds: 8 });
+    try {
+      expect(run.errors).toEqual([]);
+      const results = [...new Map((run.records.filter((record) => record.$schema === schemaUri("experiment-result")) as Array<{ experimentId: string; parentExperimentId: string; promotionDecision: string; comparison: { candidateScore: number } }>).map((result) => [result.experimentId, result])).values()];
+      expect(results).toHaveLength(8);
+      // Each keep descends from the previous best: 8, then 6 (after four discards on the same parent), then 4.
+      const promoted = results.filter((result) => result.promotionDecision === "promoted");
+      expect(promoted.map((result) => result.comparison.candidateScore)).toEqual([8, 6, 4]);
+      expect(promoted[1]!.parentExperimentId).toBe(promoted[0]!.experimentId); expect(promoted[2]!.parentExperimentId).toBe(promoted[1]!.experimentId);
+      expect(results.filter((result) => result.parentExperimentId === promoted[0]!.experimentId)).toHaveLength(5);
+      // Only promotion candidates get an experiment Review; single-experiment rounds need no round Review.
+      const requests = run.records.filter((record) => record.$schema === schemaUri("review-request")) as Array<{ reviewType: string }>;
+      expect(requests.filter((request) => request.reviewType === "experiment")).toHaveLength(3);
+      expect(requests.filter((request) => request.reviewType === "experiment_round")).toHaveLength(0);
+      // One autoresearcher runs every proposal and implementation; it is never a director, and every reviewer is someone else.
+      const workers = run.started.filter((session) => session.role === "general_worker"); const reviewers = run.started.filter((session) => session.role === "reviewer");
+      expect(new Set(workers.map((session) => session.agentId)).size).toBe(1);
+      expect(run.started.some((session) => ["mission_director", "research_director"].includes(session.role))).toBe(false);
+      expect(reviewers.every((session) => session.agentId !== workers[0]!.agentId)).toBe(true);
+      expect(new Set(reviewers.map((session) => session.agentId)).size).toBe(reviewers.length);
+      // The autoresearcher reads a log of every experiment with its outcome.
+      const lastBrief = run.proposalPrompts.at(-1)!;
+      for (const expected of ["keep", "discard", "consecutive"]) expect(lastBrief).toContain(expected);
+    } finally { run.cleanup(); }
+  }, 120_000);
+
+  it("logs implementation crashes for the autoresearcher without spending the experiment budget", async () => {
+    // Two crashes, below the crash cap (one per allowed experiment): all three experiments are still evaluated.
+    const run = await runAutoresearchFixture(climbContract(3), { scores: [8, 6, 4], maximumExperiments: 3, maximumRounds: 3, failImplementations: 2 });
+    try {
+      expect(run.errors).toEqual([]);
+      expect(run.budget).toMatchObject({ experiments: 3, implementationFailures: 2 });
+      expect(run.proposalPrompts.slice(1).some((prompt) => prompt.includes("crash"))).toBe(true);
+    } finally { run.cleanup(); }
+  }, 120_000);
 });
 
 describe("AutoresearchSupervisor", () => {
@@ -147,11 +192,12 @@ describe("AutoresearchSupervisor", () => {
     }
   }, 90_000);
 
-  it("records negative Evidence as reviewed when the experiment Review confirms the measured failure", async () => {
+  it("records a discarded experiment's negative Evidence without spending a Review session on it", async () => {
     const run = await runAutoresearchFixture({ primaryMetric: { name: "score", objective: "minimize", minimumEffect: 1 }, baselineMetrics: { score: 4 }, guardrails: [{ name: "guardrail_pass", direction: "maximize", threshold: 1 }], roundWidths: [1], execution: { runner: "native", command: [process.execPath, "-e", "require('fs').writeFileSync('metrics.json','{\"score\":2,\"guardrail_pass\":false}')"], resultPath: "metrics.json", timeoutSeconds: 30, usesGpu: false } });
     try {
-      const review = run.records.find((record) => record.$schema === schemaUri("review-verdict") && record.reviewType === "experiment") as { reviewId: string };
-      expect(run.records.find((record) => record.$schema === schemaUri("evidence"))).toMatchObject({ evidenceType: "evidence_negative.result", quality: { status: "reviewed", reviewId: review.reviewId } });
+      // A discard is a measured negative: no experiment Review runs, and the closure Review judges it with the rest.
+      expect(run.records.some((record) => record.$schema === schemaUri("review-request") && record.reviewType === "experiment")).toBe(false);
+      expect(run.records.find((record) => record.$schema === schemaUri("evidence"))).toMatchObject({ evidenceType: "evidence_negative.result", quality: { status: "unreviewed", reviewId: null } });
       expect(run.records.find((record) => record.$schema === schemaUri("experiment-result"))).toMatchObject({ promotionRecommendation: "reject", promotionDecision: "rejected" });
     } finally { run.cleanup(); }
   }, 90_000);
@@ -204,7 +250,8 @@ describe("AutoresearchSupervisor", () => {
   }, 90_000);
 
   it("does not report target_reached when the round Review holds the winner", async () => {
-    const run = await runAutoresearchFixture(targetContract({ target: 2, maximumNoProgressRounds: 2 }), { transformReview: (record) => record.reviewType === "experiment_round" ? { ...record, verdict: "REVISE", recommendedPromotion: "hold" } : record });
+    // Two siblings in one round: the round Review decides between them (single-experiment rounds need none).
+    const run = await runAutoresearchFixture(targetContract({ target: 2, maximumNoProgressRounds: 2 }, [2]), { maximumExperiments: 2, transformReview: (record) => record.reviewType === "experiment_round" ? { ...record, verdict: "REVISE", recommendedPromotion: "hold" } : record });
     try {
       expect(run.execution.state).toBe("completed");
       expect(run.errors).toEqual([]);
@@ -226,7 +273,7 @@ describe("AutoresearchSupervisor", () => {
 
   it("finishes a round interrupted after its experiments (e.g. a failed promotion) when the run is resumed", async () => {
     let interrupted = false;
-    const run = await runAutoresearchFixture(targetContract(), { resumes: 1, transformReview: (record) => { if (record.reviewType === "experiment_round" && !interrupted) { interrupted = true; throw new Error("round interrupted"); } return record; } });
+    const run = await runAutoresearchFixture(targetContract({ target: 2 }, [2]), { maximumExperiments: 2, resumes: 1, transformReview: (record) => { if (record.reviewType === "experiment_round" && !interrupted) { interrupted = true; throw new Error("round interrupted"); } return record; } });
     try {
       expect(interrupted).toBe(true);
       expect(run.execution.state).toBe("completed");
@@ -250,8 +297,8 @@ describe("AutoresearchSupervisor", () => {
   }, 90_000);
 });
 
-function targetContract(stopConditions: JsonValue = { target: 2 }): JsonValue {
-  return { primaryMetric: { name: "score", objective: "minimize", minimumEffect: 1 }, baselineMetrics: { score: 4 }, stopConditions, roundWidths: [1], execution: { runner: "native", command: [process.execPath, "-e", "require('fs').writeFileSync('metrics.json','{\"score\":2}')"], resultPath: "metrics.json", timeoutSeconds: 30, usesGpu: false } };
+function targetContract(stopConditions: JsonValue = { target: 2 }, roundWidths: number[] = [1]): JsonValue {
+  return { primaryMetric: { name: "score", objective: "minimize", minimumEffect: 1 }, baselineMetrics: { score: 4 }, stopConditions, roundWidths, execution: { runner: "native", command: [process.execPath, "-e", "require('fs').writeFileSync('metrics.json','{\"score\":2}')"], resultPath: "metrics.json", timeoutSeconds: 30, usesGpu: false } };
 }
 
 function expectCompletionAuthority(records: unknown[], execution: { entityId: string; version: number }): void {
@@ -289,7 +336,7 @@ function expectReviewedEvidenceAuthority(records: unknown[]): void {
   }
 }
 
-async function runAutoresearchFixture(evaluationContract: JsonValue, options: { transformReview?: (record: Record<string, JsonValue>) => Record<string, JsonValue>; deferCompletion?: boolean; failProposals?: number; resumes?: number; maximumExperiments?: number; maximumRounds?: number } = {}) {
+async function runAutoresearchFixture(evaluationContract: JsonValue, options: { transformReview?: (record: Record<string, JsonValue>) => Record<string, JsonValue>; deferCompletion?: boolean; failProposals?: number; resumes?: number; maximumExperiments?: number; maximumRounds?: number; scores?: number[]; failImplementations?: number } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "nosh-autoresearch-terminal-"));
   const repositoryRoot = join(directory, "repository");
   mkdirSync(repositoryRoot);
@@ -298,7 +345,7 @@ async function runAutoresearchFixture(evaluationContract: JsonValue, options: { 
   const project: RegisteredProject = { projectId, repositoryRoot, databasePath: join(directory, "project.sqlite"), registeredAt: new Date().toISOString() };
   const store = new EventStore(project.databasePath);
   const research = new ResearchControl(() => store, () => project, () => undefined);
-  const agents = new ExperimentAgents((draft) => { appendFixtureEvent(store, draft); }, options.transformReview, options.failProposals ?? 0);
+  const agents = new ExperimentAgents((draft) => { appendFixtureEvent(store, draft); }, options.transformReview, options.failProposals ?? 0, options.scores); agents.failImplementations = options.failImplementations ?? 0;
   const jobEvents = new EventEmitter();
   const jobs = new JobSupervisor(join(directory, "jobs"), (job) => {
     store.append({ $schema: schemaUri("event"), schemaVersion: 1, retention: "persistent", type: "job.state_changed", source: "fixture", scope: { projectId, missionId: null, directionId: null, autoresearchId: null, experimentId: null, runId: job.runId, jobId: job.jobId, agentId: null }, correlationId: job.jobId, causationId: null, payload: job as unknown as JsonValue });
@@ -330,7 +377,7 @@ async function runAutoresearchFixture(evaluationContract: JsonValue, options: { 
   const errors = store.replay(projectId).filter((entry) => entry.scope.autoresearchId === execution.entityId && entry.type === "autoresearch.supervisor_error").map((entry) => entry.payload);
   transitionSpy.mockRestore();
   const proposalFailures = store.replay(projectId).filter((entry) => entry.scope.autoresearchId === execution.entityId && entry.type === "autoresearch.proposal_failed").length;
-  return { execution: completed, records, errors, completionAttempts, proposalFailures, reviewedEvidenceCandidates: agents.reviewedEvidenceCandidates, cleanup: () => { jobs.close(); store.close(); rmSync(directory, { recursive: true, force: true }); } };
+  return { execution: completed, records, errors, completionAttempts, proposalFailures, reviewedEvidenceCandidates: agents.reviewedEvidenceCandidates, started: agents.started, proposalPrompts: agents.proposalPrompts, budget: research.autoresearchBudgetUse(projectId, execution.entityId), cleanup: () => { jobs.close(); store.close(); rmSync(directory, { recursive: true, force: true }); } };
 }
 
 function initializeRepository(path: string): void { git(path, ["init", "-b", "main"]); git(path, ["config", "user.email", "fixture@nosh.test"]); git(path, ["config", "user.name", "NOSH Fixture"]); writeFileSync(join(path, ".gitignore"), ".nosh/\n"); writeFileSync(join(path, "README.md"), "# Fixture\n"); git(path, ["add", "--", ".gitignore", "README.md"]); git(path, ["commit", "-m", "fixture baseline"]); }
