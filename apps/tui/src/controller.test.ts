@@ -3,7 +3,7 @@ import { Controller, acceptPage, safeText, type NoshEvent } from './controller.j
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { eventEntries, collapseLines, researchMapLines, progressBar, mapTone, climbLines, researchMapMermaid, type MapLine } from './view-model.js';
+import { eventEntries, collapseLines, progressBar, mapTone, climbLines, researchMapMermaid, type MapLine } from './view-model.js';
 import { DaemonClient } from './client.js';
 const event = (sequence: number, projectId = 'p'): NoshEvent => ({eventId:`e${sequence}`,sequence,type:'agent.completed',payload:{message:'hello'},scope:{projectId}});
 function setup() { const client = new DaemonClient({baseUrl:'http://localhost',sessionToken:'s'}); const request = vi.spyOn(client,'request').mockResolvedValue({}); const controller = new Controller(client,'p'); controller.projects = [{projectId:'p',repositoryRoot:'/p'},{projectId:'q',repositoryRoot:'/q'}]; return {controller,request}; }
@@ -46,23 +46,9 @@ describe('thin controller', () => {
     expect(controller.researchMap).toEqual(next);
     controller.selectProject('q'); expect(controller.researchMap).toBeUndefined(); expect(controller.view).toBe('chat');
   });
-  it('lays the research map out as a tree with tones, progress and nested workers', () => {
+  it('maps states to tones and draws progress bars', () => {
     expect(progressBar(1,3)).toBe('▰▰▰▱▱▱▱▱▱▱ 1/3'); expect(progressBar(0,0)).toBe('');
     expect([mapTone('accepted'),mapTone('working'),mapTone('reviewing'),mapTone('failed'),mapTone('ready')]).toEqual(['success','active','waiting','error','idle']);
-    const lines = researchMapLines({roots:[
-      {kind:'mission',id:'mis_1',title:'Boundary tests',state:'running',detail:'v4',progress:{done:1,total:2},children:[
-        {kind:'node',id:'n1',title:'Write tests',state:'working',detail:'implementation',children:[{kind:'worker',id:'agt_1',title:'general worker',state:'running nosh_run',detail:'gpt-6-luna:low',children:[]}]},
-        {kind:'node',id:'n2',title:'Review',state:'ready',detail:'final review',children:[]}]},
-      {kind:'autoresearch',id:'ar_1',title:'Tune threshold',state:'running',detail:'round 1/3',progress:null,children:[{kind:'experiment',id:'exp_1',title:'Raise threshold',state:'promoted',detail:'score 0.86',children:[]}]}],
-      workers:[{kind:'worker',id:'agt_1',title:'general worker',state:'running nosh_run',detail:'',children:[]}]});
-    const rendered = lines.map(line => `${line.prefix}${line.glyph} ${line.label}${line.label ? ' ' : ''}${line.title} [${line.state}]`.trimEnd());
-    expect(rendered).toEqual([
-      '◆ MISSION Boundary tests [running]', '├─ ● Write tests [working]', '│  └─ ⚙ general worker [running nosh_run]', '└─ ○ Review [ready]',
-      '  []', '⟳ AUTORESEARCH Tune threshold [running]', '└─ ★ Raise threshold [promoted]',
-      '  []', ' WORKERS 1 live []', '└─ ⚙ general worker [running nosh_run]']);
-    expect(lines[0]!.detail).toBe('▰▰▰▰▰▱▱▱▱▱ 1/2  v4');
-    expect(researchMapLines(undefined)).toEqual([]);
-    expect(researchMapLines({roots:Array.from({length:50},(_,index)=>({kind:'mission',id:`m${index}`,title:'x',state:'running',children:[]}))},20)).toHaveLength(20);
   });
   // The live climb's shape: baseline → ★ temperature → ★ beta, each with the experiments that tried to beat it.
   const climb = (state = 'completed', updatedAt = '2026-10-18T02:13:29.000Z') => ({kind:'autoresearch',id:'ar_c',title:'How low can ECE go?',state,updatedAt,detail:'round 8/30 · 6/30 experiments · best 0.006006687176108325 · baseline 0.018660968449126965',progress:null,children:[
@@ -118,21 +104,7 @@ describe('thin controller', () => {
     expect(written).toContain('```mermaid\nflowchart LR\n'); expect(written).toContain('n0base --> n1');
     expect(controller.detail).toContain(file);
   });
-  it('labels nested Directions and Autoresearch and shows their progress', () => {
-    const lines = researchMapLines({roots:[
-      {kind:'mission',id:'mis_1',title:'Early exit',state:'running',detail:'v7',progress:{done:0,total:1},children:[
-        {kind:'node',id:'n1',title:'Spawn direction',state:'working',detail:'research direction',progress:null,children:[
-          {kind:'direction',id:'dir_a',title:'Does early exit help?',state:'awaiting_autoresearch',detail:'v2',progress:{done:1,total:2},children:[
-            {kind:'node',id:'h1',title:'Hypothesis',state:'working',detail:'hypothesis',progress:null,children:[
-              {kind:'autoresearch',id:'ar_d',title:'Tune exit threshold',state:'running',detail:'round 1/3',progress:null,children:[]}]}]}]}]}]});
-    const rendered = lines.map(line => `${line.prefix}${line.glyph} ${line.label}${line.label ? ' ' : ''}${line.title} [${line.state}]`.trimEnd());
-    expect(rendered).toEqual([
-      '◆ MISSION Early exit [running]', '└─ ● Spawn direction [working]', '   └─ ◇ DIRECTION Does early exit help? [awaiting_autoresearch]',
-      '      └─ ● Hypothesis [working]', '         └─ ⟳ AUTORESEARCH Tune exit threshold [running]']);
-    expect(lines[2]!.detail).toBe('▰▰▰▰▰▱▱▱▱▱ 1/2  v2');
-    expect(lines[2]!.tone).toBe('waiting');
-    expect(lines[4]!.detail).toBe('round 1/3');
-  });
+
   it('help and paths do not keep the previous view rows', async () => {
     const {controller,request} = setup();
     request.mockResolvedValueOnce({contract:{workingTitle:'Study',approvedAt:null}}).mockResolvedValueOnce({proposals:[]});

@@ -5,7 +5,8 @@
 import { BoxRenderable, TextRenderable, MarkdownRenderable, TextAttributes, StyledText, fg, bold,
   type CliRenderer, type SyntaxStyle } from '@opentui/core';
 import { safeText, type MapLine, type MapTone, type TranscriptEntry, type ViewRow } from './controller.js';
-import { researchMapLines } from './view-model.js';
+import { MAP_ROOTS, record, text as plain } from './view-model.js';
+import { layoutGraph, moveSelection, suggestedCommand, type GraphBox, type GraphDirection } from './map-graph.js';
 import { theme, splitBorder } from './theme.js';
 
 export function text(renderer: CliRenderer, id: string, content: string, color: string = theme.text): TextRenderable {
@@ -206,42 +207,86 @@ export function createResearchSidebar(renderer: CliRenderer) {
 const MAP_TONES: Record<MapTone, string> = { success: theme.success, active: theme.secondary, waiting: theme.warning, error: theme.error, idle: theme.muted };
 const EMPTY_MAP = 'Nothing is running yet.\nMissions, research directions, autoresearch experiments and workers appear here, live, as they start.\nAsk NOSH in the conversation to propose research, or /create one.';
 
-/** The research map: a live tree of what the Project is doing, rebuilt only when the daemon's picture changes. */
+const clipped = (value: string, width: number) => value.length > width ? `${value.slice(0, Math.max(1, width - 1))}…` : value;
+
+/**
+ * The research map: one research root at a time as a laid-out graph (map-graph.ts), panned to keep the selected box in
+ * view, with the selected node named underneath and the one command it needs. Rebuilt only when what is drawn changes.
+ */
 export function createResearchMap(renderer: CliRenderer) {
   const root = new BoxRenderable(renderer, { id: 'research-map', width: '100%', flexDirection: 'column', flexShrink: 0 });
-  let previous = '';
-  function update(map: unknown, width: number) {
-    const lines = researchMapLines(map);
-    const signature = JSON.stringify([lines, width]);
+  let previous = ''; let rootIndex = 0; let selectedId = ''; let panX = 0; let panY = 0;
+  // Autoresearch boxes opened from a Mission or Direction graph, innermost last.
+  const opened: string[] = [];
+  let shown: { boxes: GraphBox[]; selected: number } = { boxes: [], selected: 0 };
+  const find = (node: Record<string, unknown>, id: string): Record<string, unknown> | undefined => node.id === id ? node : (Array.isArray(node.children) ? node.children.map(record) : []).map(child => find(child, id)).find(Boolean);
+  function update(map: unknown, width: number, height: number) {
+    const roots = Array.isArray(record(map).roots) ? (record(map).roots as unknown[]).map(record) : [];
+    rootIndex = roots.length ? (rootIndex % roots.length + roots.length) % roots.length : 0;
+    const top = roots[rootIndex];
+    while (top && opened.length && !find(top, opened.at(-1)!)) opened.pop();
+    const drilled = top && opened.length ? find(top, opened.at(-1)!) : undefined;
+    const { lines, boxes } = layoutGraph(drilled ?? top);
+    const found = selectedId ? boxes.findIndex(box => plain(box.node.id, 80) === selectedId) : -1;
+    const selected = Math.max(0, found); selectedId = plain(boxes[selected]?.node.id, 80);
+    shown = { boxes, selected };
+    // Live workers outside any graph node (the chat agent): one line under the path.
+    const workers = (Array.isArray(record(map).workers) ? (record(map).workers as unknown[]).map(record) : []).map(worker => `⚙ ${plain(worker.title, 40)} ${plain(worker.state, 40)}`.trim());
+    // Path line, the workers line, the canvas, then three lines naming the selected node.
+    const rows = Math.max(4, height - 5 - (workers.length ? 1 : 0)); const cols = Math.max(12, width);
+    const box = boxes[selected];
+    if (box) {
+      if (box.left < panX) panX = Math.max(0, box.left - 2); else if (box.right >= panX + cols) panX = Math.max(0, Math.min(box.left - 2, box.right - cols + 3));
+      if (box.top < panY) panY = Math.max(0, box.top - 1); else if (box.bottom >= panY + rows) panY = Math.max(0, Math.min(box.top - 1, box.bottom - rows + 2));
+    }
+    panX = Math.max(0, Math.min(panX, (lines[0]?.length ?? 0) - cols)); panY = Math.max(0, Math.min(panY, lines.length - rows));
+    const signature = JSON.stringify([lines, boxes.map(entry => entry.tone), selected, panX, panY, width, height, rootIndex, opened, roots.length, workers]);
     if (signature === previous) return;
     previous = signature;
     for (const child of root.getChildren()) { root.remove(child); child.destroyRecursively(); }
-    const generatedAt = typeof (map as { generatedAt?: unknown } | undefined)?.generatedAt === 'string' ? String((map as { generatedAt: string }).generatedAt).slice(11, 19) : '';
-    const summary = text(renderer, 'map-summary', `live · refreshes every few seconds${generatedAt ? ` · updated ${generatedAt} UTC` : ''}`, theme.muted); summary.marginBottom = 1;
-    root.add(summary);
-    const roots = Array.isArray((map as { roots?: unknown } | undefined)?.roots) ? (map as { roots: unknown[] }).roots.length : 0;
     // Workers alone (the chat agent) are not research; say how research starts.
-    if (!roots) { const empty = text(renderer, 'map-empty', EMPTY_MAP, theme.muted); empty.marginBottom = 1; root.add(empty); }
-    if (!lines.length) return;
-    for (const [index, line] of lines.entries()) {
-      const tone = MAP_TONES[line.tone];
-      const head = `${line.prefix}${line.glyph ? `${line.glyph} ` : ''}`;
-      const label = line.label ? `${line.label} ` : '';
-      const room = Math.max(8, width - head.length - label.length - line.state.length - 4);
-      const title = line.title.length > room ? `${line.title.slice(0, room - 1)}…` : line.title;
-      const chunks = [fg(theme.muted)(line.prefix), fg(tone)(line.glyph ? `${line.glyph} ` : ''),
-        ...(line.label ? [bold(fg(line.heading ? theme.accent : tone)(label))] : []),
-        line.label && !line.heading ? bold(fg(theme.text)(title)) : fg(line.heading ? theme.muted : theme.text)(title),
-        fg(tone)(line.state ? `  ${line.state}` : '')];
-      const row = new TextRenderable(renderer, { id: `map-line-${index}`, content: new StyledText(chunks), width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 });
-      if (line.label && !line.heading && index) row.marginTop = 0;
-      root.add(row);
-      if (line.detail) {
-        const indent = `${line.prefix.replace(/[├└]─ $/, (match) => match.startsWith('├') ? '│  ' : '   ')}${' '.repeat(line.glyph ? 2 : 0)}`;
-        const detail = `${indent}${line.detail}`;
-        root.add(new TextRenderable(renderer, { id: `map-detail-${index}`, content: new StyledText([fg(theme.muted)(detail.length > width ? `${detail.slice(0, width - 1)}…` : detail)]), width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 }));
+    if (!top) { const empty = text(renderer, 'map-empty', EMPTY_MAP, theme.muted); empty.marginBottom = 1; root.add(empty); return; }
+    const kind = plain(top.kind);
+    const path = [MAP_ROOTS[kind]?.label ?? kind.toUpperCase(), `${rootIndex + 1}/${roots.length}`, plain(top.title, 200), ...(drilled ? [`› ${plain(drilled.title, 80)}`] : [])].join('  ');
+    const hint = `${roots.length > 1 ? 'tab next · ' : ''}${opened.length ? 'backspace back · ' : ''}↑↓←→ select`;
+    root.add(new TextRenderable(renderer, { id: 'map-path', content: new StyledText([bold(fg(theme.accent)(clipped(path, Math.max(8, cols - hint.length - 2)))), fg(theme.muted)(`  ${hint}`)]), width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 }));
+    if (workers.length) root.add(new TextRenderable(renderer, { id: 'map-workers', content: new StyledText([fg(theme.secondary)(clipped(`workers  ${workers.join('  ·  ')}`, cols))]), width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 }));
+    // Each cell takes its box's state color (the selected box the accent, bold); edges between boxes stay muted.
+    for (let row = panY; row < Math.min(lines.length, panY + rows); row++) {
+      const line = lines[row]!.slice(panX, panX + cols); const chunks: ReturnType<ReturnType<typeof fg>>[] = [];
+      const ownerAt = (column: number) => boxes.findIndex(entry => row >= entry.top && row <= entry.bottom && column + panX >= entry.left && column + panX <= entry.right);
+      let start = 0; let owner = ownerAt(0);
+      for (let column = 1; column <= line.length; column++) {
+        const next = column < line.length ? ownerAt(column) : -2;
+        if (next === owner) continue;
+        const piece = fg(owner === -1 ? theme.muted : owner === selected ? theme.accent : MAP_TONES[boxes[owner]!.tone])(line.slice(start, column));
+        chunks.push(owner === selected ? bold(piece) : piece); start = column; owner = next;
       }
+      root.add(new TextRenderable(renderer, { id: `map-row-${row}`, content: new StyledText(chunks), width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 }));
     }
+    if (!box) return;
+    const command = suggestedCommand(box);
+    // Siblings can share a connector line, so the panel names the box this one hangs from.
+    const parent = boxes.find(entry => entry.index === box.parent);
+    const facts = [plain(box.node.kind) === 'node' ? 'graph node' : plain(box.node.kind), plain(box.node.state, 40), plain(box.node.detail, 200).replace(/(\d\.\d{5})\d+/g, '$1'), plain(box.node.id, 80), parent ? `under #${parent.index} ${clipped(plain(parent.node.title, 200), 40)}` : ''].filter(Boolean).join(' · ');
+    const action = box.opens ? 'enter  open its experiments' : command ? `enter  ${command}   (fills the composer; nothing changes until you confirm)` : '';
+    const line = (id: string, content: StyledText) => new TextRenderable(renderer, { id, content, width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 });
+    const name = line('map-selected', new StyledText([bold(fg(theme.text)(clipped(plain(box.node.title, 400) || plain(box.node.id, 80), cols)))])); name.marginTop = 1; root.add(name);
+    root.add(line('map-selected-facts', new StyledText([fg(MAP_TONES[box.tone])(clipped(facts, cols))])));
+    if (action) root.add(line('map-selected-action', new StyledText([fg(theme.accent)(clipped(action, cols))])));
   }
-  return { root, update };
+  const select = (index: number) => { selectedId = plain(shown.boxes[index]?.node.id, 80); };
+  return {
+    root, update,
+    move(direction: GraphDirection) { select(moveSelection(shown.boxes, shown.selected, direction)); },
+    cycle(step: number) { rootIndex += step; opened.length = 0; selectedId = ''; panX = 0; panY = 0; },
+    pan(rows: number) { panY = Math.max(0, panY + rows); },
+    /** Enter on the selected box: open a nested Autoresearch (''), else the command its node needs ('' when none). */
+    open(): string {
+      const box = shown.boxes[shown.selected]; if (!box) return '';
+      if (box.opens) { opened.push(plain(box.node.id, 80)); selectedId = ''; panX = 0; panY = 0; return ''; }
+      return suggestedCommand(box);
+    },
+    back(): boolean { if (!opened.length) return false; selectedId = opened.pop()!; return true; },
+  };
 }

@@ -33,7 +33,9 @@ describe("research map", () => {
     // Live work first; finished work after it.
     expect(map.roots.map((root) => root.id)).toEqual(["mis_1", "dir_1", "mis_done"]);
     const mission = map.roots[0]!;
-    expect(mission).toMatchObject({ kind: "mission", title: "Boundary tests", state: "running", progress: { done: 1, total: 3 } });
+    expect(mission).toMatchObject({ kind: "mission", title: "Boundary tests", state: "running", version: mission.version, progress: { done: 1, total: 3 } });
+    // The version lets a client stage a retry or resume without parsing the display detail ("v3").
+    expect(mission.version).toBe(Number(mission.detail.slice(1)));
     expect(mission.children[1]).toMatchObject({ kind: "node", state: "working", children: [{ kind: "worker", id: "agt_w", state: "running nosh_run", detail: "gpt-6-luna:low · ctx 23%" }] });
     expect(mission.children[2]).toMatchObject({ state: "failed", detail: "implementation · attempt 2/3" });
     const autoresearch = map.roots[1]!.children.find((child) => child.kind === "autoresearch")!;
@@ -112,7 +114,7 @@ describe("research map", () => {
     // Every Direction and Autoresearch appears exactly once in the whole map.
     for (const id of ["dir_a", "dir_b", "dir_c", "dir_lease", "dir_user", "ar_d", "ar_m"]) expect(all.filter((path) => path.split("/").at(-1) === id)).toHaveLength(1);
     const spawned = map.roots[0]!.children[0]!.children.find((child) => child.id === "dir_a")!;
-    expect(spawned).toMatchObject({ kind: "direction", title: "Does early exit help?", detail: "v2", progress: { done: 0, total: 2 } });
+    expect(spawned).toMatchObject({ kind: "direction", title: "Does early exit help?", detail: "v2", version: 2, progress: { done: 0, total: 2 } });
     expect(spawned.children.map((child) => child.id)).toEqual(["h1", "h2"]);
   });
 });

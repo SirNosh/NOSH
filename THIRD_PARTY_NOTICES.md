@@ -65,6 +65,10 @@ Generated from the production dependency graph in `pnpm-lock.yaml`. NOSH source 
 - tunnel-agent 0.6.0 — https://github.com/mikeal/tunnel-agent#readme
 - typescript 5.9.3 — https://www.typescriptlang.org/
 
+## BSD-2-Clause
+
+- entities 7.0.1 — https://github.com/fb55/entities#readme
+
 ## BSD-3-Clause
 
 - @protobufjs/aspromise 1.1.2 — https://github.com/dcodeIO/protobuf.js#readme
@@ -89,6 +93,10 @@ Generated from the production dependency graph in `pnpm-lock.yaml`. NOSH source 
 - minimatch 10.2.5 — https://github.com/isaacs/minimatch#readme
 - minipass 7.1.3 — https://github.com/isaacs/minipass#readme
 - path-scurry 2.0.2 — https://github.com/isaacs/path-scurry#readme
+
+## EPL-2.0
+
+- elkjs 0.11.1 — https://github.com/kieler/elkjs#readme
 
 ## ISC
 
@@ -129,6 +137,7 @@ Generated from the production dependency graph in `pnpm-lock.yaml`. NOSH source 
 - ansi-regex 6.3.0 — https://github.com/chalk/ansi-regex#readme
 - balanced-match 4.0.4 — https://github.com/juliangruber/balanced-match#readme
 - base64-js 1.5.1 — https://github.com/beatgammit/base64-js
+- beautiful-mermaid 1.1.3 — https://github.com/lukilabs/beautiful-mermaid
 - better-sqlite3 12.11.1 — http://github.com/WiseLibs/better-sqlite3
 - bignumber.js 9.3.1 — https://github.com/MikeMcl/bignumber.js#readme
 - bindings 1.5.0 — https://github.com/TooTallNate/node-bindings

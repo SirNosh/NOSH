@@ -220,7 +220,8 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     model.fg = noModel ? theme.warning : theme.text;
     thinking.content = level && !noModel ? `· ${level}` : '';
     composer.borderColor = controller.error ? theme.error : controller.busy || activity.working ? theme.secondary : theme.accent;
-    hints.content = controller.view !== 'chat' ? keyHints([['esc', 'conversation'], ['pgup/pgdn', 'scroll'], ...(controller.view === 'map' ? [] : [['ctrl+g', 'map'] as [string, string]]), ['ctrl+p', 'commands']])
+    hints.content = controller.view === 'map' ? keyHints([['esc', 'conversation'], ['↑↓←→', 'select'], ['enter', 'open / act'], ['tab', 'next'], ['pgup/pgdn', 'pan'], ['ctrl+p', 'commands']])
+      : controller.view !== 'chat' ? keyHints([['esc', 'conversation'], ['pgup/pgdn', 'scroll'], ['ctrl+g', 'map'], ['ctrl+p', 'commands']])
       : !project ? keyHints([['ctrl+o', 'choose a project'], ['ctrl+p', 'commands']])
       : mainWidth < 72 ? keyHints([['enter', 'send'], ['⇧enter', 'newline'], ['ctrl+p', 'commands']])
       : keyHints([['enter', 'send'], ['⇧enter', 'newline'], ['ctrl+p', 'commands'], ['ctrl+g', 'map'], ['f2', 'model'], ['ctrl+t', 'thinking']]);
@@ -246,7 +247,7 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     cwd.content = clip(project?.repositoryRoot || 'No project · ctrl+o to choose', Math.max(8, width - 38));
     sideProject.content = clip(project ? basename(project.repositoryRoot) : 'No project selected', sidebar.width - 4);
     transcript.root.visible = controller.view === 'chat'; inspector.root.visible = controller.view !== 'chat' && controller.view !== 'map'; researchMap.root.visible = controller.view === 'map';
-    if (controller.view === 'map') researchMap.update(controller.researchMap, mainWidth);
+    if (controller.view === 'map') researchMap.update(controller.researchMap, mainWidth, Math.max(10, (scroll.height || renderer.height - 14) - 1));
     transcript.update(entries);
     if (controller.view !== 'chat' && controller.view !== 'map') inspector.update(controller.inspectorRows(), controller.view === 'help' ? HELP
       : controller.view === 'paths' ? controller.detail : EMPTY_VIEW[controller.view] ?? 'Nothing to show.');
@@ -308,6 +309,15 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
       else if (input.value) { escapeArmedAt = Date.now(); controller.error = ''; }
       else controller.error = '';
       render(); return;
+    }
+    // The map takes navigation keys while the composer is empty, so a typed command still works there.
+    if (controller.view === 'map' && !input.value) {
+      const move = ({ up: 'up', down: 'down', left: 'left', right: 'right' } as const)[key.name as 'up'];
+      if (move) { take(); researchMap.move(move); render(); return; }
+      if (key.name === 'tab') { take(); researchMap.cycle(key.shift ? -1 : 1); render(); return; }
+      if (key.name === 'backspace' && researchMap.back()) { take(); render(); return; }
+      if (key.name === 'return' && !key.shift && !key.meta) { take(); const command = researchMap.open(); if (command) setComposer(command); render(); return; }
+      if (key.name === 'pageup' || key.name === 'pagedown') { take(); researchMap.pan(key.name === 'pageup' ? -10 : 10); render(); return; }
     }
     if (key.name === 'pageup') { take(); scroll.scrollBy(-Math.max(3, scroll.height - 3)); return; }
     if (key.name === 'pagedown') { take(); scroll.scrollBy(Math.max(3, scroll.height - 3)); return; }

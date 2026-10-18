@@ -7,7 +7,7 @@ import type { AgentInspection } from "@nosh/pi-adapter";
 import type { JobRecord } from "@nosh/jobs";
 import { schemaUri, type EventEnvelope } from "@nosh/wire";
 
-export type MapNode = { kind: "mission" | "direction" | "autoresearch" | "node" | "experiment" | "worker" | "job"; id: string; title: string; state: string; detail: string; progress: { done: number; total: number } | null; children: MapNode[]; updatedAt?: string };
+export type MapNode = { kind: "mission" | "direction" | "autoresearch" | "node" | "experiment" | "worker" | "job"; id: string; title: string; state: string; detail: string; progress: { done: number; total: number } | null; children: MapNode[]; updatedAt?: string; /** Mission and Direction projection version, for staging a retry or resume. */ version?: number };
 export type ResearchMap = { generatedAt: string; roots: MapNode[]; workers: MapNode[] };
 type Stored = { entityId: string; version: number; state: string; value: Record<string, unknown> };
 type GraphNode = { id: string; title: string; type: string; state: string; attempt: number; maximumAttempts: number; lease: { ownerId?: string } | null };
@@ -60,7 +60,7 @@ export function buildResearchMap(input: ResearchMapInput): ResearchMap {
     const tree = nodeTree(direction.entityId, nodes);
     // Autoresearch with no (resolvable) spawning node keeps the flat placement under its Direction.
     const executions = place(input.autoresearch.filter((execution) => execution.value.directionId === direction.entityId));
-    return { kind: "direction", id: direction.entityId, title: String(direction.value.question ?? direction.entityId), state: direction.state, detail: `v${direction.version}`, progress: { done: nodes.filter((node) => node.state === "accepted").length, total: nodes.length }, children: [...tree, ...executions, ...runningJobs.filter((job) => job.directionId === direction.entityId && !job.autoresearchId).map(jobNode)] };
+    return { kind: "direction", id: direction.entityId, title: String(direction.value.question ?? direction.entityId), state: direction.state, detail: `v${direction.version}`, version: direction.version, progress: { done: nodes.filter((node) => node.state === "accepted").length, total: nodes.length }, children: [...tree, ...executions, ...runningJobs.filter((job) => job.directionId === direction.entityId && !job.autoresearchId).map(jobNode)] };
   };
   const roots: MapNode[] = [];
   for (const mission of input.missions) {
@@ -68,7 +68,7 @@ export function buildResearchMap(input: ResearchMapInput): ResearchMap {
     const tree = nodeTree(mission.entityId, nodes);
     // Directions opened under the Mission without a spawning node, and Mission-scoped children whose node is gone.
     const owned = place(spawnable.filter((entry) => (originOf(entry)?.scopeType === "mission" && originOf(entry)?.scopeId === mission.entityId) || (!originOf(entry) && input.directions.includes(entry) && entry.value.missionId === mission.entityId)));
-    roots.push({ kind: "mission", id: mission.entityId, title: String(mission.value.title ?? mission.entityId), state: mission.state, detail: `v${mission.version}`, progress: { done: nodes.filter((node) => node.state === "accepted").length, total: nodes.length }, children: [...tree, ...owned, ...runningJobs.filter((job) => job.missionId === mission.entityId && !job.directionId && !job.autoresearchId).map(jobNode)] });
+    roots.push({ kind: "mission", id: mission.entityId, title: String(mission.value.title ?? mission.entityId), state: mission.state, detail: `v${mission.version}`, version: mission.version, progress: { done: nodes.filter((node) => node.state === "accepted").length, total: nodes.length }, children: [...tree, ...owned, ...runningJobs.filter((job) => job.missionId === mission.entityId && !job.directionId && !job.autoresearchId).map(jobNode)] });
   }
   for (const direction of input.directions) if (!nested.has(direction.entityId)) roots.push(directionNode(direction));
   for (const execution of input.autoresearch) if (!nested.has(execution.entityId)) roots.push(autoresearchNode(execution));
