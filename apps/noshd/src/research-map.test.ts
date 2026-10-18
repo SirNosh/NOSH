@@ -19,7 +19,7 @@ describe("research map", () => {
         { entityId: "mis_1", version: 4, state: "running", value: { title: "Boundary tests", nodes: [node("m1", "accepted"), node("m2", "working", { lease: { ownerId: "agt_w" } }), node("m3", "failed", { attempt: 2 })], updatedAt: "2026-10-03T00:00:00.000Z" } },
       ],
       directions: [{ entityId: "dir_1", version: 3, state: "awaiting_autoresearch", value: { question: "Does early exit help?", nodes: [node("d1", "accepted")], updatedAt: "2026-10-02T00:00:00.000Z" } }],
-      autoresearch: [{ entityId: "ar_1", version: 5, state: "running", value: { directionId: "dir_1", decisionQuestion: "Tune threshold", currentRound: 2, maximumRounds: 3, maximumExperiments: 6 } }],
+      autoresearch: [{ entityId: "ar_1", version: 5, state: "running", value: { directionId: "dir_1", decisionQuestion: "Tune threshold", currentRound: 2, maximumRounds: 3, maximumExperiments: 6, acceptedFrontierExperimentIds: ["exp_a"] } }],
       submitted: [
         ...["exp_a", "exp_b", "exp_c", "exp_d", "exp_e"].map((experimentId, index) => submitted({ $schema: schemaUri("experiment-proposal"), experimentId, autoresearchId: "ar_1", round: index < 2 ? 1 : 2, hypothesis: `Hypothesis ${experimentId}` })),
         submitted({ $schema: schemaUri("experiment-result"), experimentId: "exp_a", promotionDecision: "promoted", comparison: { candidateScore: 0.86, improvement: 0.02 }, guardrails: [{ passed: true }] }),
@@ -45,6 +45,20 @@ describe("research map", () => {
     expect(map.roots.filter((root) => root.kind === "autoresearch")).toEqual([]);
     expect(JSON.stringify(map)).not.toContain("job_done");
     expect(map.workers.map((entry) => entry.id)).toEqual(["agt_w", "agt_i"]);
+  });
+
+  it("shows the current best of a minimizing climb, not the largest promoted score", () => {
+    // Live: an ECE climb promoted 0.0097 then 0.0060, and the map reported best 0.0097.
+    const map = buildResearchMap({
+      missions: [], directions: [], agents: [], jobs: [], events: [],
+      autoresearch: [{ entityId: "ar_2", version: 3, state: "running", value: { directionId: null, decisionQuestion: "Lower ECE", currentRound: 2, maximumRounds: 30, maximumExperiments: 30, acceptedFrontierExperimentIds: ["exp_y"] } }],
+      submitted: [
+        ...["exp_x", "exp_y"].map((experimentId, index) => submitted({ $schema: schemaUri("experiment-proposal"), experimentId, autoresearchId: "ar_2", round: index + 1, hypothesis: `Hypothesis ${experimentId}` })),
+        submitted({ $schema: schemaUri("experiment-result"), experimentId: "exp_x", promotionDecision: "promoted", comparison: { candidateScore: 0.0097, improvement: 0.009 }, guardrails: [] }),
+        submitted({ $schema: schemaUri("experiment-result"), experimentId: "exp_y", promotionDecision: "promoted", comparison: { candidateScore: 0.006, improvement: 0.0037 }, guardrails: [] }),
+      ],
+    });
+    expect(map.roots[0]).toMatchObject({ id: "ar_2", detail: "round 2/30 · 2/30 experiments · best 0.006" });
   });
 
   it("nests Mission-spawned Directions and Autoresearch under their spawning nodes, each exactly once", () => {

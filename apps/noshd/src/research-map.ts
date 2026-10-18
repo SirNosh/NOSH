@@ -42,8 +42,10 @@ export function buildResearchMap(input: ResearchMapInput): ResearchMap {
   const experiments = experimentTree(input);
   const autoresearchNode = (execution: Stored): MapNode => {
     const value = execution.value; const children = experiments.get(execution.entityId) ?? [];
-    const best = children.filter((child) => child.state === "promoted").map((child) => Number(/score (-?[\d.]+)/.exec(child.detail)?.[1])).filter(Number.isFinite);
-    const detail = [`round ${String(value.currentRound ?? 1)}/${String(value.maximumRounds ?? "?")}`, `${children.length}/${String(value.maximumExperiments ?? "?")} experiments`, best.length ? `best ${Math.max(...best)}` : ""].filter(Boolean).join(" · ");
+    // The current best is the accepted frontier (the metric may be minimized), not the largest promoted score.
+    const frontier = new Set((value.acceptedFrontierExperimentIds ?? []) as string[]);
+    const best = children.filter((child) => frontier.has(child.id)).map((child) => Number(/score (-?[\d.e-]+)/.exec(child.detail)?.[1])).filter(Number.isFinite);
+    const detail = [`round ${String(value.currentRound ?? 1)}/${String(value.maximumRounds ?? "?")}`, `${children.length}/${String(value.maximumExperiments ?? "?")} experiments`, best.length ? `best ${best[0]}` : ""].filter(Boolean).join(" · ");
     const scoped = runningJobs.filter((job) => job.autoresearchId === execution.entityId).map(jobNode);
     return { kind: "autoresearch", id: execution.entityId, title: String(value.decisionQuestion ?? execution.entityId), state: execution.state, detail, progress: null, children: [...children, ...scoped].slice(0, MAX_CHILDREN) };
   };
