@@ -168,8 +168,8 @@ export class AutoresearchSupervisor {
       if (record.$schema !== schemaUri("evidence") || !Array.isArray(record.sourceRefs) || !record.sourceRefs.some((source) => source && typeof source === "object" && "refId" in source && typeof source.refId === "string" && proposals.some((proposal) => proposal.experimentId === source.refId)) || typeof record.evidenceId !== "string") return [];
       return [record.evidenceId];
     });
-    // One experiment per round (the greedy climb): its own experiment Review already decided promotion, so no round Review.
-    const single = proposals.length === 1;
+    // One evaluated experiment per round (the greedy climb; a crashed attempt is not one): its own experiment Review already decided promotion, so no round Review.
+    const single = roundResults.length === 1;
     const request = single ? null : this.reviewRequest(project, execution.value, reviewerId, proposals.map((proposal) => proposal.proposedByAgentId), "experiment_round", "target_experiment.round", `round_${execution.entityId.slice(3)}.${round}`, round, `criterion_round.${round}`, `Validate round ${round} sibling comparison and promotion`, roundResults.flatMap((result) => result.artifactIds), evidenceIds);
     const { passed } = single ? { passed: Boolean(winner) } : await this.reviewSession(project, execution.value, null, reviewerId, request!, [
       `Review Autoresearch round ${round}. Daemon-selected winner: ${winner ? `${winner.experimentId} (improvement ${String(winner.comparison.improvement)})` : "none (no result qualifies for promotion)"}.`,

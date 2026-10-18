@@ -114,6 +114,8 @@ describe("Autoresearch hill climbing", () => {
       expect(run.errors).toEqual([]);
       expect(run.budget).toMatchObject({ experiments: 3, implementationFailures: 2 });
       expect(run.proposalPrompts.slice(1).some((prompt) => prompt.includes("crash"))).toBe(true);
+      // Live: a round with a crash and its retry evaluated one experiment, yet still spent a round Review.
+      expect(run.records.filter((record) => record.$schema === schemaUri("review-request") && record.reviewType === "experiment_round")).toHaveLength(0);
     } finally { run.cleanup(); }
   }, 120_000);
 });
