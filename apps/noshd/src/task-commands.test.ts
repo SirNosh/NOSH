@@ -82,7 +82,14 @@ describe("nosh_run task commands", () => {
       expect(worktreeGit(["status", "--porcelain"])).toBe("");
       expect(completion.codeChanges).toEqual({ startingCommit: head, endingCommit: final, changedPaths: expect.arrayContaining(["exit.txt", "notes.md", "report.md"]), diffArtifactId: expect.stringMatching(/^art_[0-9a-f]{32}$/), branch: tree.branch });
       // Each nosh_run is a daemon-produced Artifact cited by commands[] and by the criteria that name its Job.
-      const withRuns = withFacts([{ $schema: schemaUri("general-worker-completion"), commands: [], criteria: [{ criterionId: "criterion_1", validatorRunIds: [String(clean.jobId)], artifactIds: [] }] }])[0] as { commands: Array<{ resultArtifactId: string }>; criteria: Array<{ artifactIds: string[] }> };
+      // Cited runs are checked when the worker answers, so a mis-claimed criterion is correctable in-session: `clean` ran before the final commit.
+      const claimed = (workerClaim: string, validatorRunIds: string[]) => () => withFacts([{ $schema: schemaUri("general-worker-completion"), commands: [], criteria: [{ criterionId: "criterion_1", workerClaim, validatorRunIds, artifactIds: [] }] }]);
+      expect(claimed("satisfied", [String(clean.jobId)])).toThrow(/^Cited runs: criterion criterion_1 cites job_\w+, which did not run on the clean ending commit/);
+      expect(claimed("deferred_to_review", [String(clean.jobId)])).not.toThrow();
+      // A job the daemon ran itself (a Direction baseline) is left to postflight, which knows those jobs.
+      expect(claimed("satisfied", ["job_daemonbaseline"])).not.toThrow();
+      // Deliberately deferred: the cited run predates the final commit (comparison-style citation).
+      const withRuns = withFacts([{ $schema: schemaUri("general-worker-completion"), commands: [], criteria: [{ criterionId: "criterion_1", workerClaim: "deferred_to_review", validatorRunIds: [String(clean.jobId)], artifactIds: [] }] }])[0] as { commands: Array<{ resultArtifactId: string }>; criteria: Array<{ artifactIds: string[] }> };
       const cleanRunArtifact = withRuns.commands[0]!.resultArtifactId;
       expect(withRuns.criteria[0]!.artifactIds).toEqual([cleanRunArtifact]);
       expect(await daemon.submitTool("nosh_artifact_read", project.projectId, `task:${taskId}`, { artifactId: cleanRunArtifact }, agentId)).toMatchObject({ accepted: true, kind: "artifact_run-result", content: expect.stringContaining(String(clean.jobId)) });

@@ -14,9 +14,9 @@ import { JobSupervisor, type JobRecord, type JobSpec } from "@nosh/jobs";
 import { ArtifactStore, amendProjectContract, approveProjectContract, commitProjectContract, detectRunnableCommands, ensureNoshIgnore, initializeResearchProject, readProjectContract, type ProjectContract, type ProjectInitialization } from "@nosh/evidence";
 import { parseModelSelection, canonicalJson, schemaDocumentPath, validateRecord, episodeDraftSchema, scopeSchema, isTaskTerminalRecord, schemaUri, sha256, type EventDraft, type EventEnvelope, type JsonValue, type ModelSelection, type TaskPermissions, type TaskWorkspace } from "@nosh/wire";
 import { SingleInstanceLock } from "./single-instance.js";
-import { gitChangedPaths, gitWorktreeState } from "./task-postflight.js";
+import { completionRunIssues, gitChangedPaths, gitWorktreeState, writeUpOnly } from "./task-postflight.js";
 import { taskWorktreePath } from "./task-worktree.js";
-import { ResearchControl } from "./research-control.js";
+import { ResearchControl, taskCommandRuns } from "./research-control.js";
 import { isEvaluationVariant } from "./research-spawner.js";
 import { MissionSupervisor } from "./mission-supervisor.js";
 import { DirectionSupervisor } from "./direction-supervisor.js";
@@ -724,6 +724,12 @@ export class NoshDaemon {
     const endingCommit = gitWorktreeState(worktree).head; const changedPaths = gitChangedPaths(worktree, packet.workspace.startingCommit, endingCommit);
     const diffArtifactId = changedPaths.length ? this.snapshotTaskDiff(context.projectId, agent, worktree, packet.workspace.startingCommit, endingCommit) : null;
     const codeChanges = { ...(isObject(completion.codeChanges) ? completion.codeChanges : {}), startingCommit: packet.workspace.startingCommit, endingCommit, changedPaths, diffArtifactId, branch: packet.workspace.branch };
+    // Cited runs are checked now, while the worker can still correct a claim. Ids that are not this task's nosh_runs (the daemon's
+    // own jobs, such as a Direction baseline) are left to postflight, which knows them.
+    const runs = taskCommandRuns(this.research)(context.projectId).filter((run) => run.taskId === agent.taskId);
+    const cited = Array.isArray(completion.criteria) ? completion.criteria.flatMap((criterion) => isObject(criterion) && Array.isArray(criterion.validatorRunIds) ? criterion.validatorRunIds.map(String) : []) : [];
+    const issues = completionRunIssues(runs, agent.taskId!, { ...completion, codeChanges }, cited.filter((id) => !runs.some((run) => run.jobId === id)), writeUpOnly(this.projects().find((entry) => entry.projectId === context.projectId)!.repositoryRoot));
+    if (issues.length) throw new Error(`Cited runs: ${issues.join("; ")}. Cite only passing runs made after your last edit; where your instructions allow it, claim a comparison across configurations deferred_to_review.`);
     return records.map((record) => record === completion ? { ...record, codeChanges } : record.$schema === schemaUri("episode-draft") ? { ...record, changedFiles: changedPaths } : record);
   }
 
