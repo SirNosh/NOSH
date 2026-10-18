@@ -25,7 +25,12 @@ prefixes! {
 
 /// A new random ID: the prefix and a v4 UUID without dashes.
 pub fn create_id(prefix: IdPrefix) -> String {
-    format!("{}_{}", prefix.as_str(), uuid::Uuid::new_v4().simple())
+    format!("{}_{}", prefix.as_str(), random_hex())
+}
+
+/// `crypto.randomUUID().replaceAll("-", "")`: a v4 UUID as 32 lowercase hex digits.
+pub fn random_hex() -> String {
+    uuid::Uuid::new_v4().simple().to_string()
 }
 
 /// Whether `value` is a NOSH ID, optionally with a specific prefix.

@@ -7,6 +7,16 @@ pub fn now_utc() -> String {
     format_utc(OffsetDateTime::now_utc())
 }
 
+/// `new Date(ms).toISOString()` for years 0 to 9999; `None` where JavaScript throws (NaN, or
+/// beyond ±8.64e15 ms) or would print an extended `±YYYYYY` year.
+pub fn iso_from_ms(ms: f64) -> Option<String> {
+    if !ms.is_finite() || ms.abs() > 8.64e15 {
+        return None;
+    }
+    let t = OffsetDateTime::from_unix_timestamp_nanos(ms.trunc() as i128 * 1_000_000).ok()?;
+    (0..=9999).contains(&t.year()).then(|| format_utc(t))
+}
+
 fn format_utc(t: OffsetDateTime) -> String {
     let t = t.to_offset(time::UtcOffset::UTC);
     format!(

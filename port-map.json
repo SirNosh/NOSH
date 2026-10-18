@@ -3,7 +3,7 @@
   "tsBranch": "agent/optimize-harness-and-project-intake",
   "crates": {
     "nosh-wire": {
-      "synced": "09c63628c4be4962bf4c1b738df1fd3fdb00fb65",
+      "synced": "209cd1ce61ffcb614498182dfd853abb0a02b1f3",
       "paths": [
         "packages/core/src",
         "packages/wire/src",
@@ -38,8 +38,7 @@
     "nosh-research": {
       "synced": null,
       "paths": [
-        "packages/templates/src",
-        "apps/noshd/src/research-control.ts"
+        "packages/templates/src"
       ],
       "strict": []
     },
@@ -67,6 +66,13 @@
       "paths": [
         "packages/evidence/src/project.ts",
         "packages/evidence/src/paper.ts"
+      ],
+      "strict": []
+    },
+    "nosh-research:control": {
+      "synced": "209cd1ce61ffcb614498182dfd853abb0a02b1f3",
+      "paths": [
+        "apps/noshd/src/research-control.ts"
       ],
       "strict": []
     },

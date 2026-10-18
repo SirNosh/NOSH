@@ -580,9 +580,11 @@ version = "0.0.0"
 name = "nosh-research"
 version = "0.0.0"
 dependencies = [
+ "nosh-store",
  "nosh-sys",
  "nosh-wire",
  "regex",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2",

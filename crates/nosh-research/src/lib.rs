@@ -1,5 +1,6 @@
 //! NOSH's research domain, compatible with `packages/evidence`, `graph`, `scheduler`, `skills`,
-//! `episodes`, `threads`, and `agent-runtime`.
+//! `episodes`, `threads`, and `agent-runtime`, plus the daemon's research control
+//! (`apps/noshd/src/research-control.ts`).
 
 pub mod agent_runtime;
 pub mod artifacts;
@@ -7,6 +8,7 @@ pub mod episodes;
 pub mod graph;
 pub mod paper;
 pub mod project;
+pub mod research_control;
 pub mod scheduler;
 pub mod skills;
 pub mod threads;
@@ -68,6 +70,17 @@ impl From<nosh_sys::Error> for Error {
         match error {
             nosh_sys::Error::Io(error) => Error::Io(error),
             nosh_sys::Error::Json(error) => Error::Json(error),
+            other => Error::Rejected(other.to_string()),
+        }
+    }
+}
+
+impl From<nosh_store::Error> for Error {
+    fn from(error: nosh_store::Error) -> Self {
+        match error {
+            nosh_store::Error::Invalid(issues) => Error::Invalid(issues),
+            nosh_store::Error::Io(error) => Error::Io(error),
+            nosh_store::Error::Json(error) => Error::Json(error),
             other => Error::Rejected(other.to_string()),
         }
     }
