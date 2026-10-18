@@ -812,7 +812,7 @@ export class NoshDaemon {
       // The same contract command on the same clean commit has already been measured: answer from the record at once
       // instead of re-running it (models re-check results they already have; the harness should not pay for it twice).
       const prior = dirty ? undefined : this.storeFor(projectId).replay(projectId).filter((event) => event.type === "task.command_run" && isObject(event.payload) && event.payload.taskId === taskId && event.payload.commandId === command.commandId && event.payload.commit === head && event.payload.dirty === false).at(-1)?.payload as Record<string, JsonValue> | undefined;
-      if (prior) return { accepted: true, ...prior, cached: true, citable: prior.state === "completed" && prior.exitCode === 0, note: `Already ran ${command.commandId} on this exact commit; returning that recorded result (cite ${String(prior.jobId)}).` };
+      if (prior) { const failedTests = prior.exitCode === 0 ? "" : tapFailures(this.jobs.tail(String(prior.jobId), "stdout", 256 * 1024)); return { accepted: true, ...prior, cached: true, citable: prior.state === "completed" && prior.exitCode === 0, note: `Already ran ${command.commandId} on this exact commit; returning that recorded result (cite ${String(prior.jobId)}).`, ...(failedTests ? { failedTests } : {}) }; }
       const jobId = createId("job");
       this.startJob({ jobId, projectId, missionId: agent.missionId, directionId: agent.directionId, autoresearchId: agent.autoresearchId, runId: createId("run"), experimentId: agent.experimentId, commitSha: head, workingDirectory: worktree, runner: execution.runner, distribution: null, command: command.argv, checkpointCommand: null, environmentLockHash: sha256({ node: process.version, platform: process.platform, arch: process.arch }), evaluationContractHash: sha256(execution as unknown as JsonValue), timeoutSeconds: command.timeoutSeconds, usesGpu: false });
       const terminal = ["completed", "failed", "cancelled", "lost"]; let job = this.jobs.get(jobId); const deadline = Date.now() + (command.timeoutSeconds + 60) * 1_000;
@@ -820,7 +820,9 @@ export class NoshDaemon {
       // The record keeps a bounded stdout tail so reviewers can verify what a run printed without the logs.
       const result = { taskId, jobId, commandId: command.commandId, description: command.description, argv: command.argv, commit: head, dirty, state: job.state, exitCode: job.exitCode, failureReason: job.failureReason, stdoutTail: this.jobs.tail(jobId, "stdout", 1_500) };
       this.appendDraft({ $schema: schemaUri("event"), schemaVersion: 1, retention: "persistent", type: "task.command_run", source: "noshd", scope: { projectId, missionId: agent.missionId, directionId: agent.directionId, autoresearchId: agent.autoresearchId, experimentId: agent.experimentId, runId: null, jobId, agentId: agent.agentId }, correlationId: `task:${taskId}`, causationId: null, payload: result as unknown as JsonValue });
-      return { accepted: true, ...result, citable: job.state === "completed" && job.exitCode === 0 && !dirty, stderrTail: this.jobs.tail(jobId, "stderr", 2_000) };
+      // A failed test run's tail holds only the counts (TAP reports each failure where it happens), so the worker also gets the failures.
+      const failedTests = job.exitCode === 0 ? "" : tapFailures(this.jobs.tail(jobId, "stdout", 256 * 1024));
+      return { accepted: true, ...result, citable: job.state === "completed" && job.exitCode === 0 && !dirty, stderrTail: this.jobs.tail(jobId, "stderr", 2_000), ...(failedTests ? { failedTests } : {}) };
     } catch (error) { return { accepted: false, error: error instanceof Error ? error.message : "nosh_run failed" }; }
   }
 
@@ -1127,6 +1129,16 @@ function assertJobIdentity(record: JobRecord, spec: JobSpec, context: string): v
   if (record.jobId !== spec.jobId || record.projectId !== spec.projectId || record.commandDigest !== sha256(spec.command) || record.commitSha !== spec.commitSha || record.evaluationContractHash !== spec.evaluationContractHash) throw new Error(`${context} does not match its durable launch specification`);
 }
 function chatSelection(selection?: ModelSelection): JsonValue { return selection ? { provider: selection.provider, id: selection.id, thinkingLevel: selection.thinkingLevel ?? null } : null; }
+/** The `not ok` entries of TAP output (node --test off a terminal) with their diagnostics, bounded: which tests failed, and why. */
+function tapFailures(output: string, maximumCharacters = 4_000): string {
+  const blocks: string[][] = []; let open = false;
+  for (const line of output.split(/\r?\n/)) {
+    if (/^\s*not ok\b/.test(line)) { blocks.push([line]); open = true; }
+    else if (open && /^\s*(ok\b|# Subtest:)/.test(line)) open = false;
+    else if (open) { const block = blocks.at(-1)!; block.push(line); if (line.trim() === "..." || block.length >= 40) open = false; }
+  }
+  return blocks.map((block) => block.join("\n")).join("\n").slice(0, maximumCharacters);
+}
 function deterministicChatAgentId(projectId: string): string { return `agt_${sha256({ projectId, role: "nosh_chat" }).slice(7, 39)}`; }
 
 type TaskPacketFacts = { attempt?: number; taskType?: string; permissions?: TaskPermissions; workspace?: TaskWorkspace };

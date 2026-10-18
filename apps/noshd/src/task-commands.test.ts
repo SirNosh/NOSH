@@ -163,6 +163,36 @@ describe("nosh_run task commands", () => {
       expect(await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_check" }, agentId)).toMatchObject({ accepted: true, exitCode: 0 });
     } finally { vi.restoreAllMocks(); daemon.stop(); rmSync(directory, { recursive: true, force: true }); }
   });
+  it("shows the worker which tests failed when the failure scrolled out of the output tail", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-run-tap-"));
+    const daemon = new NoshDaemon({ dataDirectory: join(directory, "data"), bootstrapToken: "test" });
+    try {
+      const project = daemon.initializeProject({ path: join(directory, "repository"), createRepository: true, workingTitle: "TAP fixture" });
+      const git = (args: string[]) => spawnSync("git", ["-C", project.repositoryRoot, ...args], { encoding: "utf8", windowsHide: true }).stdout.trim();
+      const approved = approveProjectContract(project.repositoryRoot, { ...readProjectContract(project.repositoryRoot), contractVersion: 2 });
+      daemon.amendProjectContract(project.projectId, { ...approved, contractVersion: 3, execution: { runner: "native", commands: [
+        { commandId: "command_test", description: "Unit tests", argv: [process.execPath, "tap.cjs"], timeoutSeconds: 30 },
+      ] } }, "amend-tap-0001");
+      // node --test writes TAP when not on a terminal: each failure where it happens, only the counts at the end.
+      const passing = Array.from({ length: 60 }, (_, index) => `# Subtest: passes ${index + 3}\nok ${index + 3} - passes ${index + 3}\n  ---\n  duration_ms: 0.2\n  ...`);
+      const tap = ["TAP version 13", "# Subtest: parses", "ok 1 - parses", "  ---", "  duration_ms: 0.1", "  ...", "# Subtest: calibrates", "not ok 2 - calibrates", "  ---", "  error: |-", "    Expected values to be strictly equal:", "    0.3 !== 0.25", "  code: 'ERR_ASSERTION'", "  ...", ...passing, "1..62", "# pass 61", "# fail 1"].join("\n");
+      writeFileSync(join(project.repositoryRoot, "tap.cjs"), `console.log(${JSON.stringify(tap)}); process.exit(1);\n`); git(["add", "tap.cjs"]); git(["-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-m", "initial"]);
+      const taskId = createId("tsk"); const agentId = createId("agt");
+      const tree = createTaskWorktree(daemon.research, project, taskId, git(["rev-parse", "HEAD"]));
+      vi.spyOn(daemon.agents, "inspect").mockReturnValue([{ agentId, projectId: project.projectId, taskId, role: "general_worker", missionId: null, directionId: null, autoresearchId: null, experimentId: null }] as unknown as ReturnType<typeof daemon.agents.inspect>);
+      const packet = { taskId, permissions: { subprocess: "allowlisted", allowedToolIds: ["tool_nosh.run"] }, workspace: { worktreeId: tree.worktreeId } };
+      const records = daemon.research.records.bind(daemon.research);
+      vi.spyOn(daemon.research, "records").mockImplementation((projectId, schema) => schema === "task-packet" ? [packet] : records(projectId, schema));
+      const run = await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_test" }, agentId) as Record<string, unknown>;
+      expect(run).toMatchObject({ accepted: true, exitCode: 1 });
+      expect(String(run.stdoutTail)).not.toContain("not ok");
+      expect(String(run.failedTests)).toContain("not ok 2 - calibrates");
+      expect(String(run.failedTests)).toContain("0.3 !== 0.25");
+      expect(String(run.failedTests)).not.toContain("passes");
+      // Re-running on the unchanged commit answers from the record, failures included.
+      expect(await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_test" }, agentId)).toMatchObject({ cached: true, jobId: run.jobId, failedTests: run.failedTests });
+    } finally { vi.restoreAllMocks(); daemon.stop(); rmSync(directory, { recursive: true, force: true }); }
+  });
 
 });
 
