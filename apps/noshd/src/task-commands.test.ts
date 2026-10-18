@@ -7,7 +7,8 @@ import { approveProjectContract, readProjectContract } from "@nosh/evidence";
 import { schemaUri, validateRecord, type JsonValue } from "@nosh/wire";
 import { describe, expect, it, vi } from "vitest";
 import { NoshDaemon } from "./daemon.js";
-import { citedRunIssues, writeUpOnly } from "./task-postflight.js";
+import { taskCommandInstructions } from "./research-control.js";
+import { citedRunIssues, completionRunIssues, writeUpOnly } from "./task-postflight.js";
 import { createTaskWorktree } from "./task-worktree.js";
 
 describe("nosh_run task commands", () => {
@@ -213,5 +214,32 @@ describe("paper write-up after a cited run", () => {
       expect(citedRunIssues(runs, "tsk_1", code, cited, [], writeUpOnly(repository))[0]).toContain("only the paper write-up");
       expect(citedRunIssues(runs, "tsk_1", paper, cited)[0]).toContain("did not run on the clean ending commit");
     } finally { rmSync(repository, { recursive: true, force: true }); }
+  });
+  it("lets a criterion deferred to Review cite this task's clean passing runs on earlier commits (one per compared configuration), and nothing else", () => {
+    const runs = [
+      { taskId: "tsk_1", jobId: "job_a", commit: "commit_a", dirty: false, state: "completed", exitCode: 0 },
+      { taskId: "tsk_1", jobId: "job_b", commit: "commit_b", dirty: false, state: "completed", exitCode: 0 },
+      { taskId: "tsk_1", jobId: "job_failed", commit: "commit_b", dirty: false, state: "failed", exitCode: 1 },
+      { taskId: "tsk_1", jobId: "job_dirty", commit: "commit_b", dirty: true, state: "completed", exitCode: 0 },
+      { taskId: "tsk_2", jobId: "job_other", commit: "commit_b", dirty: false, state: "completed", exitCode: 0 },
+    ];
+    const claim = (workerClaim: string, validatorRunIds: string[]) => [{ criterionId: "criterion_2", workerClaim, validatorRunIds }];
+    expect(citedRunIssues(runs, "tsk_1", "commit_final", claim("deferred_to_review", ["job_a", "job_b"]))).toEqual([]);
+    expect(completionRunIssues(runs, "tsk_1", { codeChanges: { endingCommit: "commit_final" }, criteria: claim("deferred_to_review", ["job_a", "job_b"]) })).toEqual([]);
+    // A claim about the final code still needs a run on the final code.
+    expect(citedRunIssues(runs, "tsk_1", "commit_final", claim("satisfied", ["job_a"]))[0]).toContain("did not run on the clean ending commit");
+    expect(citedRunIssues(runs, "tsk_1", "commit_final", claim("deferred_to_review", ["job_failed"]))[0]).toContain("did not pass");
+    expect(citedRunIssues(runs, "tsk_1", "commit_final", claim("deferred_to_review", ["job_dirty"]))[0]).toContain("uncommitted edits");
+    expect(citedRunIssues(runs, "tsk_1", "commit_final", claim("deferred_to_review", ["job_other"]))[0]).toContain("not a nosh_run of this task");
+  });
+  it("tells Mission and Direction workers how to evidence a comparison, within the packet's per-instruction limit, and not Autoresearch implementers", () => {
+    // The live spam-calibration contract's commands.
+    const commands = [["test", "node --test", "package.json script \"test\""], ["evaluate", "node evaluate.mjs --split=dev", "package.json script \"evaluate\""], ["evaluate-shift", "node evaluate.mjs --split=dev --shift=0.3", "package.json script \"evaluate:shift\""], ["evaluate-cv", "node evaluate.mjs --folds=5 --bootstrap=1000", "package.json script \"evaluate:cv\""], ["evaluate-test", "node evaluate.mjs --split=test", "Held-out test evaluation"], ["evaluate-test-shift", "node evaluate.mjs --split=test --shift=0.3", "Held-out test evaluation at 0.3 spam prevalence"]].map(([id, argv, description]) => ({ commandId: `command_${id}`, description: description!, argv: argv!.split(" "), timeoutSeconds: 600 }));
+    const withComparisons = taskCommandInstructions(commands, true);
+    expect(withComparisons).toHaveLength(2);
+    expect(withComparisons[1]).toContain("deferred_to_review");
+    expect(withComparisons.every((line) => line.length <= 1_000)).toBe(true);
+    // Experiment implementers do not compare methods (later rounds do), and their postflight accepts only satisfied claims.
+    expect(taskCommandInstructions(commands).join(" ")).not.toContain("deferred_to_review");
   });
 });

@@ -38,14 +38,19 @@ export function writeUpOnly(repositoryRoot: string): (runCommit: string, endingC
   };
 }
 
-/** A cited job_ validator must be this task's own nosh_run that passed on the ending commit (or on an ancestor followed only by paper write-up) with a clean worktree. */
-export function citedRunIssues(runs: Array<{ taskId?: unknown; jobId?: unknown; commit?: unknown; dirty?: unknown; state?: unknown; exitCode?: unknown }>, taskId: string, endingCommit: string, criteria: Array<{ criterionId: string; validatorRunIds: string[] }>, daemonJobs: readonly string[] = [], writeUp?: (runCommit: string, endingCommit: string) => boolean): string[] {
+/**
+ * A cited job_ validator must be this task's own nosh_run that passed on the ending commit (or on an ancestor followed only by paper
+ * write-up) with a clean worktree. A criterion deferred to the independent Review (a comparison across configurations, one run per
+ * configuration on its own commit) may cite clean passing runs on any of the task's commits: the Review judges what they establish.
+ */
+export function citedRunIssues(runs: Array<{ taskId?: unknown; jobId?: unknown; commit?: unknown; dirty?: unknown; state?: unknown; exitCode?: unknown }>, taskId: string, endingCommit: string, criteria: Array<{ criterionId: string; workerClaim?: string; validatorRunIds: string[] }>, daemonJobs: readonly string[] = [], writeUp?: (runCommit: string, endingCommit: string) => boolean): string[] {
   // Jobs the daemon itself ran for this task (a Direction's baseline evaluation) are authoritative validators too.
   const issues: string[] = [];
   for (const criterion of criteria) for (const id of criterion.validatorRunIds.filter((value) => value.startsWith("job_") && !daemonJobs.includes(value))) {
     const run = runs.find((entry) => entry.jobId === id && entry.taskId === taskId);
     if (!run) issues.push(`criterion ${criterion.criterionId} cites ${id}, which is not a nosh_run of this task`);
     else if (run.state !== "completed" || run.exitCode !== 0) issues.push(`criterion ${criterion.criterionId} cites ${id}, which did not pass (exit ${String(run.exitCode)})`);
+    else if (criterion.workerClaim === "deferred_to_review") { if (run.dirty !== false) issues.push(`criterion ${criterion.criterionId} cites ${id}, which ran on uncommitted edits`); }
     else if (run.dirty !== false || (run.commit !== endingCommit && !writeUp?.(String(run.commit), endingCommit))) issues.push(`criterion ${criterion.criterionId} cites ${id}, which did not run on the clean ending commit ${endingCommit} (only the paper write-up, docs/paper.md and docs/paper.bib, may be committed after a cited run)`);
   }
   return issues;
@@ -53,9 +58,9 @@ export function citedRunIssues(runs: Array<{ taskId?: unknown; jobId?: unknown; 
 
 /** citedRunIssues for a general-worker completion record; other records cite no runs. */
 export function completionRunIssues(runs: Parameters<typeof citedRunIssues>[0], taskId: string, completion: unknown, daemonJobs: readonly string[] = [], writeUp?: (runCommit: string, endingCommit: string) => boolean): string[] {
-  const value = completion as { codeChanges?: { endingCommit?: unknown }; criteria?: Array<{ criterionId?: unknown; validatorRunIds?: unknown }> } | null;
+  const value = completion as { codeChanges?: { endingCommit?: unknown }; criteria?: Array<{ criterionId?: unknown; workerClaim?: unknown; validatorRunIds?: unknown }> } | null;
   if (!value || typeof value.codeChanges?.endingCommit !== "string" || !Array.isArray(value.criteria)) return [];
-  return citedRunIssues(runs, taskId, value.codeChanges.endingCommit, value.criteria.map((criterion) => ({ criterionId: String(criterion.criterionId), validatorRunIds: Array.isArray(criterion.validatorRunIds) ? criterion.validatorRunIds.map(String) : [] })), daemonJobs, writeUp);
+  return citedRunIssues(runs, taskId, value.codeChanges.endingCommit, value.criteria.map((criterion) => ({ criterionId: String(criterion.criterionId), workerClaim: String(criterion.workerClaim), validatorRunIds: Array.isArray(criterion.validatorRunIds) ? criterion.validatorRunIds.map(String) : [] })), daemonJobs, writeUp);
 }
 
 export function validateGitCompletion(cwd: string, workspace: GitTaskWorkspace, codeChanges: GitCompletion): string[] {

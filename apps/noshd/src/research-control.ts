@@ -52,9 +52,12 @@ export function librarianNetworkAllowed(project: RegisteredProject): boolean {
 export function declaredTaskCommands(project: RegisteredProject): Array<{ commandId: string; description: string; argv: string[]; timeoutSeconds: number }> {
   try { return readProjectContract(project.repositoryRoot).execution?.commands ?? []; } catch { return []; }
 }
-/** Task-packet instruction listing the runnable commands, or nothing when none are declared. */
-export function taskCommandInstructions(commands: ReturnType<typeof declaredTaskCommands>): string[] {
-  return commands.length ? [`You may run these Project-contract commands with nosh_run (by commandId) in your worktree: ${commands.map((command) => `${command.commandId} = ${command.argv.join(" ")} (${command.description})`).join("; ")}. The daemon commits your edits before each run; to cite a run as a criterion validator, run it after your last edit and put its jobId in validatorRunIds.`] : [];
+/**
+ * Task-packet instructions listing the runnable commands, or nothing when none are declared. Mission and Direction tasks
+ * (whose postflight accepts deferred criteria) also learn how to evidence a comparison across configurations.
+ */
+export function taskCommandInstructions(commands: ReturnType<typeof declaredTaskCommands>, deferredComparisons = false): string[] {
+  return commands.length ? [`You may run these Project-contract commands with nosh_run (by commandId) in your worktree: ${commands.map((command) => `${command.commandId} = ${command.argv.join(" ")} (${command.description})`).join("; ")}. The daemon commits your edits before each run; to cite a run as a criterion validator, run it after your last edit and put its jobId in validatorRunIds.`, ...(deferredComparisons ? ["A comparison across configurations (one run per configuration, each on its own commit) cannot all run after your last edit: claim that criterion deferred_to_review and put every compared run's jobId in its validatorRunIds; the independent Review judges them."] : [])] : [];
 }
 /** What a task reviewer must see besides the worker's claims: the daemon's own verified facts for that task. */
 export function daemonTaskFacts(research: ResearchControl, projectId: string, taskId: string): string {
