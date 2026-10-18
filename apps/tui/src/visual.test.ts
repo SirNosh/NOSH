@@ -24,9 +24,11 @@ vi.mock('@opentui/core', () => {
     destroyRecursively() { this.isDestroyed = true; this.children.forEach(child => child.destroyRecursively()); }
   }
   return { BoxRenderable: Renderable, TextRenderable: Renderable,
-    MarkdownRenderable: class extends Renderable {}, TextAttributes: { BOLD: 1 }, SyntaxStyle: {} };
+    MarkdownRenderable: class extends Renderable {}, TextAttributes: { BOLD: 1 }, SyntaxStyle: {},
+    StyledText: class { constructor(readonly chunks: Array<{ text: string }>) {} }, fg: () => (text: string) => ({ text }), bold: (chunk: unknown) => chunk };
 });
-import { createTranscript } from './visual.js';
+import { createResearchSidebar, createTranscript } from './visual.js';
+import type { MapLine } from './view-model.js';
 
 const entry = (id: string, text = id): TranscriptEntry => ({ id, kind: 'assistant', title: 'Assistant', text, sequence: null, status: 'streaming' });
 const setup = () => createTranscript({} as CliRenderer, {} as SyntaxStyle);
@@ -92,5 +94,20 @@ describe('transcript reconciliation', () => {
     expect(second!.isDestroyed).toBe(true);
     transcript.update([entry('new-project')]);
     expect(ids(transcript)).toEqual(['message-new-project']);
+  });
+});
+
+describe('research sidebar', () => {
+  it('shows the climb graph under Needs you and above the lists, one coloured row per line', () => {
+    const sidebar = createResearchSidebar({} as CliRenderer);
+    const climb: MapLine[] = [
+      { prefix: '', glyph: '', tone: 'success', label: 'CLIMB', title: 'completed', state: '', detail: '', heading: true },
+      { prefix: '│ ', glyph: '✗', tone: 'error', label: '', title: 'L2 1e-4 ', state: '0.01597', detail: '' }];
+    sidebar.update([{ id: 'm', section: 'missions', title: 'Spam', state: 'blocked', fields: [] }], [{ title: 'Staged', hint: '/confirm' }], climb);
+    const order = sidebar.root.getChildren().map(child => child.id);
+    expect(order.indexOf('side-climb-0')).toBeGreaterThan(order.indexOf('side-attention-0'));
+    expect(order.indexOf('side-climb-1')).toBeLessThan(order.indexOf('side-section-missions'));
+    const row = sidebar.root.getChildren().find(child => child.id === 'side-climb-1') as unknown as { content: { chunks: Array<{ text: string }> } };
+    expect(row.content.chunks.map(chunk => chunk.text).join('')).toBe('│ ✗ L2 1e-4 0.01597');
   });
 });

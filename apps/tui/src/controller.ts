@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { DaemonClient } from './client.js';
-import { safeText, record, text, fields, formatFields, modelName, entityRow, responseRows, boundRows, rawDetail, eventEntries, boundEntries, collapseLines, type ViewRow, type TranscriptEntry, type ActivityState, type PendingAction } from './view-model.js';
-// The research map refreshes on its own while open, but never faster than this.
+import { safeText, record, text, fields, formatFields, modelName, entityRow, responseRows, boundRows, rawDetail, eventEntries, boundEntries, collapseLines, researchMapMermaid, type ViewRow, type TranscriptEntry, type ActivityState, type PendingAction } from './view-model.js';
+// The research map (the map view and the sidebar's climb) refreshes on its own, but never faster than this.
 const MAP_REFRESH_MS = 2500;
 // Cold Pi session start can exceed the default request timeout; a timeout would
 // report failure for a chat the daemon still accepts.
@@ -44,6 +45,7 @@ Project and model
 Research state
   /chat                           return to conversation
   /map                            research map: missions, directions, autoresearch, workers, jobs
+  /map mermaid [file]             write the map as a Mermaid chart (default research-map.md)
   /status [missions|directions|autoresearch|agents]
   /jobs                           supervised jobs
   /job <id>                       details + resources
@@ -93,7 +95,8 @@ export class Controller {
   defaultModel: { name: string; thinkingLevel: string } | undefined;
   /** Latest daemon /research-map tree, shown by the 'map' view. */
   researchMap: unknown = undefined;
-  private mapRequestedAt = 0;
+  // The first fetch waits one interval, so the bootstrap page of events comes first.
+  private mapRequestedAt = Date.now();
   private generation = 0;
   private pollingGeneration: number | undefined;
   private bootstrapped = false;
@@ -135,7 +138,7 @@ export class Controller {
       this.reconcileDrafts(page.events.filter(e => e.sequence !== null && e.sequence > priorCursor));
       this.ensureStream(); this.notify();
       void this.refreshAgentMetadata(generation);
-      if (this.view === 'map' && Date.now() - this.mapRequestedAt >= MAP_REFRESH_MS) void this.refreshMap(generation);
+      if (Date.now() - this.mapRequestedAt >= MAP_REFRESH_MS) void this.refreshMap(generation);
     } catch (error) { if (generation === this.generation) this.connection = `reconnecting: ${safeText(error instanceof Error ? error.message : error)}`; }
     finally { if (this.pollingGeneration === generation) this.pollingGeneration = undefined; }
   }
@@ -164,7 +167,7 @@ export class Controller {
   }
   private async refreshMap(generation: number): Promise<void> {
     this.mapRequestedAt = Date.now();
-    try { const data = await this.client.request('/research-map'+this.query()); if (generation === this.generation && this.view === 'map') { this.researchMap = data; this.notify(); } }
+    try { const data = await this.client.request('/research-map'+this.query()); if (generation === this.generation) { this.researchMap = data; this.notify(); } }
     catch { /* The map is presentation only; the next poll retries. */ }
   }
   /** Catalog reads do not navigate or stage an action. Latest request wins. */
@@ -362,7 +365,13 @@ export class Controller {
       case '/chat': this.view = 'chat'; return;
       case '/map': {
         const data = await this.client.request('/research-map'+this.query()); if (!current()) return;
-        this.researchMap = data; this.mapRequestedAt = Date.now(); this.view = 'map'; this.rows = []; this.detail = ''; return;
+        this.researchMap = data; this.mapRequestedAt = Date.now();
+        if (args[0] === 'mermaid') {
+          const file = resolve(args.slice(1).join(' ') || 'research-map.md');
+          await writeFile(file, `# NOSH research map\n\n\`\`\`mermaid\n${researchMapMermaid(data)}\n\`\`\`\n`);
+          this.view = 'paths'; this.rows = []; this.detail = `Wrote the research map as a Mermaid chart:\n${file}\n\nOpen it in a Markdown preview (VS Code, GitHub) or paste the block into mermaid.live.`; return;
+        }
+        this.view = 'map'; this.rows = []; this.detail = ''; return;
       }
       case '/projects': {
         await this.loadProjects(); if (!current()) return;

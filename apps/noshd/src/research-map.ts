@@ -7,7 +7,7 @@ import type { AgentInspection } from "@nosh/pi-adapter";
 import type { JobRecord } from "@nosh/jobs";
 import { schemaUri, type EventEnvelope } from "@nosh/wire";
 
-export type MapNode = { kind: "mission" | "direction" | "autoresearch" | "node" | "experiment" | "worker" | "job"; id: string; title: string; state: string; detail: string; progress: { done: number; total: number } | null; children: MapNode[] };
+export type MapNode = { kind: "mission" | "direction" | "autoresearch" | "node" | "experiment" | "worker" | "job"; id: string; title: string; state: string; detail: string; progress: { done: number; total: number } | null; children: MapNode[]; updatedAt?: string };
 export type ResearchMap = { generatedAt: string; roots: MapNode[]; workers: MapNode[] };
 type Stored = { entityId: string; version: number; state: string; value: Record<string, unknown> };
 type GraphNode = { id: string; title: string; type: string; state: string; attempt: number; maximumAttempts: number; lease: { ownerId?: string } | null };
@@ -41,13 +41,19 @@ export function buildResearchMap(input: ResearchMapInput): ResearchMap {
   });
   const experiments = experimentTree(input);
   const autoresearchNode = (execution: Stored): MapNode => {
-    const value = execution.value; const children = experiments.get(execution.entityId) ?? [];
+    const value = execution.value; const all = experiments.nodes.get(execution.entityId) ?? [];
+    // Each experiment hangs under the experiment it started from; those started from the baseline are the run's children.
+    const byId = new Map(all.map((node) => [node.id, node])); const children: MapNode[] = [];
+    for (const node of all) { const parent = byId.get(experiments.parents.get(node.id) ?? ""); const siblings = parent ? parent.children : children; if (siblings.length < MAX_CHILDREN) siblings.push(node); }
     // The current best is the accepted frontier (the metric may be minimized), not the largest promoted score.
     const frontier = new Set((value.acceptedFrontierExperimentIds ?? []) as string[]);
-    const best = children.filter((child) => frontier.has(child.id)).map((child) => Number(/score (-?[\d.e-]+)/.exec(child.detail)?.[1])).filter(Number.isFinite);
-    const detail = [`round ${String(value.currentRound ?? 1)}/${String(value.maximumRounds ?? "?")}`, `${children.length}/${String(value.maximumExperiments ?? "?")} experiments`, best.length ? `best ${best[0]}` : ""].filter(Boolean).join(" · ");
+    const best = all.filter((child) => frontier.has(child.id)).map((child) => Number(/score (-?[\d.e-]+)/.exec(child.detail)?.[1])).filter(Number.isFinite);
+    const contract = (value.evaluationContract ?? {}) as { primaryMetric?: { name?: string }; baselineMetrics?: Record<string, unknown> };
+    const baseline = contract.baselineMetrics?.[String(contract.primaryMetric?.name)];
+    const detail = [`round ${String(value.currentRound ?? 1)}/${String(value.maximumRounds ?? "?")}`, `${all.length}/${String(value.maximumExperiments ?? "?")} experiments`, best.length ? `best ${best[0]}` : "", typeof baseline === "number" ? `baseline ${baseline}` : ""].filter(Boolean).join(" · ");
     const scoped = runningJobs.filter((job) => job.autoresearchId === execution.entityId).map(jobNode);
-    return { kind: "autoresearch", id: execution.entityId, title: String(value.decisionQuestion ?? execution.entityId), state: execution.state, detail, progress: null, children: [...children, ...scoped].slice(0, MAX_CHILDREN) };
+    // updatedAt lets a client pick the most recent run (the TUI sidebar's climb).
+    return { kind: "autoresearch", id: execution.entityId, title: String(value.decisionQuestion ?? execution.entityId), state: execution.state, detail, progress: null, children: [...children, ...scoped].slice(0, MAX_CHILDREN), updatedAt: String(value.updatedAt ?? "") };
   };
   const directionNode = (direction: Stored): MapNode => {
     const nodes = (direction.value.nodes ?? []) as GraphNode[];
@@ -90,8 +96,8 @@ function workerNode(agent: AgentInspection): MapNode {
 }
 
 /** Experiment states from durable records: proposed → implementing → evaluating → promoted / held / rejected, or failed. */
-function experimentTree(input: ResearchMapInput): Map<string, MapNode[]> {
-  const byExecution = new Map<string, MapNode[]>();
+function experimentTree(input: ResearchMapInput): { nodes: Map<string, MapNode[]>; parents: Map<string, string> } {
+  const byExecution = new Map<string, MapNode[]>(); const parents = new Map<string, string>();
   const failed = new Map(input.events.filter((event) => event.type === "autoresearch.experiment_failed").map((event) => [String((event.payload as { experimentId?: unknown }).experimentId), String((event.payload as { phase?: unknown }).phase ?? "failed")]));
   const of = (schema: string) => input.submitted.filter((entry) => entry.record.$schema === schemaUri(schema)).map((entry) => entry.record);
   const results = new Map(of("experiment-result").map((record) => [String(record.experimentId), record]));
@@ -106,6 +112,7 @@ function experimentTree(input: ResearchMapInput): Map<string, MapNode[]> {
     const detail = [`round ${String(proposal.round)}`, typeof score === "number" ? `score ${score}${typeof delta === "number" ? ` (${delta >= 0 ? "+" : ""}${Number(delta.toFixed(4))})` : ""}` : "", guardrail, failed.has(experimentId) ? `failed in ${failed.get(experimentId)}` : ""].filter(Boolean).join(" · ");
     const list = byExecution.get(autoresearchId) ?? []; byExecution.set(autoresearchId, list);
     if (!list.some((entry) => entry.id === experimentId)) list.push(leaf("experiment", experimentId, String(proposal.hypothesis ?? experimentId), state, detail));
+    parents.set(experimentId, String(proposal.parentExperimentId ?? ""));
   }
-  return byExecution;
+  return { nodes: byExecution, parents };
 }

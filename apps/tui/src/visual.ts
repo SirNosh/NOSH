@@ -4,7 +4,7 @@
  */
 import { BoxRenderable, TextRenderable, MarkdownRenderable, TextAttributes, StyledText, fg, bold,
   type CliRenderer, type SyntaxStyle } from '@opentui/core';
-import { safeText, type MapTone, type TranscriptEntry, type ViewRow } from './controller.js';
+import { safeText, type MapLine, type MapTone, type TranscriptEntry, type ViewRow } from './controller.js';
 import { researchMapLines } from './view-model.js';
 import { theme, splitBorder } from './theme.js';
 
@@ -160,8 +160,8 @@ export function createResearchSidebar(renderer: CliRenderer) {
     if (state) { const tag = text(renderer, id + '-state', state, theme.muted); tag.width = 'auto'; tag.flexShrink = 0; tag.wrapMode = 'none'; row.add(tag); }
     root.add(row);
   }
-  function update(rows: ViewRow[], attention: AttentionItem[] = []) {
-    const signature = JSON.stringify([rows, attention]);
+  function update(rows: ViewRow[], attention: AttentionItem[] = [], climb: MapLine[] = []) {
+    const signature = JSON.stringify([rows, attention, climb]);
     if (signature === previous) return;
     previous = signature;
     for (const child of root.getChildren()) { root.remove(child); child.destroyRecursively(); }
@@ -171,6 +171,15 @@ export function createResearchSidebar(renderer: CliRenderer) {
         root.add(text(renderer, 'side-attention-' + i, `! ${item.title}`, theme.warning));
         root.add(text(renderer, 'side-attention-hint-' + i, `  ${item.hint}`, theme.muted));
       }
+    }
+    // The live climb as a graph: what each kept step built on and what tried to beat it (climbLines).
+    for (const [i, line] of climb.entries()) {
+      const tone = MAP_TONES[line.tone];
+      const row = new TextRenderable(renderer, { id: 'side-climb-' + i, width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 });
+      row.content = new StyledText([fg(theme.muted)(line.prefix), fg(tone)(line.glyph ? `${line.glyph} ` : ''),
+        ...(line.label ? [bold(fg(theme.accent)(`${line.label} `))] : []), fg(line.heading ? tone : line.glyph ? theme.text : theme.muted)(line.title), fg(tone)(line.state)]);
+      if (line.heading) row.marginTop = 1;
+      root.add(row);
     }
     const sections = [...new Set(rows.map(row => row.section))];
     for (const section of sections) {

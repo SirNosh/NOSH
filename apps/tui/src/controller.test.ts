@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Controller, acceptPage, safeText, type NoshEvent } from './controller.js';
-import { eventEntries, collapseLines, researchMapLines, progressBar, mapTone } from './view-model.js';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { eventEntries, collapseLines, researchMapLines, progressBar, mapTone, climbLines, researchMapMermaid, type MapLine } from './view-model.js';
 import { DaemonClient } from './client.js';
 const event = (sequence: number, projectId = 'p'): NoshEvent => ({eventId:`e${sequence}`,sequence,type:'agent.completed',payload:{message:'hello'},scope:{projectId}});
 function setup() { const client = new DaemonClient({baseUrl:'http://localhost',sessionToken:'s'}); const request = vi.spyOn(client,'request').mockResolvedValue({}); const controller = new Controller(client,'p'); controller.projects = [{projectId:'p',repositoryRoot:'/p'},{projectId:'q',repositoryRoot:'/q'}]; return {controller,request}; }
@@ -34,7 +37,8 @@ describe('thin controller', () => {
     await controller.execute('/map');
     expect(request).toHaveBeenCalledWith('/research-map?projectId=p');
     expect(controller.view).toBe('map'); expect(controller.researchMap).toEqual(map); expect(controller.inspectorRows()).toEqual([]);
-    // While the map is open, a poll refreshes it (throttled); other views never fetch it.
+    // A poll refreshes it (throttled) in any view: the sidebar's climb graph reads it too.
+    await controller.execute('/chat');
     (controller as unknown as {mapRequestedAt:number}).mapRequestedAt = 0;
     const next = {...map,roots:[{...map.roots[0],state:'completed'}]};
     request.mockImplementation(async (path: string) => path.startsWith('/research-map') ? next : {events:[]});
@@ -59,6 +63,58 @@ describe('thin controller', () => {
     expect(lines[0]!.detail).toBe('▰▰▰▰▰▱▱▱▱▱ 1/2  v4');
     expect(researchMapLines(undefined)).toEqual([]);
     expect(researchMapLines({roots:Array.from({length:50},(_,index)=>({kind:'mission',id:`m${index}`,title:'x',state:'running',children:[]}))},20)).toHaveLength(20);
+  });
+  // The live climb's shape: baseline → ★ temperature → ★ beta, each with the experiments that tried to beat it.
+  const climb = (state = 'completed', updatedAt = '2026-10-18T02:13:29.000Z') => ({kind:'autoresearch',id:'ar_c',title:'How low can ECE go?',state,updatedAt,detail:'round 8/30 · 6/30 experiments · best 0.006006687176108325 · baseline 0.018660968449126965',progress:null,children:[
+    {kind:'experiment',id:'exp_t',title:'Temperature scaling fitted on held-out data',state:'promoted',detail:'round 1 · score 0.009670712709885499 (+0.009)',children:[
+      {kind:'experiment',id:'exp_p',title:'Regularized Platt "scaling"',state:'rejected',detail:'round 2 · score 0.011475832864619858 (-0.0018)',children:[]},
+      {kind:'experiment',id:'exp_b',title:'Beta calibration',state:'promoted',detail:'round 3 · score 0.006006687176108325 (+0.0037)',children:[
+        {kind:'experiment',id:'exp_l',title:'L2 1e-4',state:'rejected',detail:'round 4 · score 0.01596543812707744 (-0.01)',children:[]},
+        {kind:'experiment',id:'exp_n',title:'No intercept',state:'failed',detail:'round 7 · failed in implementation',children:[]},
+        {kind:'experiment',id:'exp_s',title:'Shrink toward the raw probability',state:'implementing',detail:'round 8',children:[]}]}]}]});
+  const row = (line: MapLine) => `${line.prefix}${line.glyph ? `${line.glyph} ` : ''}${line.label ? `${line.label} ` : ''}${line.title}${line.state}`;
+  const pad = (left: string, right: string, width = 30) => `${left}${' '.repeat(width - left.length - right.length)}${right}`;
+  it('draws the most relevant Autoresearch climb as a narrow chain for the sidebar', () => {
+    // A finished nested run of a blocked Mission sorts first in the map; the most recently updated run wins.
+    const older = {...climb('completed','2026-10-17T22:00:00.000Z'),id:'ar_old',title:'Old run',children:[]};
+    const map = {roots:[{kind:'mission',id:'mis_1',title:'Spam',state:'blocked',detail:'v93',progress:null,children:[{kind:'node',id:'n1',title:'Direction',state:'accepted',detail:'',children:[older]}]}, climb()]};
+    const lines = climbLines(map, 30);
+    expect(lines.map(row)).toEqual([
+      'CLIMB completed', 'best 0.006007 · 6/30 exp',
+      pad('◎ baseline', '0.01866'),
+      pad('★ Temperature scalin…', '0.009671'),
+      pad('│ ✗ Regularized Platt…', '0.01148'),
+      pad('★ Beta calibration', '0.006007'),
+      pad('  ✗ L2 1e-4', '0.01597'),
+      pad('  ✗ No intercept', 'crash'),
+      pad('  ● Shrink towar…', 'implementing')]);
+    expect(lines.slice(2).every(line => row(line).length === 30)).toBe(true);
+    expect(lines.map(line => line.tone).slice(2, 5)).toEqual(['idle', 'success', 'error']);
+    // A running run anywhere beats a more recently updated finished one.
+    expect(climbLines({roots:[climb(), {...older,state:'running',title:'Live run'}]}, 30)[0]!.title).toBe('running');
+    // Bounded, saying how much is hidden.
+    const bounded = climbLines(map, 30, 5);
+    expect(bounded).toHaveLength(5); expect(bounded.at(-1)!.title).toBe('+5 more');
+    expect(climbLines({roots:[]}, 30)).toEqual([]); expect(climbLines(undefined, 30)).toEqual([]);
+  });
+  it('exports the research map as a Mermaid flowchart with lineage edges', () => {
+    const chart = researchMapMermaid({roots:[climb()]});
+    const lines = chart.split('\n');
+    expect(lines[0]).toBe('flowchart LR');
+    for (const edge of ['n0 --> n0base', 'n0base --> n1', 'n1 --> n2', 'n1 --> n3', 'n3 --> n4']) expect(lines).toContain(`  ${edge}`);
+    expect(chart).toContain('n1["Temperature scaling fitted on held-out data<br/><small>promoted · round 1 · score 0.00967 (+0.009)</small>"]:::keep');
+    expect(chart).toContain('Regularized Platt #quot;scaling#quot;');
+    expect(chart).toContain(':::crash');
+  });
+  it('writes the Mermaid chart to a file on /map mermaid', async () => {
+    const {controller,request} = setup();
+    request.mockResolvedValueOnce({roots:[climb()]});
+    const file = join(mkdtempSync(join(tmpdir(), 'nosh-map-')), 'map.md');
+    await controller.execute(`/map mermaid ${file}`);
+    expect(request).toHaveBeenCalledWith('/research-map?projectId=p');
+    const written = readFileSync(file, 'utf8');
+    expect(written).toContain('```mermaid\nflowchart LR\n'); expect(written).toContain('n0base --> n1');
+    expect(controller.detail).toContain(file);
   });
   it('labels nested Directions and Autoresearch and shows their progress', () => {
     const lines = researchMapLines({roots:[

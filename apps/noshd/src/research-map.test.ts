@@ -61,6 +61,23 @@ describe("research map", () => {
     expect(map.roots[0]).toMatchObject({ id: "ar_2", detail: "round 2/30 · 2/30 experiments · best 0.006" });
   });
 
+  it("nests each experiment under the experiment it started from, and shows the run's baseline", () => {
+    // A greedy climb: x is kept from the baseline, y discarded and z kept on top of x, w discarded on top of z.
+    const map = buildResearchMap({
+      missions: [], directions: [], agents: [], jobs: [], events: [],
+      autoresearch: [{ entityId: "ar_3", version: 4, state: "completed", value: { directionId: null, decisionQuestion: "Lower ECE", currentRound: 4, maximumRounds: 30, maximumExperiments: 30, acceptedFrontierExperimentIds: ["exp_z"], updatedAt: "2026-10-18T02:13:29.000Z", evaluationContract: { primaryMetric: { name: "ece", objective: "minimize" }, baselineMetrics: { ece: 0.0187, f1: 0.9 } } } }],
+      submitted: [
+        ...[["exp_x", "exp_root"], ["exp_y", "exp_x"], ["exp_z", "exp_x"], ["exp_w", "exp_z"]].map(([experimentId, parentExperimentId], index) => submitted({ $schema: schemaUri("experiment-proposal"), experimentId, parentExperimentId, autoresearchId: "ar_3", round: index + 1, hypothesis: `Hypothesis ${experimentId}` })),
+        ...[["exp_x", "promoted", 0.0097], ["exp_y", "rejected", 0.0115], ["exp_z", "promoted", 0.006], ["exp_w", "rejected", 0.016]].map(([experimentId, promotionDecision, candidateScore]) => submitted({ $schema: schemaUri("experiment-result"), experimentId, promotionDecision, comparison: { candidateScore, improvement: 0 }, guardrails: [] })),
+      ],
+    });
+    const run = map.roots[0]!;
+    expect(run.detail).toBe("round 4/30 · 4/30 experiments · best 0.006 · baseline 0.0187");
+    expect(run.updatedAt).toBe("2026-10-18T02:13:29.000Z");
+    const shape = (node: MapNode): unknown => ({ [node.id]: node.children.map(shape) });
+    expect(run.children.map(shape)).toEqual([{ exp_x: [{ exp_y: [] }, { exp_z: [{ exp_w: [] }] }] }]);
+  });
+
   it("nests Mission-spawned Directions and Autoresearch under their spawning nodes, each exactly once", () => {
     const origin = (scopeType: "mission" | "direction", scopeId: string, nodeId: string) => ({ scopeType, scopeId, nodeId, attempt: 1 });
     const job = { jobId: "job_d", command: ["node", "evaluate.mjs"], state: "running", runner: "native", missionId: "mis_2", directionId: "dir_a", autoresearchId: "ar_d" } as unknown as JobRecord;

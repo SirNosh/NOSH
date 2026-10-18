@@ -242,3 +242,71 @@ export function researchMapLines(map: unknown, maximum = 400): MapLine[] {
   }
   return lines.slice(0, maximum);
 }
+
+/** Score from a map detail ("… score 0.0096707 (+0.009)"), to 4 significant figures. */
+function detailScore(detail: string, key = 'score'): string { const value = Number(new RegExp(`${key} (-?[\\d.e-]+)`).exec(detail)?.[1]); return Number.isFinite(value) ? String(Number(value.toPrecision(4))) : ''; }
+/**
+ * The sidebar's climb: the most relevant Autoresearch (a live one, else the most recently updated) as a narrow chain.
+ * Kept steps stay on one spine so depth never eats the width; what each step's children tried hangs one level under it.
+ */
+export function climbLines(map: unknown, width: number, maximum = 24): MapLine[] {
+  const runs: Record<string, unknown>[] = [];
+  const find = (node: Record<string, unknown>): void => { if (text(node.kind) === 'autoresearch') runs.push(node); (Array.isArray(node.children) ? node.children.map(record) : []).forEach(find); };
+  (Array.isArray(record(map).roots) ? (record(map).roots as unknown[]).map(record) : []).forEach(find);
+  const run = runs.find(node => mapTone(text(node.state, 40)) === 'active') ?? [...runs].sort((left, right) => text(right.updatedAt).localeCompare(text(left.updatedAt)))[0];
+  if (!run) return [];
+  const detail = text(run.detail, 200); const state = text(run.state, 40);
+  const lines: MapLine[] = [
+    { prefix: '', glyph: '', tone: mapTone(state), label: 'CLIMB', title: state, state: '', detail: '', heading: true },
+    { prefix: '', glyph: '', tone: 'idle', label: '', title: [detailScore(detail, 'best') && `best ${detailScore(detail, 'best')}`, /(\d+\/\S+) experiments/.exec(detail)?.[1] && `${/(\d+\/\S+) experiments/.exec(detail)![1]} exp`].filter(Boolean).join(' · '), state: '', detail: '' },
+  ];
+  const push = (prefix: string, glyph: string, tone: MapTone, title: string, value: string) => {
+    const room = Math.max(4, width - prefix.length - (glyph ? 2 : 0) - value.length - 1);
+    const clipped = title.length > room ? `${title.slice(0, room - 1)}…` : title;
+    lines.push({ prefix, glyph, tone, label: '', title: clipped.padEnd(Math.max(clipped.length + 1, width - prefix.length - (glyph ? 2 : 0) - value.length)), state: value, detail: '' });
+  };
+  const children = (node: Record<string, unknown>) => (Array.isArray(node.children) ? node.children.map(record) : []).filter(child => text(child.kind) === 'experiment');
+  const chain = (nodes: Record<string, unknown>[], prefix: string): void => {
+    // The spine continues with the last kept child; the others hang under the step they tried to beat.
+    const next = [...nodes].reverse().find(node => text(node.state) === 'promoted');
+    for (const node of nodes.filter(entry => entry !== next)) step(node, prefix + (next ? '│ ' : '  '));
+    if (next) step(next, prefix);
+  };
+  const step = (node: Record<string, unknown>, prefix: string): void => {
+    const nodeState = text(node.state, 40);
+    push(prefix, mapGlyph('experiment', nodeState), mapTone(nodeState), text(node.title, 200), detailScore(text(node.detail, 200)) || (nodeState === 'failed' ? 'crash' : nodeState));
+    chain(children(node), prefix);
+  };
+  push('', '◎', 'idle', 'baseline', detailScore(detail, 'baseline'));
+  chain(children(run), '');
+  return lines.length > maximum ? [...lines.slice(0, maximum - 1), { prefix: '', glyph: '', tone: 'idle', label: '', title: `+${lines.length - maximum + 1} more`, state: '', detail: '' }] : lines;
+}
+
+const MERMAID_CLASSES = ['keep fill:#c9f2c9,stroke:#2e7d32,color:#000', 'discard fill:#fbd5d5,stroke:#c62828,color:#000', 'crash fill:#e0e0e0,stroke:#616161,stroke-dasharray:4 3,color:#000',
+  'live fill:#fff2b3,stroke:#f9a825,color:#000', 'blocked fill:#ffd8a8,stroke:#e65100,color:#000', 'done fill:#d6e6ff,stroke:#1565c0,color:#000', 'idle fill:#f5f5f5,stroke:#9e9e9e,color:#000'];
+function mermaidClass(state: string): string {
+  if (state === 'promoted') return 'keep';
+  if (/rejected/.test(state)) return 'discard';
+  if (/fail/.test(state)) return 'crash';
+  if (/blocked|held/.test(state)) return 'blocked';
+  return { success: 'done', active: 'live', waiting: 'blocked', error: 'discard', idle: 'idle' }[mapTone(state)];
+}
+/** The research map as a Mermaid flowchart: one node per map node, an edge per parent → child (experiments by lineage). */
+export function researchMapMermaid(map: unknown): string {
+  const lines = ['flowchart LR']; let count = 0;
+  const escape = (value: string) => value.replaceAll('"', '#quot;').replaceAll('<', '#lt;').replaceAll('>', '#gt;');
+  const visit = (node: Record<string, unknown>, parent: string | null): void => {
+    const id = `n${count++}`; const kind = text(node.kind); const state = text(node.state, 40);
+    const head = [MAP_ROOTS[kind]?.label ?? (kind === 'worker' || kind === 'job' ? kind.toUpperCase() : ''), text(node.title, 60)].filter(Boolean).join(': ');
+    const detail = text(node.detail, 200).replace(/(\d\.\d{5})\d+/g, '$1');
+    lines.push(`  ${id}["${escape(head)}<br/><small>${escape([state, detail].filter(Boolean).join(' · '))}</small>"]:::${mermaidClass(state)}`);
+    if (parent) lines.push(`  ${parent} --> ${id}`);
+    const children = Array.isArray(node.children) ? node.children.map(record) : [];
+    // An Autoresearch's top-level experiments start from its baseline.
+    const base = kind === 'autoresearch' ? `${id}base` : id;
+    if (kind === 'autoresearch') lines.push(`  ${base}(["baseline"]):::idle`, `  ${id} --> ${base}`);
+    for (const child of children) visit(child, text(child.kind) === 'experiment' ? base : id);
+  };
+  for (const root of Array.isArray(record(map).roots) ? (record(map).roots as unknown[]).map(record) : []) visit(root, null);
+  return [...lines, ...MERMAID_CLASSES.map(definition => `  classDef ${definition}`)].join('\n');
+}
