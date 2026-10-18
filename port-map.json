@@ -43,14 +43,14 @@
       "strict": []
     },
     "nosh-research:artifacts": {
-      "synced": "920131ced8c50810d8494f268ab3c8528cf189ae",
+      "synced": "209cd1ce61ffcb614498182dfd853abb0a02b1f3",
       "paths": [
         "packages/evidence/src/index.ts"
       ],
       "strict": []
     },
     "nosh-research:domain": {
-      "synced": "09c63628c4be4962bf4c1b738df1fd3fdb00fb65",
+      "synced": "209cd1ce61ffcb614498182dfd853abb0a02b1f3",
       "paths": [
         "packages/graph/src",
         "packages/scheduler/src",
@@ -62,7 +62,7 @@
       "strict": []
     },
     "nosh-research:project": {
-      "synced": "09c63628c4be4962bf4c1b738df1fd3fdb00fb65",
+      "synced": "209cd1ce61ffcb614498182dfd853abb0a02b1f3",
       "paths": [
         "packages/evidence/src/project.ts",
         "packages/evidence/src/paper.ts"
