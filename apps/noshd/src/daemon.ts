@@ -246,6 +246,16 @@ export class NoshDaemon {
     return this.withTerminalTurn(context, async () => this.rejectTerminalAttempt(context, reason));
   }
 
+  /** Models mis-copy long hex ids: an unknown-record slip names the closest recorded id of its kind (at most 3 characters off), so the one correction can fix it. */
+  private withRecordSuggestion(projectId: string, message: string): string {
+    const missing = /^Episode references unknown record ((art|evd)_[0-9a-f]+)$/.exec(message);
+    if (!missing) return message;
+    const id = missing[1]!; const known = missing[2] === "art" ? this.research.records(projectId, "artifact").map((entry) => String(entry.artifactId)) : this.research.records(projectId, "evidence").map((entry) => String(entry.evidenceId));
+    const distance = (other: string) => [...other].reduce((count, character, index) => count + Number(character !== id[index]), 0);
+    const nearest = known.filter((other) => other.length === id.length).sort((left, right) => distance(left) - distance(right))[0];
+    return nearest && distance(nearest) <= 3 ? `${message} (did you mean ${nearest}?)` : message;
+  }
+
   private rejectTerminalAttempt(context: TerminalContext, reason: string): TerminalReceipt {
     this.assertProjectWritable(context.projectId);
     const store = this.storeFor(context.projectId);
@@ -276,7 +286,7 @@ export class NoshDaemon {
       if (!journal.records) {
         try { this.validateTerminal(context, records); }
         catch (error) { const message = error instanceof Error ? error.message : "Terminal validation failed"; // A mis-copied ID of the session's own scope is a correctable model slip; the corrected record is checked by the same policy.
-          const correctable = message.startsWith("Invalid terminal record:") || message.startsWith("Unexpected terminal episode type") || message.startsWith("Episode references") || message.startsWith("Changed file escapes") || message.startsWith("Terminal output requires") || message.startsWith("Scope field mismatch:"); return this.rejectTerminalAttempt(context, correctable ? message : `Terminal policy: ${message}`); }
+          const correctable = message.startsWith("Invalid terminal record:") || message.startsWith("Unexpected terminal episode type") || message.startsWith("Episode references") || message.startsWith("Changed file escapes") || message.startsWith("Terminal output requires") || message.startsWith("Scope field mismatch:"); return this.rejectTerminalAttempt(context, correctable ? this.withRecordSuggestion(context.projectId, message) : `Terminal policy: ${message}`); }
         // Freeze the complete validated intent before ANY record acceptance or effect.
         journal.records = structuredClone(records);
         journal.status = "pending";

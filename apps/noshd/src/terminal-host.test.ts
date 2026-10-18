@@ -139,6 +139,20 @@ describe("durable terminal host journal", () => {
     } finally { store.close(); }
   });
 
+  it("names the recorded id a mis-copied reference was probably meant to be, so the one correction can fix it", async () => {
+    const store = new EventStore(":memory:");
+    try {
+      // Live: a reviewer cited art_…bddd3d7f5… for art_…bddd3f7f5… and, told only the bad id, resent the same envelope.
+      const slip = host(store, vi.fn(() => { throw new Error("Episode references unknown record art_7c220b895ba72bddd3d7f5f0b3752b29"); }));
+      Object.assign(slip, { research: { records: (_projectId: string, schema: string) => schema === "artifact" ? [{ artifactId: "art_7c220b895ba72bddd3f7f5f0b3752b29" }, { artifactId: "art_10bf0ee659b623b9154ab3399391ea96" }] : [] } });
+      expect(await slip.submitTerminal(context, records)).toMatchObject({ accepted: false, retryAllowed: true, error: "Episode references unknown record art_7c220b895ba72bddd3d7f5f0b3752b29 (did you mean art_7c220b895ba72bddd3f7f5f0b3752b29?)" });
+      // Nothing close enough: the message is unchanged.
+      const unrelated = host(store, vi.fn(() => { throw new Error("Episode references unknown record art_ffffffffffffffffffffffffffffffff"); }));
+      Object.assign(unrelated, { research: { records: () => [{ artifactId: "art_7c220b895ba72bddd3f7f5f0b3752b29" }] } });
+      expect(await unrelated.submitTerminal({ ...context, turnId: "ins_unrelated" }, records)).toMatchObject({ error: "Episode references unknown record art_ffffffffffffffffffffffffffffffff" });
+    } finally { store.close(); }
+  });
+
   it("admits at most two provider generations across host replacement", async () => {
     const store = new EventStore(":memory:");
     try {
