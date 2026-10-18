@@ -10,7 +10,7 @@ import { Scheduler } from "@nosh/scheduler";
 import { canonicalJson, schemaUri, sha256, validateRecord, type EventDraft, type JsonValue, type TaskPermissions, episodeTypeForRole } from "@nosh/wire";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { daemonTaskFacts, declaredTaskCommands, librarianNetworkAllowed, librarianResearchHosts, taskCommandInstructions, taskCommandRuns, type DirectionProjection, type ResearchControl, type Stored } from "./research-control.js";
+import { daemonTaskFacts, declaredTaskCommands, librarianNetworkAllowed, librarianResearchHosts, priorAttemptInstructions, taskCommandInstructions, taskCommandRuns, type DirectionProjection, type ResearchControl, type Stored } from "./research-control.js";
 import { completionRunIssues, validateGitCompletion, writeUpOnly } from "./task-postflight.js";
 import { DirectorSlip, directionAutoresearchOutcomes, directionBrief, directorRetryAllowed } from "./director-brief.js";
 import { CHILD_BLOCKED_MS, MIN_AUTORESEARCH_TOKENS, frozenEvaluationFiles, runEvaluationJob, scopeIssues, spawnDirectionAutoresearch, type DirectionSpawn } from "./research-spawner.js";
@@ -237,7 +237,7 @@ export class DirectionSupervisor {
       scope: { projectId: project.projectId, missionId: direction.value.missionId, directionId: direction.entityId, autoresearchId: null, experimentId: null, graphNodeId: node.id },
       goalStack: { projectGoalId: project.projectId, projectGoalSummary: direction.value.decisionUse, missionCriterionIds: direction.value.missionId ? [direction.value.missionId] : [], missionCriterionSummary: direction.value.decisionUse, directionQuestionId: `question_${direction.entityId.slice(4)}`, directionQuestionSummary: direction.value.question, nodeObjective: node.title },
       whyNow: "The deterministic Direction frontier selected this ready node.",
-      instructions: [`Complete only ${node.title}`, "Preserve the frozen evaluation contract", ...(commands.length ? taskCommandInstructions(commands, true) : ["You cannot run commands: report only what you verified by reading, and claim a criterion satisfied only as far as that evidence supports"])],
+      instructions: [`Complete only ${node.title}`, "Preserve the frozen evaluation contract", ...(commands.length ? taskCommandInstructions(commands, true) : ["You cannot run commands: report only what you verified by reading, and claim a criterion satisfied only as far as that evidence supports"]), ...priorAttemptInstructions(this.research.eventsAfter(project.projectId, 0).filter((entry) => entry.scope.directionId === direction.entityId), node.id)],
       inScope: ["**"], outOfScope: [".nosh/contracts/**"], inputArtifactIds: [], inputEvidenceIds: [],
       requiredOutputs: [{ outputId: `output_${taskId.slice(4)}`, kind: role === "general_worker" ? "output_code.commit" : role === "librarian_researcher" ? "output_research.report" : "output_review.verdict", required: true }],
       acceptanceCriteria: [{ criterionId: node.id, statement: node.title, validatorIds: ["validator_direction.postflight"], reviewRubricIds: ["rubric_scientific.correctness"], required: true }],

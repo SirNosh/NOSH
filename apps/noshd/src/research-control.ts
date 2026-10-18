@@ -59,6 +59,22 @@ export function declaredTaskCommands(project: RegisteredProject): Array<{ comman
 export function taskCommandInstructions(commands: ReturnType<typeof declaredTaskCommands>, deferredComparisons = false): string[] {
   return commands.length ? [`You may run these Project-contract commands with nosh_run (by commandId) in your worktree: ${commands.map((command) => `${command.commandId} = ${command.argv.join(" ")} (${command.description})`).join("; ")}. The daemon commits your edits before each run; to cite a run as a criterion validator, run it after your last edit and put its jobId in validatorRunIds.`, ...(deferredComparisons ? ["A comparison across configurations (one run per configuration, each on its own commit) cannot all run after your last edit: claim that criterion deferred_to_review and put every compared run's jobId in its validatorRunIds; the independent Review judges them."] : [])] : [];
 }
+/**
+ * A retried node's worker learns what ended its last three attempts (newest first) from the supervisors' durable failure
+ * events and Review verdicts. A reviewer's own error is not the work's defect, so only its occurrence is named.
+ */
+export function priorAttemptInstructions(events: EventEnvelope[], nodeId: string): string[] {
+  const failures = events.flatMap((entry) => {
+    const payload = entry.payload as { nodeId?: string; issues?: string[]; message?: string; $schema?: string; verdict?: string; summary?: string; target?: { targetId?: string }; criteria?: Array<{ criterionId: string; status: string; finding: string }> };
+    if (entry.type === "record.submitted" && payload.$schema === schemaUri("review-verdict") && payload.target?.targetId === nodeId && payload.verdict !== "PASS") return [`its independent Review returned ${payload.verdict}: ${payload.summary} Unmet: ${(payload.criteria ?? []).filter((criterion) => criterion.status !== "PASS").map((criterion) => `${criterion.criterionId} ${criterion.status}: ${criterion.finding}`).join("; ")}`];
+    if (payload.nodeId !== nodeId) return [];
+    if (["task.postflight_failed", "direction.postflight_failed"].includes(entry.type)) return [`postflight rejected it: ${(payload.issues ?? []).join("; ")}`];
+    if (["task.execution_failed", "direction.task_failed"].includes(entry.type)) return [`it ended with an error: ${payload.message}`];
+    if (entry.type === "task.review_failed") return ["it passed postflight, but its independent Review did not complete (a reviewer error, not a judgement of the work)"];
+    return [];
+  }).slice(-3).reverse();
+  return failures.length ? [`Earlier attempts at this node failed (most recent first); address these before claiming the work complete: ${failures.map((failure, index) => `(${index + 1}) ${failure.slice(0, 290)}`).join(" ")}`.slice(0, 1_000)] : [];
+}
 /** What a task reviewer must see besides the worker's claims: the daemon's own verified facts for that task. */
 export function daemonTaskFacts(research: ResearchControl, projectId: string, taskId: string): string {
   const runs = taskCommandRuns(research)(projectId).filter((run) => run.taskId === taskId).map((run) => ({ jobId: run.jobId, commandId: run.commandId, description: run.description, argv: run.argv, commit: run.commit, cleanWorktree: run.dirty === false, state: run.state, exitCode: run.exitCode, stdoutTail: run.stdoutTail }));

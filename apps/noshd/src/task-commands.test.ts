@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createId } from "@nosh/core";
 import { approveProjectContract, readProjectContract } from "@nosh/evidence";
-import { schemaUri, validateRecord, type JsonValue } from "@nosh/wire";
+import { schemaUri, validateRecord, type EventEnvelope, type JsonValue } from "@nosh/wire";
 import { describe, expect, it, vi } from "vitest";
 import { NoshDaemon } from "./daemon.js";
-import { taskCommandInstructions } from "./research-control.js";
+import { priorAttemptInstructions, taskCommandInstructions } from "./research-control.js";
 import { citedRunIssues, completionRunIssues, writeUpOnly } from "./task-postflight.js";
 import { createTaskWorktree } from "./task-worktree.js";
 
@@ -248,5 +248,33 @@ describe("paper write-up after a cited run", () => {
     expect(withComparisons.every((line) => line.length <= 1_000)).toBe(true);
     // Experiment implementers do not compare methods (later rounds do), and their postflight accepts only satisfied claims.
     expect(taskCommandInstructions(commands).join(" ")).not.toContain("deferred_to_review");
+  });
+});
+
+describe("a retried node's prior attempts", () => {
+  const at = (type: string, payload: Record<string, unknown>) => ({ type, payload }) as unknown as EventEnvelope;
+  it("reaches the next worker as one bounded instruction: the node's last three failures, newest first, without the reviewer's own errors", () => {
+    const events = [
+      at("task.postflight_failed", { taskId: "tsk_1", nodeId: "mnode_a", issues: ["oldest issue"] }),
+      at("task.postflight_failed", { taskId: "tsk_2", nodeId: "mnode_a", issues: ["criterion criterion_1 cites job_x, which did not run on the clean ending commit", "x".repeat(2_000)] }),
+      at("task.postflight_failed", { taskId: "tsk_9", nodeId: "mnode_b", issues: ["another node's issue"] }),
+      at("task.review_failed", { taskId: "tsk_3", nodeId: "mnode_a", message: "Terminal output rejected: Episode references unknown record art_1" }),
+      at("record.submitted", { $schema: schemaUri("review-verdict"), verdict: "REVISE", summary: "The no-calibration baseline was never run.", target: { targetType: "graph_node", targetId: "mnode_a", targetVersion: 1 }, criteria: [{ criterionId: "criterion_1", status: "PASS", finding: "fine" }, { criterionId: "criterion_2", status: "FAIL", finding: "only histogram binning was measured at 30%" }] }),
+    ];
+    const [instruction, ...rest] = priorAttemptInstructions(events, "mnode_a");
+    expect(rest).toEqual([]);
+    expect(instruction!.length).toBeLessThanOrEqual(1_000);
+    expect(instruction).toMatch(/^Earlier attempts at this node failed/);
+    expect(instruction!.indexOf("REVISE")).toBeLessThan(instruction!.indexOf("did not complete"));
+    expect(instruction!.indexOf("did not complete")).toBeLessThan(instruction!.indexOf("clean ending commit"));
+    expect(instruction).toContain("criterion_2 FAIL: only histogram binning was measured at 30%");
+    expect(instruction).not.toContain("criterion_1 PASS");
+    for (const absent of ["oldest issue", "another node's issue", "art_1"]) expect(instruction).not.toContain(absent);
+  });
+  it("is empty for a first attempt and reads the Direction supervisor's failure events", () => {
+    expect(priorAttemptInstructions([], "dnode_a")).toEqual([]);
+    const [instruction] = priorAttemptInstructions([at("direction.postflight_failed", { taskId: "tsk_1", nodeId: "dnode_a", issues: ["a declared command did not pass"] }), at("direction.task_failed", { taskId: "tsk_2", nodeId: "dnode_a", message: "Task preflight requires a clean checked-out Git branch" })], "dnode_a");
+    expect(instruction).toContain("a declared command did not pass");
+    expect(instruction).toContain("Task preflight requires a clean checked-out Git branch");
   });
 });

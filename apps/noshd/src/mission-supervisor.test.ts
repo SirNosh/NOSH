@@ -358,6 +358,11 @@ describe("MissionSupervisor", { timeout: 90_000 }, () => { // Real git worktrees
       for (const deadline = Date.now() + 80_000; Date.now() < deadline && !["completed", "blocked"].includes(research.mission(projectId, mission.entityId).state);) { const supervisor = new MissionSupervisor(research, fixture as unknown as PiAdapter, () => [project], join(directory, "pi-package"), (draft) => { appendFixtureEvent(store, draft); }); await supervisor.tick(); await new Promise((resolve) => setTimeout(resolve, 20)); }
       expect(research.scopedEvents(projectId, mission.entityId, "task.execution_failed")).toHaveLength(2);
       expect(research.scopedEvents(projectId, mission.entityId, "focus.alarm")).toHaveLength(0);
+      // The retried worker is told what ended its node's earlier attempts.
+      const workerPackets = (research.records(projectId, "task-packet") as Array<{ assignedRole?: string; instructions: string[] }>).filter((packet) => packet.assignedRole === "general_worker");
+      expect(workerPackets[0]!.instructions.join(" ")).not.toContain("Earlier attempts at this node failed");
+      expect(workerPackets[2]!.instructions.join(" ")).toContain("Earlier attempts at this node failed");
+      expect(workerPackets.every((packet) => packet.instructions.every((line) => line.length <= 1_000))).toBe(true);
       expect(research.mission(projectId, mission.entityId).state).toBe("completed");
     } finally { store.close(); rmSync(directory, { recursive: true, force: true }); }
   });
