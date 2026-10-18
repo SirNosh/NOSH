@@ -66,8 +66,15 @@
           "maxItems": 500
         },
         "reviewId": {
-          "type": "string",
-          "pattern": "^rev_[0-9a-f]{32}$"
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^rev_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "progressDelta": {
           "type": "object",

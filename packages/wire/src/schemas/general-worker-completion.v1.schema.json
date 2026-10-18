@@ -57,10 +57,12 @@
           "type": "object",
           "properties": {
             "startingCommit": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
             },
             "endingCommit": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
             },
             "changedPaths": {
               "type": "array",
@@ -83,7 +85,8 @@
               ]
             },
             "branch": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
             }
           },
           "required": [
@@ -156,7 +159,8 @@
                   "satisfied",
                   "unsatisfied",
                   "inconclusive",
-                  "not_applicable"
+                  "not_applicable",
+                  "deferred_to_review"
                 ]
               },
               "validatorRunIds": {

@@ -1,4 +1,4 @@
-import { orchestrationProgramSchema, runtimeInstructionSchema, skillManifestSchema, type ExecutionThread, type JsonValue, type OrchestrationProgram, type SkillManifest } from "@nosh/wire";
+import { orchestrationProgramSchema, runtimeInstructionTemplateSchema, skillManifestSchema, type ExecutionThread, type JsonValue, type OrchestrationProgram, type SkillManifest } from "@nosh/wire";
 
 export class SkillRegistry {
   private readonly skills = new Map<string, SkillManifest>();
@@ -19,7 +19,7 @@ export function compileProgram(input: unknown): OrchestrationProgram {
   if (ids.size !== program.steps.length) throw new Error("Program step IDs must be unique");
   if (!ids.has(program.startStepId)) throw new Error("Program startStepId does not exist");
   validateState(program.state.schema, program.state.initial);
-  for (const step of program.steps) { for (const target of [step.nextStepId, step.failureStepId]) if (target && !ids.has(target)) throw new Error(`Program step ${step.stepId} targets missing step ${target}`); runtimeInstructionSchema.parse(step.instruction); if (step.outputStateKey && !(step.outputStateKey in program.state.schema)) throw new Error(`Program step ${step.stepId} writes undeclared state key ${step.outputStateKey}`); if (step.background && step.outputStateKey) throw new Error(`Background step ${step.stepId} cannot bind output before an await boundary`); }
+  for (const step of program.steps) { for (const target of [step.nextStepId, step.failureStepId]) if (target && !ids.has(target)) throw new Error(`Program step ${step.stepId} targets missing step ${target}`); runtimeInstructionTemplateSchema.parse(step.instruction); if (step.outputStateKey && !(step.outputStateKey in program.state.schema)) throw new Error(`Program step ${step.stepId} writes undeclared state key ${step.outputStateKey}`); if (step.background && step.outputStateKey) throw new Error(`Background step ${step.stepId} cannot bind output before an await boundary`); }
   return program;
 }
 

@@ -13,9 +13,9 @@ export function fallbackEpisodeDraft(episodeType: string, summary: string): Epis
 }
 
 export function renderEpisode(episode: Episode): string {
-  const facts = episode.facts.slice(0, 20).map((item) => `- ${clip(item.statement, 500)} [${item.confidence}]${item.evidenceRefs.length ? ` (${item.evidenceRefs.slice(0, 20).join(", ")})` : ""}`).join("\n");
-  const decisions = episode.decisions.slice(0, 20).map((item) => `- ${clip(item.statement, 300)}: ${clip(item.rationale, 500)}`).join("\n");
-  return [`Episode ${episode.episodeId} (${episode.episodeType}, ${episode.status})`, `Objective: ${clip(episode.objective, 1_000)}`, `Summary: ${clip(episode.summary, 1_000)}`, facts ? `Facts:\n${facts}` : "", decisions ? `Decisions:\n${decisions}` : "", episode.artifactIds.length ? `Artifacts: ${episode.artifactIds.slice(0, 20).join(", ")}` : "", episode.evidenceIds.length ? `Evidence: ${episode.evidenceIds.slice(0, 20).join(", ")}` : "", episode.unresolvedQuestions.length ? `Open questions: ${episode.unresolvedQuestions.slice(0, 10).map((item) => clip(item, 300)).join(" | ")}` : ""].filter(Boolean).join("\n");
+  const facts = episode.facts.slice(0, 4).map((item) => `- ${clip(item.statement, 240)} [${item.confidence}]${item.evidenceRefs.length ? ` (${item.evidenceRefs.slice(0, 8).join(", ")})` : ""}`).join("\n");
+  const decisions = episode.decisions.slice(0, 3).map((item) => `- ${clip(item.statement, 180)}: ${clip(item.rationale, 240)}`).join("\n");
+  return [`Episode ${episode.episodeId} (${episode.episodeType}, ${episode.status})`, `Objective: ${clip(episode.objective, 400)}`, `Summary: ${clip(episode.summary, 500)}`, facts ? `Facts:\n${facts}` : "", decisions ? `Decisions:\n${decisions}` : "", episode.artifactIds.length ? `Artifacts: ${episode.artifactIds.slice(0, 12).join(", ")}` : "", episode.evidenceIds.length ? `Evidence: ${episode.evidenceIds.slice(0, 12).join(", ")}` : "", episode.unresolvedQuestions.length ? `Open questions: ${episode.unresolvedQuestions.slice(0, 4).map((item) => clip(item, 180)).join(" | ")}` : ""].filter(Boolean).join("\n");
 }
 
 export function episodeIntegrity(episode: Episode): boolean {
