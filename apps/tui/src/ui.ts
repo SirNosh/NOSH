@@ -256,7 +256,8 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     if (staged) attention.push({ title: staged.title, hint: '/confirm · /discard' });
     const proposals = sideRows.filter(row => row.section === 'approvals' && row.state === 'pending').length;
     if (proposals) attention.push({ title: `${proposals} graph proposal${proposals > 1 ? 's' : ''} pending`, hint: '/approvals to inspect' });
-    research.update(sideRows, attention, climbLines(controller.researchMap, sidebar.width - 4));
+    // Inside paddingX 2, less the terminal's last column (live, a width-4 line lost its last character).
+    research.update(sideRows, attention, climbLines(controller.researchMap, sidebar.width - 5));
     // The spinner animates only while work is in flight.
     if (working && !spinTimer) spinTimer = setInterval(render, 180);
     else if (!working && spinTimer) { clearInterval(spinTimer); spinTimer = undefined; }

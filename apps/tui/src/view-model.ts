@@ -260,7 +260,9 @@ export function climbLines(map: unknown, width: number, maximum = 24): MapLine[]
     { prefix: '', glyph: '', tone: mapTone(state), label: 'CLIMB', title: state, state: '', detail: '', heading: true },
     { prefix: '', glyph: '', tone: 'idle', label: '', title: [detailScore(detail, 'best') && `best ${detailScore(detail, 'best')}`, /(\d+\/\S+) experiments/.exec(detail)?.[1] && `${/(\d+\/\S+) experiments/.exec(detail)![1]} exp`].filter(Boolean).join(' · '), state: '', detail: '' },
   ];
-  const push = (prefix: string, glyph: string, tone: MapTone, title: string, value: string) => {
+  const push = (prefix: string, glyph: string, tone: MapTone, title: string, full: string) => {
+    // A long live state ("implementing") yields to the title's minimum of 4 characters.
+    const keep = Math.max(1, width - prefix.length - (glyph ? 2 : 0) - 5); const value = full.length > keep ? `${full.slice(0, keep - 1)}…` : full;
     const room = Math.max(4, width - prefix.length - (glyph ? 2 : 0) - value.length - 1);
     const clipped = title.length > room ? `${title.slice(0, room - 1)}…` : title;
     lines.push({ prefix, glyph, tone, label: '', title: clipped.padEnd(Math.max(clipped.length + 1, width - prefix.length - (glyph ? 2 : 0) - value.length)), state: value, detail: '' });
@@ -279,6 +281,8 @@ export function climbLines(map: unknown, width: number, maximum = 24): MapLine[]
   };
   push('', '◎', 'idle', 'baseline', detailScore(detail, 'baseline'));
   chain(children(run), '');
+  // Header lines clip to the width as well (chain lines are already exact).
+  for (const line of lines.slice(0, 2)) { const room = Math.max(4, width - (line.label ? line.label.length + 1 : 0)); if (line.title.length > room) line.title = `${line.title.slice(0, room - 1)}…`; }
   return lines.length > maximum ? [...lines.slice(0, maximum - 1), { prefix: '', glyph: '', tone: 'idle', label: '', title: `+${lines.length - maximum + 1} more`, state: '', detail: '' }] : lines;
 }
 

@@ -89,6 +89,8 @@ describe('thin controller', () => {
       pad('  ✗ No intercept', 'crash'),
       pad('  ● Shrink towar…', 'implementing')]);
     expect(lines.slice(2).every(line => row(line).length === 30)).toBe(true);
+    // Headers clip too (live, "best 0.006007 · 12/30 exp" overflowed a 23-column sidebar).
+    expect(climbLines(map, 20).every(line => row(line).length <= 20)).toBe(true);
     expect(lines.map(line => line.tone).slice(2, 5)).toEqual(['idle', 'success', 'error']);
     // A running run anywhere beats a more recently updated finished one.
     expect(climbLines({roots:[climb(), {...older,state:'running',title:'Live run'}]}, 30)[0]!.title).toBe('running');
