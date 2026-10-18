@@ -247,7 +247,7 @@ export function createResearchMap(renderer: CliRenderer) {
     // Workers alone (the chat agent) are not research; say how research starts.
     if (!top) { const empty = text(renderer, 'map-empty', EMPTY_MAP, theme.muted); empty.marginBottom = 1; root.add(empty); return; }
     const kind = plain(top.kind);
-    const path = [MAP_ROOTS[kind]?.label ?? kind.toUpperCase(), `${rootIndex + 1}/${roots.length}`, plain(top.title, 200), ...(drilled ? [`› ${plain(drilled.title, 80)}`] : [])].join('  ');
+    const path = [MAP_ROOTS[kind]?.label ?? kind.toUpperCase(), `${rootIndex + 1}/${roots.length}`, plain(top.state), plain(top.title, 200), ...(drilled ? [`› ${plain(drilled.title, 80)}`] : [])].join('  ');
     const hint = `${roots.length > 1 ? 'tab next · ' : ''}${opened.length ? 'backspace back · ' : ''}↑↓←→ select`;
     root.add(new TextRenderable(renderer, { id: 'map-path', content: new StyledText([bold(fg(theme.accent)(clipped(path, Math.max(8, cols - hint.length - 2)))), fg(theme.muted)(`  ${hint}`)]), width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 }));
     if (workers.length) root.add(new TextRenderable(renderer, { id: 'map-workers', content: new StyledText([fg(theme.secondary)(clipped(`workers  ${workers.join('  ·  ')}`, cols))]), width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 }));

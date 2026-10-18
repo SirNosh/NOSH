@@ -100,7 +100,7 @@ export class Controller {
   private generation = 0;
   private pollingGeneration: number | undefined;
   private bootstrapped = false;
-  private pending: { path: string; body: Record<string, unknown> } | undefined;
+  private pending: { path: string; body: Record<string, unknown>; fromMap?: boolean } | undefined;
   private rows: ViewRow[] = [];
   private readonly sections = new Map<string, ViewRow[]>();
   private readonly sectionCursors = new Map<string, number>();
@@ -337,7 +337,9 @@ export class Controller {
   private requireProject(): void { if (!this.projectId) throw new Error('Select or open a project first'); }
   private query(): string { this.requireProject(); return `?projectId=${encodeURIComponent(this.projectId)}`; }
   private stage(path: string, body: Record<string, unknown>): void {
-    this.pending = { path, body: { ...body, projectId: this.projectId, idempotencyKey: `tui-${randomUUID()}` } };
+    // The map draws from researchMap, not rows/detail, so a discard can return to it; other views would show this review.
+    const fromMap = this.view === 'map' || this.view === 'action' && this.pending?.fromMap === true;
+    this.pending = { path, body: { ...body, projectId: this.projectId, idempotencyKey: `tui-${randomUUID()}` }, fromMap };
     this.detail = `REVIEW ACTION\n${safeText(path)}\n${rawDetail(this.pending.body)}\n\n/confirm to apply · /discard to dismiss`;
     this.rows = [{id:'pending',section:'action',title:this.pendingAction()!.title,subtitle:safeText(path),fields:fields(this.pending.body)}];
     this.view = 'action';
@@ -478,7 +480,7 @@ export class Controller {
         const data = await this.client.request(pending.path,pending.body); if (!current()) return;
         this.present('result',responseRows('result',data),data); return;
       }
-      case '/discard': this.pending = undefined; this.view = 'chat'; return;
+      case '/discard': this.view = this.pending?.fromMap ? 'map' : 'chat'; this.pending = undefined; return;
       case '/paths': this.requireProject(); this.view = 'paths'; this.rows = []; this.detail = `${this.projects.find(p => p.projectId === this.projectId)?.repositoryRoot}\n\nOpen this repository in your external editor.\nPaper: docs/paper.md\nContract: .nosh/contracts/project.v<N>.json (active version in .nosh/project.json)\nUse /status and /job for daemon-owned artifact references.\nNo shell is embedded. Contract approval remains an explicit intake conversation.`; return;
       case '/refresh': if (['status','jobs','approvals','projects','models','map'].includes(this.view)) await this.run('/'+this.view); else { await this.poll(); await this.loadModels().catch(() => undefined); } return;
       default: throw new Error('Unknown command. Use /help.');

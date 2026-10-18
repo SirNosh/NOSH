@@ -64,8 +64,13 @@ describe('research map graph', () => {
     const { boxes } = layoutGraph(root);
     expect(suggestedCommand(box(boxes, 'mnode_impl'))).toBe('/retry missions mis_x 113 mnode_impl');
     expect(suggestedCommand(box(boxes, 'dnode_eval'))).toBe('/retry directions dir_y 25 dnode_eval');
-    expect(suggestedCommand(box(boxes, 'mis_x'))).toBe('/transition missions mis_x 113 running');
-    expect(suggestedCommand(box(boxes, 'dir_y'))).toBe('/transition directions dir_y 25 active');
+    // Resuming a blocked root whose node is still failed re-blocks it at once, so the root offers that node's retry first.
+    expect(suggestedCommand(box(boxes, 'mis_x'))).toBe('/retry missions mis_x 113 mnode_impl');
+    expect(suggestedCommand(box(boxes, 'dir_y'))).toBe('/retry directions dir_y 25 dnode_eval');
+    const retried = layoutGraph({ ...root, children: root.children.filter(child => child.state !== 'failed') }).boxes;
+    expect(suggestedCommand(box(retried, 'mis_x'))).toBe('/transition missions mis_x 113 running');
+    const direction = { kind: 'direction', id: 'dir_y', title: 'Which calibrator', state: 'blocked', detail: 'v26', version: 26, children: [{ kind: 'node', id: 'dnode_eval', title: 'Evaluate', state: 'ready', detail: 'general worker · attempt 3/4', children: [] }] };
+    expect(suggestedCommand(box(layoutGraph(direction).boxes, 'dir_y'))).toBe('/transition directions dir_y 26 active');
     expect(suggestedCommand(box(boxes, 'job_q'))).toBe('/job job_q');
     for (const id of ['mnode_done', 'ar_z']) expect(suggestedCommand(box(boxes, id))).toBe('');
     expect(suggestedCommand(box(layoutGraph(box(boxes, 'ar_z').node).boxes, 'exp_a'))).toBe('');

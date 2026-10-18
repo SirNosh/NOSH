@@ -57,7 +57,7 @@ try {
       { kind: 'node', id: 'n2', title: 'Final review', state: 'ready', detail: 'final review', children: [] }] }] };
   controller.view = 'map'; workspace.input.value = ''; workspace.render(); await test.renderOnce();
   frame = test.captureCharFrame();
-  check(frame.includes('RESEARCH MAP') && frame.includes('#0 MISSION') && frame.includes('Boundary tests') && frame.includes('┌') && frame.includes('▼') && frame.includes('▰▰▰▱▱▱ 1/2') && frame.includes('workers'), `Research map did not render as a graph:
+  check(frame.includes('RESEARCH MAP') && frame.includes('MISSION  1/1  running  Boundary tests') && frame.includes('#0 MISSION') && frame.includes('Boundary tests') && frame.includes('┌') && frame.includes('▼') && frame.includes('▰▰▰▱▱▱ 1/2') && frame.includes('workers'), `Research map did not render as a graph:
 ${frame}`);
   // Down selects the failed node under the Mission; Enter fills the composer with its retry, applied only after confirmation.
   test.mockInput.pressArrow('down'); await test.renderOnce(); workspace.render(); await test.renderOnce();

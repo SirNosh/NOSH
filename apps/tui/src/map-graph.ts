@@ -104,7 +104,12 @@ export function moveSelection(boxes: GraphBox[], current: number, direction: Gra
 export function suggestedCommand(box: GraphBox): string {
   const kind = text(box.node.kind); const state = text(box.node.state, 40); const id = text(box.node.id, 80);
   if (kind === 'node' && ['failed', 'blocked'].includes(state) && box.owner && typeof box.owner.version === 'number') return `/retry ${text(box.owner.kind)}s ${text(box.owner.id, 80)} ${box.owner.version} ${id}`;
-  if ((kind === 'mission' || kind === 'direction') && state === 'blocked' && typeof box.node.version === 'number') return `/transition ${kind}s ${id} ${box.node.version} ${kind === 'mission' ? 'running' : 'active'}`;
+  if ((kind === 'mission' || kind === 'direction') && state === 'blocked' && typeof box.node.version === 'number') {
+    // Resuming while a node is still failed re-blocks at once (no ready frontier), so retry that node first.
+    const stuck = (Array.isArray(box.node.children) ? box.node.children.map(record) : []).find(child => text(child.kind) === 'node' &&['failed', 'blocked'].includes(text(child.state, 40)));
+    if (stuck) return `/retry ${kind}s ${id} ${box.node.version} ${text(stuck.id, 80)}`;
+    return `/transition ${kind}s ${id} ${box.node.version} ${kind === 'mission' ? 'running' : 'active'}`;
+  }
   if (kind === 'job' && id) return `/job ${id}`;
   return '';
 }

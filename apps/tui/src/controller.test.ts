@@ -387,6 +387,11 @@ describe('project-scoped concurrency', () => {
     expect(controller.pendingAction()).toMatchObject({ path: '/directions/d/nodes/dnode_x/transition', body: { expectedVersion: 7, next: 'ready' } });
     await expect(controller.execute('/retry autoresearch a 1 n')).rejects.toThrow('Use /retry');
   });
+  it('returns to the view an action was staged from when it is discarded', async () => {
+    const {controller} = setup(); controller.view = 'map'; await controller.execute('/retry missions m 7 mnode_x');
+    expect(controller.view).toBe('action'); await controller.execute('/discard');
+    expect(controller.view).toBe('map'); expect(controller.pendingAction()).toBeUndefined();
+  });
   it('never retries a failed confirmation and keeps its original project/version/idempotency', async () => {
     const {controller,request} = setup(); await controller.execute('/transition missions m 3 paused'); const action=controller.pendingAction()!;
     request.mockRejectedValueOnce(new Error('lost response'));
