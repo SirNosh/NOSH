@@ -909,6 +909,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "nosh-orchestration"
+version = "0.0.0"
+dependencies = [
+ "futures-util",
+ "nosh-agent",
+ "nosh-research",
+ "nosh-store",
+ "nosh-sys",
+ "nosh-wire",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "time",
+ "tokio",
+]
+
+[[package]]
 name = "nosh-research"
 version = "0.0.0"
 dependencies = [

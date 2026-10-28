@@ -110,7 +110,7 @@ impl TerminalOutput {
 }
 
 /// JavaScript's `String.prototype.trim` whitespace and line terminators.
-pub(crate) fn is_js_whitespace(character: char) -> bool {
+pub fn is_js_whitespace(character: char) -> bool {
     matches!(
         character,
         '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ' | '\u{A0}' | '\u{1680}' | '\u{2000}'

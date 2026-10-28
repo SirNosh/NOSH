@@ -88,10 +88,16 @@
         "docs/protocols/terminal-output.md"
       ]
     },
+    "nosh-orchestration:runtime": {
+      "synced": "27d45b172809df98c710bf9fdc15953b56d7c0dc",
+      "paths": [
+        "packages/orchestration-runtime/src"
+      ],
+      "strict": []
+    },
     "nosh-orchestration": {
       "synced": null,
       "paths": [
-        "packages/orchestration-runtime/src",
         "apps/noshd/src/mission-supervisor.ts",
         "apps/noshd/src/direction-supervisor.ts",
         "apps/noshd/src/autoresearch-supervisor.ts"
