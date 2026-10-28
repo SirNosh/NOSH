@@ -19,6 +19,7 @@ use nosh_wire::{canonical_json, normalize_numbers, validate_record};
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Mutex;
 
 pub use completion::{
@@ -35,7 +36,7 @@ pub use records::ReviewAuthority;
 /// TypeScript constructor's `store`, `project`, `publish`, and `assertWritable` callbacks).
 pub trait Host {
     /// The Project's event store; an unknown Project is an error.
-    fn store(&self, project_id: &str) -> Result<&EventStore>;
+    fn store(&self, project_id: &str) -> Result<Rc<EventStore>>;
     /// The registered Project: `{ projectId, repositoryRoot, databasePath, registeredAt }`.
     fn project(&self, project_id: &str) -> Result<Value>;
     /// Delivers a newly stored event to subscribers.
@@ -65,7 +66,7 @@ impl<H: Host> ResearchControl<H> {
         &self.host
     }
 
-    fn store(&self, project_id: &str) -> Result<&EventStore> {
+    fn store(&self, project_id: &str) -> Result<Rc<EventStore>> {
         self.host.store(project_id)
     }
 

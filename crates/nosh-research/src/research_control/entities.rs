@@ -232,7 +232,7 @@ impl<H: Host> ResearchControl<H> {
         let non_objectives = trimmed(input.non_objectives.as_deref().unwrap_or_default());
         let (title, objective) = (js_trim(&input.title), js_trim(&input.objective));
         if let Some(replay) = created_projection_replay(
-            self.store(project_id)?,
+            &*self.store(project_id)?,
             project_id,
             &input.idempotency_key,
             "mission",
@@ -432,7 +432,7 @@ impl<H: Host> ResearchControl<H> {
     ) -> Result<Value> {
         let intent = json!({ "command": "mission.transition", "missionId": mission_id, "expectedVersion": expected_version, "next": next });
         if let Some(replay) = projection_intent_replay(
-            self.store(project_id)?,
+            &*self.store(project_id)?,
             project_id,
             idempotency_key,
             "mission",
@@ -528,7 +528,7 @@ impl<H: Host> ResearchControl<H> {
         js_sort(&mut sorted);
         let intent = json!({ "command": "mission.graph_mutation", "missionId": mission_id, "expectedVersion": expected_version, "baseGraphVersion": base_graph_version, "operations": operations, "rationale": rationale, "evidenceIds": sorted, "approved": approved });
         if let Some(replay) = projection_intent_replay(
-            self.store(project_id)?,
+            &*self.store(project_id)?,
             project_id,
             idempotency_key,
             "mission",
@@ -676,7 +676,7 @@ impl<H: Host> ResearchControl<H> {
             intent["userRetry"] = json!(true);
         }
         if let Some(replay) = projection_intent_replay(
-            self.store(project_id)?,
+            &*self.store(project_id)?,
             project_id,
             idempotency_key,
             entity_type,
@@ -768,7 +768,7 @@ impl<H: Host> ResearchControl<H> {
             .map_or(Value::Null, |id| json!(id));
         let origin = spawned.map_or(Value::Null, |spawned| spawned.origin.clone());
         if let Some(replay) = created_projection_replay(
-            self.store(project_id)?,
+            &*self.store(project_id)?,
             project_id,
             &input.idempotency_key,
             "direction",
@@ -853,7 +853,7 @@ impl<H: Host> ResearchControl<H> {
     ) -> Result<Value> {
         let intent = json!({ "command": "direction.transition", "directionId": direction_id, "expectedVersion": expected_version, "next": next });
         if let Some(replay) = projection_intent_replay(
-            self.store(project_id)?,
+            &*self.store(project_id)?,
             project_id,
             idempotency_key,
             "direction",
@@ -943,7 +943,7 @@ impl<H: Host> ResearchControl<H> {
         js_sort(&mut sorted);
         let intent = json!({ "command": "direction.graph_mutation", "directionId": direction_id, "expectedVersion": expected_version, "baseGraphVersion": base_graph_version, "operations": operations, "rationale": rationale, "evidenceIds": sorted });
         if let Some(replay) = projection_intent_replay(
-            self.store(project_id)?,
+            &*self.store(project_id)?,
             project_id,
             idempotency_key,
             "direction",
@@ -1150,7 +1150,7 @@ impl<H: Host> ResearchControl<H> {
     ) -> Result<Value> {
         let intent = json!({ "command": "direction.baseline_accept", "directionId": direction_id, "expectedVersion": expected_version, "commit": input.commit, "reviewId": input.review_id, "evaluationContractHash": input.evaluation_contract_hash });
         if let Some(replay) = projection_intent_replay(
-            self.store(project_id)?,
+            &*self.store(project_id)?,
             project_id,
             &input.idempotency_key,
             "direction",
@@ -1234,7 +1234,7 @@ impl<H: Host> ResearchControl<H> {
             .as_deref()
             .map_or(Value::Null, |id| json!(id));
         if let Some(replay) = created_projection_replay(
-            self.store(project_id)?,
+            &*self.store(project_id)?,
             project_id,
             &input.idempotency_key,
             "autoresearch",
@@ -1405,7 +1405,7 @@ impl<H: Host> ResearchControl<H> {
     ) -> Result<Value> {
         let intent = json!({ "command": "autoresearch.transition", "autoresearchId": autoresearch_id, "expectedVersion": expected_version, "next": next });
         if let Some(replay) = projection_intent_replay(
-            self.store(project_id)?,
+            &*self.store(project_id)?,
             project_id,
             idempotency_key,
             "autoresearch",
@@ -1490,7 +1490,7 @@ impl<H: Host> ResearchControl<H> {
         let mut intent = json!({ "command": "autoresearch.advance", "autoresearchId": autoresearch_id, "expectedVersion": expected_version, "round": round, "frontier": canonical_frontier });
         normalize_numbers(&mut intent);
         if let Some(replay) = projection_intent_replay(
-            self.store(project_id)?,
+            &*self.store(project_id)?,
             project_id,
             idempotency_key,
             "autoresearch",

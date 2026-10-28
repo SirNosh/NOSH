@@ -1070,7 +1070,8 @@ async fn a_turn_sleeping_on_an_async_call_refuses_thinking_changes_and_an_abort_
     let receipts = Arc::new(Receipts {
         accepted: Mutex::new(Vec::new()),
     });
-    let run = Duration::from_millis(5_000);
+    // Long enough that a loaded machine still ends the aborted turn (about 2.5 s) well before the run does.
+    let run = Duration::from_millis(8_000);
     let recorded = adapter(
         Some(Arc::new(SlowRun { run })),
         Some(Arc::clone(&receipts) as Arc<dyn TerminalHost>),

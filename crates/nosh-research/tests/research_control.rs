@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::rc::Rc;
 use std::sync::LazyLock;
 
 const PROJECT: &str = "prj_55555555555555555555555555555555";
@@ -26,14 +27,14 @@ const BLOCKER: &str = "blk_11111111111111111111111111111111";
 const FUTURE: &str = "2099-01-01T00:00:00.000Z";
 
 struct TestHost {
-    store: EventStore,
+    store: Rc<EventStore>,
     project: Value,
     published: RefCell<Vec<String>>,
 }
 
 impl Host for TestHost {
-    fn store(&self, _project_id: &str) -> nosh_research::Result<&EventStore> {
-        Ok(&self.store)
+    fn store(&self, _project_id: &str) -> nosh_research::Result<Rc<EventStore>> {
+        Ok(Rc::clone(&self.store))
     }
     fn project(&self, _project_id: &str) -> nosh_research::Result<Value> {
         Ok(self.project.clone())
@@ -345,7 +346,7 @@ fn dispatch(
 /// `{ results: [{ ok, published } | { error }], state }`, as the TypeScript harness prints it.
 fn run_rust(root: &Path, database: &Path, ops: &[Value]) -> Value {
     let host = TestHost {
-        store: EventStore::open(database).unwrap(),
+        store: Rc::new(EventStore::open(database).unwrap()),
         project: project(root, database),
         published: RefCell::new(Vec::new()),
     };
