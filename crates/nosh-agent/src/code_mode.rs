@@ -22,7 +22,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc as channel;
@@ -47,6 +47,22 @@ pub const MAX_CODE_CHARS: usize = 20_000;
 /// The interpreter's native frames sit below its 1 MB JS stack limit; Windows' default 1 MB
 /// thread stack overflows natively first.
 const GUEST_THREAD_STACK: usize = 8 * 1024 * 1024;
+static LIVE_GUESTS: AtomicUsize = AtomicUsize::new(0);
+
+/// Interpreter threads still running, including those of programs already answered (a cancelled
+/// program's thread stops at the interpreter's next interrupt check). For tests.
+#[doc(hidden)]
+pub fn live_guest_threads() -> usize {
+    LIVE_GUESTS.load(Ordering::SeqCst)
+}
+
+struct LiveGuest;
+
+impl Drop for LiveGuest {
+    fn drop(&mut self) {
+        LIVE_GUESTS.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ProgramResult {
@@ -75,9 +91,11 @@ enum GuestMessage {
     Done(Result<String, String>),
 }
 
-enum Inbound {
-    Reply { id: u64, ok: bool, json: String },
-    Cancel,
+/// A host reply to the guest's call `id`.
+struct Reply {
+    id: u64,
+    ok: bool,
+    json: String,
 }
 
 pub async fn run_program(
@@ -109,10 +127,13 @@ pub async fn run_program(
         limits,
         cancelled: Arc::clone(&cancelled),
     };
+    LIVE_GUESTS.fetch_add(1, Ordering::SeqCst);
+    let live = LiveGuest;
     let spawned = std::thread::Builder::new()
         .name("nosh-code".into())
         .stack_size(GUEST_THREAD_STACK)
         .spawn(move || {
+            let _live = live;
             if let Some(result) = evaluate(&input, &outbound, &inbound) {
                 let _ = outbound.send(GuestMessage::Done(result));
             }
@@ -136,7 +157,7 @@ pub async fn run_program(
                     logs.push(text);
                 },
                 Some(GuestMessage::Call { id, name, args_json }) => {
-                    let refuse = |json: String| { let _ = replies.send(Inbound::Reply { id, ok: false, json }); };
+                    let refuse = |json: String| { let _ = replies.send(Reply { id, ok: false, json }); };
                     if !functions.contains(&name.as_str()) { refuse(format!("Unknown tool function {name}")); continue; }
                     if calls >= limits.max_calls { refuse(format!("Program exceeded {} tool calls", limits.max_calls)); continue; }
                     let index = calls;
@@ -157,13 +178,13 @@ pub async fn run_program(
             },
             Some((id, result)) = completions.recv() => {
                 let (ok, json) = match result { Ok(value) => (true, canonical_json(&value)), Err(error) => (false, error) };
-                let _ = replies.send(Inbound::Reply { id, ok, json });
+                let _ = replies.send(Reply { id, ok, json });
             }
         }
     };
-    // Stops a spinning interpreter (the interrupt handler) and a waiting one (the channel).
+    // Stops a spinning interpreter (the interrupt handler); a waiting one stops when `replies`
+    // drops with this function.
     cancelled.store(true, Ordering::SeqCst);
-    let _ = replies.send(Inbound::Cancel);
     match outcome {
         Ok(value) => ProgramResult {
             ok: true,
@@ -228,7 +249,7 @@ struct Handles {
 fn evaluate(
     input: &GuestInput,
     outbound: &channel::UnboundedSender<GuestMessage>,
-    inbound: &mpsc::Receiver<Inbound>,
+    inbound: &mpsc::Receiver<Reply>,
 ) -> Option<Result<String, String>> {
     let runtime = match Runtime::new() {
         Ok(runtime) => runtime,
@@ -267,7 +288,7 @@ fn run_guest(
     clock: &CpuClock,
     handles: &Rc<Handles>,
     outbound: &channel::UnboundedSender<GuestMessage>,
-    inbound: &mpsc::Receiver<Inbound>,
+    inbound: &mpsc::Receiver<Reply>,
 ) -> Option<Result<String, String>> {
     let program = context.with(|ctx| -> Result<Persistent<Promise<'static>>, String> {
         let well_formed: Function = ctx.eval("String.prototype.toWellFormed").map_err(|error| describe_error(&ctx, handles, error))?;
@@ -350,7 +371,7 @@ delete globalThis.__call; delete globalThis.__log;"#
             return Some(Err("The program is waiting on something that can never finish (no tool call is outstanding).".into()));
         }
         match inbound.recv() {
-            Ok(Inbound::Reply { id, ok, json }) => {
+            Ok(Reply { id, ok, json }) => {
                 let Some((resolve, reject)) = handles.waiting.borrow_mut().remove(&id) else {
                     continue;
                 };
@@ -364,7 +385,7 @@ delete globalThis.__call; delete globalThis.__log;"#
                     }
                 });
             }
-            Ok(Inbound::Cancel) | Err(_) => return None,
+            Err(_) => return None,
         }
     }
 }
