@@ -577,6 +577,18 @@ name = "nosh"
 version = "0.0.0"
 
 [[package]]
+name = "nosh-agent"
+version = "0.0.0"
+dependencies = [
+ "nosh-sys",
+ "nosh-wire",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "nosh-research"
 version = "0.0.0"
 dependencies = [
