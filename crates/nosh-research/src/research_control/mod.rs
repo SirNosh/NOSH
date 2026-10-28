@@ -14,7 +14,7 @@ mod records;
 
 use crate::{Error, Result, rejected};
 use nosh_store::{EventStore, GraphInput, ProjectionInput};
-use nosh_wire::js::{strict_equal, string};
+use nosh_wire::js::{slice_to, strict_equal, string};
 use nosh_wire::{canonical_json, normalize_numbers, validate_record};
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
@@ -224,8 +224,10 @@ pub fn declared_task_commands(project: &Value) -> Vec<Value> {
         .unwrap_or_default()
 }
 
-/// Task-packet instruction listing the runnable commands, or nothing when none are declared.
-pub fn task_command_instructions(commands: &[Value]) -> Vec<String> {
+/// Task-packet instructions listing the runnable commands, or nothing when none are declared.
+/// Mission and Direction tasks (whose postflight accepts deferred criteria) also learn how to
+/// evidence a comparison across configurations.
+pub fn task_command_instructions(commands: &[Value], deferred_comparisons: bool) -> Vec<String> {
     if commands.is_empty() {
         return Vec::new();
     }
@@ -246,10 +248,151 @@ pub fn task_command_instructions(commands: &[Value]) -> Vec<String> {
             )
         })
         .collect();
-    vec![format!(
+    let mut instructions = vec![format!(
         "You may run these Project-contract commands with nosh_run (by commandId) in your worktree: {}. The daemon commits your edits before each run; to cite a run as a criterion validator, run it after your last edit and put its jobId in validatorRunIds.",
         listed.join("; ")
+    )];
+    if deferred_comparisons {
+        instructions.push("A comparison across configurations (one run per configuration, each on its own commit) cannot all run after your last edit: claim that criterion deferred_to_review and put every compared run's jobId in its validatorRunIds; the independent Review judges them.".into());
+    }
+    instructions
+}
+
+/// A retried node's worker learns what ended its last three attempts (newest first) from the
+/// supervisors' durable failure events and Review verdicts. A reviewer's own error is not the
+/// work's defect, so only its occurrence is named.
+pub fn prior_attempt_instructions(events: &[Value], node_id: &str) -> Vec<String> {
+    // `array.join(separator)`: null and undefined elements become "".
+    let join = |items: Option<&Value>, separator: &str| -> String {
+        items
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|item| {
+                if item.is_null() {
+                    String::new()
+                } else {
+                    string(Some(item))
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(separator)
+    };
+    let mut failures: Vec<String> = events
+        .iter()
+        .filter_map(|entry| {
+            let payload = &entry["payload"];
+            let kind = entry["type"].as_str().unwrap_or_default();
+            if kind == "record.submitted"
+                && is_schema(payload, "review-verdict")
+                && is(payload.get("target").and_then(|target| target.get("targetId")), node_id)
+                && !is(payload.get("verdict"), "PASS")
+            {
+                let unmet: Vec<String> = payload["criteria"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|criterion| !is(criterion.get("status"), "PASS"))
+                    .map(|criterion| {
+                        format!(
+                            "{} {}: {}",
+                            string(criterion.get("criterionId")),
+                            string(criterion.get("status")),
+                            string(criterion.get("finding"))
+                        )
+                    })
+                    .collect();
+                return Some(format!(
+                    "its independent Review returned {}: {} Unmet: {}",
+                    string(payload.get("verdict")),
+                    string(payload.get("summary")),
+                    unmet.join("; ")
+                ));
+            }
+            if !is(payload.get("nodeId"), node_id) {
+                return None;
+            }
+            match kind {
+                "task.postflight_failed" | "direction.postflight_failed" => Some(format!(
+                    "postflight rejected it: {}",
+                    join(payload.get("issues"), "; ")
+                )),
+                "task.execution_failed" | "direction.task_failed" => Some(format!(
+                    "it ended with an error: {}",
+                    string(payload.get("message"))
+                )),
+                "task.review_failed" => Some("it passed postflight, but its independent Review did not complete (a reviewer error, not a judgement of the work)".into()),
+                _ => None,
+            }
+        })
+        .collect();
+    failures.drain(..failures.len().saturating_sub(3));
+    if failures.is_empty() {
+        return Vec::new();
+    }
+    let listed: Vec<String> = failures
+        .iter()
+        .rev()
+        .enumerate()
+        .map(|(index, failure)| format!("({}) {}", index + 1, slice_to(failure, 290)))
+        .collect();
+    vec![slice_to(
+        &format!(
+            "Earlier attempts at this node failed (most recent first); address these before claiming the work complete: {}",
+            listed.join(" ")
+        ),
+        1_000,
     )]
+}
+
+/// The earlier worker attempt a retry should build on: the latest one at this node that passed
+/// postflight, unless its Review returned REDESIGN (a rejected approach, so start over). REVISE,
+/// BLOCKED and a reviewer's own error keep it. Returns `{ taskId }` or null.
+pub fn resumable_attempt(events: &[Value], node_id: &str) -> Value {
+    let mut passed: Vec<String> = Vec::new();
+    let mut current: Option<String> = None;
+    for entry in events {
+        let payload = &entry["payload"];
+        let kind = entry["type"].as_str().unwrap_or_default();
+        if kind == "record.submitted"
+            && is_schema(payload, "review-verdict")
+            && is(
+                payload
+                    .get("target")
+                    .and_then(|target| target.get("targetId")),
+                node_id,
+            )
+        {
+            if is(payload.get("verdict"), "REDESIGN")
+                && current.as_deref().is_some_and(|lease| !lease.is_empty())
+                && passed.last() == current.as_ref()
+            {
+                passed.pop();
+            }
+            continue;
+        }
+        if !is(payload.get("nodeId"), node_id)
+            || !matches!(
+                kind,
+                "mission.node_state_changed" | "direction.node_state_changed"
+            )
+        {
+            continue;
+        }
+        let lease = payload.get("leaseId").and_then(Value::as_str);
+        if is(payload.get("nodeState"), "leased") {
+            current = lease.map(str::to_owned);
+        }
+        if is(payload.get("nodeState"), "postflight")
+            && let Some(lease) = lease.filter(|lease| !lease.is_empty())
+        {
+            current = Some(lease.to_owned());
+            passed.push(lease.to_owned());
+        }
+    }
+    passed
+        .last()
+        .map_or(Value::Null, |task_id| json!({ "taskId": task_id }))
 }
 
 /// What a task reviewer must see besides the worker's claims: the daemon's own verified facts for

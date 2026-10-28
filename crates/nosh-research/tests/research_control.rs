@@ -155,13 +155,18 @@ fn dispatch(
         return match name {
             "librarianNetworkAllowed" => Ok(json!(librarian_network_allowed(&arg(0)))),
             "declaredTaskCommands" => Ok(json!(declared_task_commands(&arg(0)))),
-            "taskCommandInstructions" => {
-                Ok(json!(task_command_instructions(&serde_json::from_value::<
-                    Vec<Value>,
-                >(arg(
-                    0
-                ))?)))
-            }
+            "taskCommandInstructions" => Ok(json!(task_command_instructions(
+                &serde_json::from_value::<Vec<Value>>(arg(0))?,
+                nosh_wire::js::truthy(op["args"].get(1)),
+            ))),
+            "priorAttemptInstructions" => Ok(json!(prior_attempt_instructions(
+                &serde_json::from_value::<Vec<Value>>(arg(0))?,
+                &text(1),
+            ))),
+            "resumableAttempt" => Ok(resumable_attempt(
+                &serde_json::from_value::<Vec<Value>>(arg(0))?,
+                &text(1),
+            )),
             "daemonTaskFacts" => Ok(json!(daemon_task_facts(research, &p, &text(1))?)),
             "missionOutcomes" => mission_outcomes(
                 research,
@@ -514,6 +519,34 @@ impl Mask {
 
 #[derive(Default)]
 struct Ops(Vec<Value>);
+
+/// Retry history for three nodes: n1 fails every way (four failures, so the oldest drops, one
+/// past the 290-unit clip with a surrogate pair at the cut); n2 passes postflight twice with a
+/// REVISE then a REDESIGN; n3 has only a reviewer error and a lease without postflight.
+fn prior_attempt_events() -> Value {
+    let verdict = |node: &str, verdict: &str| json!({ "type": "record.submitted", "payload": { "$schema": "https://nosh.dev/schemas/review-verdict/v1", "verdict": verdict, "summary": format!("{verdict} summary."), "target": { "targetId": node }, "criteria": [{ "criterionId": "c1", "status": "PASS", "finding": "ok" }, { "criterionId": "c2", "status": "FAIL", "finding": "missing ablation" }] } });
+    let state = |node: &str, state: &str, lease: Value| json!({ "type": "mission.node_state_changed", "payload": { "nodeId": node, "nodeState": state, "leaseId": lease } });
+    let long = format!("{}😀 tail", "x".repeat(288));
+    json!([
+        { "type": "task.execution_failed", "payload": { "nodeId": "n1", "message": "oldest" } },
+        { "type": "task.postflight_failed", "payload": { "nodeId": "n1", "issues": ["scope", null, "validator"] } },
+        { "type": "direction.task_failed", "payload": { "nodeId": "n1", "message": long } },
+        { "type": "task.review_failed", "payload": { "nodeId": "n1" } },
+        verdict("n1", "PASS"),
+        { "type": "direction.postflight_failed", "payload": { "nodeId": "n2" } },
+        state("n2", "leased", json!("lease-a")),
+        state("n2", "postflight", json!("lease-a")),
+        verdict("n2", "REVISE"),
+        state("n2", "leased", json!("lease-b")),
+        { "type": "direction.node_state_changed", "payload": { "nodeId": "n2", "nodeState": "postflight", "leaseId": "lease-b" } },
+        verdict("n2", "REDESIGN"),
+        { "type": "task.review_failed", "payload": { "nodeId": "n3" } },
+        state("n3", "leased", json!("lease-c")),
+        state("n3", "postflight", Value::Null),
+        verdict("n3", "REDESIGN"),
+        { "type": "record.submitted", "payload": { "$schema": "https://nosh.dev/schemas/evidence/v1", "nodeId": "n3" } },
+    ])
+}
 
 impl Ops {
     fn call(&mut self, method: &str, args: Value) -> usize {
@@ -1316,6 +1349,13 @@ fn scenario() -> Vec<Value> {
     s.function("missionOutcomes", json!([p, mid1, 3000]));
     s.function("taskCommandInstructions", json!([[{ "commandId": "test", "description": "Unit tests", "argv": ["node", "--test"], "timeoutSeconds": 60 }]]));
     s.function("taskCommandInstructions", json!([[]]));
+    s.function("taskCommandInstructions", json!([[{ "commandId": "test", "description": "Unit tests", "argv": ["node", "--test"], "timeoutSeconds": 60 }], true]));
+    s.function("taskCommandInstructions", json!([[], true]));
+    let attempts = prior_attempt_events();
+    for node in ["n1", "n2", "n3"] {
+        s.function("priorAttemptInstructions", json!([attempts, node]));
+        s.function("resumableAttempt", json!([attempts, node]));
+    }
     let running_events = json!([
         { "type": "mission.running", "timestamp": "1970-01-01T00:00:00.000Z" },
         { "type": "mission.running", "timestamp": "1970-01-01T00:01:00.000Z" },

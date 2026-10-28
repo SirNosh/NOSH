@@ -3,7 +3,7 @@
   "tsBranch": "agent/optimize-harness-and-project-intake",
   "crates": {
     "nosh-wire": {
-      "synced": "dba6cd8460b25bc4c34cc196cff79cde765ff8b8",
+      "synced": "27d45b172809df98c710bf9fdc15953b56d7c0dc",
       "paths": [
         "packages/core/src",
         "packages/wire/src",
@@ -18,7 +18,7 @@
       ]
     },
     "nosh-store": {
-      "synced": "dba6cd8460b25bc4c34cc196cff79cde765ff8b8",
+      "synced": "27d45b172809df98c710bf9fdc15953b56d7c0dc",
       "paths": [
         "packages/persistence/src"
       ],
@@ -28,7 +28,7 @@
       ]
     },
     "nosh-sys": {
-      "synced": "dba6cd8460b25bc4c34cc196cff79cde765ff8b8",
+      "synced": "27d45b172809df98c710bf9fdc15953b56d7c0dc",
       "paths": [
         "packages/git-workspaces/src",
         "packages/jobs/src"
@@ -43,14 +43,14 @@
       "strict": []
     },
     "nosh-research:artifacts": {
-      "synced": "dba6cd8460b25bc4c34cc196cff79cde765ff8b8",
+      "synced": "27d45b172809df98c710bf9fdc15953b56d7c0dc",
       "paths": [
         "packages/evidence/src/index.ts"
       ],
       "strict": []
     },
     "nosh-research:domain": {
-      "synced": "dba6cd8460b25bc4c34cc196cff79cde765ff8b8",
+      "synced": "27d45b172809df98c710bf9fdc15953b56d7c0dc",
       "paths": [
         "packages/graph/src",
         "packages/scheduler/src",
@@ -62,7 +62,7 @@
       "strict": []
     },
     "nosh-research:project": {
-      "synced": "dba6cd8460b25bc4c34cc196cff79cde765ff8b8",
+      "synced": "27d45b172809df98c710bf9fdc15953b56d7c0dc",
       "paths": [
         "packages/evidence/src/project.ts",
         "packages/evidence/src/paper.ts"
@@ -70,7 +70,7 @@
       "strict": []
     },
     "nosh-research:control": {
-      "synced": "dba6cd8460b25bc4c34cc196cff79cde765ff8b8",
+      "synced": "27d45b172809df98c710bf9fdc15953b56d7c0dc",
       "paths": [
         "apps/noshd/src/research-control.ts"
       ],
