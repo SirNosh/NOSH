@@ -37,6 +37,7 @@ Scripts and tests find the TypeScript tree through `--ts-root`, then `NOSH_TS_RO
 ```
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
+npm ci --prefix sidecar/pi-host   # the Pi sidecar the PiAdapter tests drive
 cargo test --workspace
 node scripts/sync-schemas.mjs --check
 node scripts/drift.mjs --check
@@ -51,7 +52,7 @@ node scripts/drift.mjs --check
 | P2 | `nosh-store`: SQLite migrations, event store, host registry | done |
 | P3 | `nosh-sys`: Windows paths, processes, jobs, git, artifacts, backups | done |
 | P4 | Domain: graph, scheduler, skills, episodes, threads, projects, papers, research control | done (`packages/templates` is unused in TypeScript and not ported) |
-| P5 | `nosh-agent`: tools, `nosh_code`, Pi sidecar | in progress: P5a (terminal-output protocol, V8 `JSON.parse` errors, system prompt, tool policy) and P5b (async tool calls, `nosh_code` on QuickJS, session tools, network reader, terminal turns) and P5c (git commit plumbing) done |
+| P5 | `nosh-agent`: tools, `nosh_code`, Pi sidecar | done: P5a (terminal-output protocol, V8 `JSON.parse` errors, system prompt, tool policy), P5b (async tool calls, `nosh_code` on QuickJS, session tools, network reader, terminal turns), P5c (git commit plumbing), P5d (`PiAdapter` over the Node sidecar `sidecar/pi-host`, which hosts the pinned Pi SDK) |
 | P6 | `nosh-orchestration` and `nosh-server`: supervisors, HTTP, WebSocket | — |
 | P7 | `nosh` CLI | — |
 | T  | `nosh-tui` (ratatui) | — |

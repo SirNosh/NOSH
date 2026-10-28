@@ -65,7 +65,7 @@ pub enum AsyncOutcome {
     Running { placeholder: String },
 }
 
-type Deliver = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+type Deliver = Arc<dyn Fn(String) -> BoxFuture<bool> + Send + Sync>;
 
 pub struct AsyncToolCalls {
     grace: Duration,
@@ -96,7 +96,7 @@ impl AsyncToolCalls {
                 pending: Vec::new(),
                 inbox: VecDeque::new(),
                 programs: AbortSignal::new(),
-                deliver: Arc::new(|_| false),
+                deliver: Arc::new(|_| Box::pin(async { false })),
             }),
             wake: Notify::new(),
             runs: Arc::new(AtomicUsize::new(0)),
@@ -107,9 +107,9 @@ impl AsyncToolCalls {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Set by the session owner: delivers a result into a live agent run; returns false when no
-    /// run is live.
-    pub fn set_deliver(&self, deliver: impl Fn(&str) -> bool + Send + Sync + 'static) {
+    /// Set by the session owner: delivers a result into a live agent run; resolves to false when
+    /// no run is live. Asynchronous because the run lives in the Pi sidecar.
+    pub fn set_deliver(&self, deliver: impl Fn(String) -> BoxFuture<bool> + Send + Sync + 'static) {
         self.state().deliver = Arc::new(deliver);
     }
 
@@ -164,7 +164,7 @@ impl AsyncToolCalls {
                 "Async result of {label_text} (call {call_id}):\n{}",
                 format(&value)
             );
-            if !deliver(&text) {
+            if !deliver(text.clone()).await {
                 this.state().inbox.push_back(text);
             }
             this.wake.notify_waiters();

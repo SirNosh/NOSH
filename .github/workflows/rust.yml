@@ -49,6 +49,10 @@ jobs:
       - name: Clippy
         working-directory: rust
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # The PiAdapter tests drive the real sidecar, which needs its own pinned Pi install.
+      - name: Install the Pi sidecar
+        working-directory: rust/sidecar/pi-host
+        run: npm ci
       - name: Test
         working-directory: rust
         run: cargo test --workspace --locked

@@ -6,6 +6,7 @@ pub mod code_mode;
 pub mod commit;
 pub mod js_json;
 pub mod network;
+pub mod pi;
 pub mod policy;
 pub mod prompt;
 pub mod terminal;

@@ -1,0 +1,15 @@
+{
+  "name": "nosh-pi-host",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Hosts Pi agent sessions for the Rust NOSH daemon over JSON lines on stdio",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "host.mjs",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.80.10"
+  }
+}

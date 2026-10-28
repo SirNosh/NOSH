@@ -14,6 +14,9 @@
 //   { commit: { options, heads, message, paths } }   commitWorkspaceFiles; ok = { commit, paths }
 //   { commitAll: { options, message } }              commitAllWorkspaceChanges; ok = { commit, paths } or null
 //   { git: { cwd, args } }                           test setup: git with a hermetic config and fixed identity and dates
+//   { validate: { options, calls } }               Pi's validateToolArguments verdicts ({ ok: args } | { error }) for calls
+//                                                    [{ name, arguments }] against the session's TypeBox tools; ok =
+//                                                    { verdicts, parameters: { name: JSON text } }
 //   { writeFile: [path, content] } / { removeFile: path } / { mkdir: path } / { link: [existing, path] }   test setup
 // A scripted reply is { value }, { throw: message }, or { delay: ms, value }; a missing one is { accepted: true }.
 // The TypeScript tree is NOSH_TS_ROOT, else the parent of this worktree.
@@ -72,6 +75,13 @@ async function turn({ context, admits, prompts, submits, rejects }) {
   catch (error) { return { error: errorText(error), trace }; }
 }
 
+async function validate({ options, calls }) {
+  const { validateToolArguments } = await import(pathToFileURL(join(tsRoot, "packages/pi-adapter/node_modules/@earendil-works/pi-ai/dist/index.js")).href);
+  const tools = new Map(adapter.createSessionTools(options, () => ({ accepted: true })).map((tool) => [tool.name, tool]));
+  const verdicts = calls.map((call) => { try { return { ok: validateToolArguments(tools.get(call.name), call) }; } catch (error) { return { error: errorText(error) }; } });
+  return { verdicts, parameters: Object.fromEntries([...tools].map(([name, tool]) => [name, JSON.stringify(tool.parameters)])) };
+}
+
 const output = [];
 for (const op of ops) {
   try {
@@ -92,6 +102,7 @@ for (const op of ops) {
     if (op.mkdir) { mkdirSync(op.mkdir, { recursive: true }); output.push({ ok: null }); continue; }
     if (op.link) { linkSync(op.link[0], op.link[1]); output.push({ ok: null }); continue; }
     if (op.removeFile) { rmSync(op.removeFile, { recursive: true, force: true }); output.push({ ok: null }); continue; }
+    if (op.validate) { output.push({ ok: await validate(op.validate) }); continue; }
     if (op.turn) { output.push({ ok: await turn(op.turn) }); continue; }
     output.push({ ok: (await withEnv(op.env, () => adapter[op.fn](...(op.args ?? [])))) ?? null });
   } catch (error) {

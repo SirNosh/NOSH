@@ -143,11 +143,11 @@ async fn steers_a_result_into_a_live_run_requeues_one_that_missed_the_run_and_re
     {
         let (steered, live) = (Arc::clone(&steered), Arc::clone(&live));
         calls.set_deliver(move |text| {
-            if !*live.lock().unwrap() {
-                return false;
+            let delivered = *live.lock().unwrap();
+            if delivered {
+                steered.lock().unwrap().push(text);
             }
-            steered.lock().unwrap().push(text.to_owned());
-            true
+            Box::pin(async move { delivered })
         });
     }
     let (finish, work) = pending();
