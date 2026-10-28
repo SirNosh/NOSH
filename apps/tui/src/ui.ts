@@ -78,7 +78,7 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     contentOptions: { width: '100%', flexDirection: 'column' } });
   const transcript = createTranscript(renderer, syntax);
   const inspector = createInspector(renderer);
-  const researchMap = createResearchMap(renderer);
+  const researchMap = createResearchMap(renderer, () => render());
   // The conversation always opens with the NOSH mark, above the first message.
   const banner = new BoxRenderable(renderer, { id: 'session-banner', flexDirection: 'column', flexShrink: 0, height: 8, minHeight: 8, paddingLeft: 1, marginBottom: 1 });
   banner.add(new TextRenderable(renderer, { id: 'session-logo', content: logoText(), height: 6, minHeight: 6, width: 35, flexShrink: 0, wrapMode: 'none', selectable: false }));
@@ -220,7 +220,7 @@ export function createWorkspace(renderer: CliRenderer, controller: Controller, q
     model.fg = noModel ? theme.warning : theme.text;
     thinking.content = level && !noModel ? `· ${level}` : '';
     composer.borderColor = controller.error ? theme.error : controller.busy || activity.working ? theme.secondary : theme.accent;
-    hints.content = controller.view === 'map' ? keyHints([['esc', 'conversation'], ['↑↓←→', 'select'], ['enter', 'open / act'], ['tab', 'next'], ['pgup/pgdn', 'pan'], ['ctrl+p', 'commands']])
+    hints.content = controller.view === 'map' ? keyHints([['esc', 'conversation'], ['↑↓←→', 'select'], ['enter', 'open / act'], ['scroll', 'zoom'], ['drag', 'move'], ['tab', 'next'], ['ctrl+p', 'commands']])
       : controller.view !== 'chat' ? keyHints([['esc', 'conversation'], ['pgup/pgdn', 'scroll'], ['ctrl+g', 'map'], ['ctrl+p', 'commands']])
       : !project ? keyHints([['ctrl+o', 'choose a project'], ['ctrl+p', 'commands']])
       : mainWidth < 72 ? keyHints([['enter', 'send'], ['⇧enter', 'newline'], ['ctrl+p', 'commands']])

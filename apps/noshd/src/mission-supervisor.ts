@@ -12,7 +12,7 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { SPAWN_NODE_TYPES, daemonTaskFacts, declaredTaskCommands, missionOutcomes, librarianNetworkAllowed, librarianResearchHosts, priorAttemptInstructions, taskCommandInstructions, taskCommandRuns, type MissionProjection, type ResearchControl, type Stored } from "./research-control.js";
 import { DirectorSlip, directorRetryAllowed, missionBrief, type SpawnBriefContext } from "./director-brief.js";
-import { createTaskWorktree, taskWorktreePath } from "./task-worktree.js";
+import { createTaskWorktree, resumeInstruction, resumePoint, taskWorktreePath } from "./task-worktree.js";
 import { completionInstructions, generalWorkerCompletionTemplate, librarianInstructions, reviewerInstructions } from "./task-templates.js";
 import { completionRunIssues, validateGitCompletion, writeUpOnly } from "./task-postflight.js";
 import { CHILD_BLOCKED_MS, allocateBudget, probeEvaluation, freezeContract, spawnIssues, spawnMissionChild, type JobRunner, type MissionSpawn } from "./research-spawner.js";
@@ -268,7 +268,11 @@ export class MissionSupervisor {
     if (!branch || git(project.repositoryRoot, ["status", "--porcelain"])) throw new Error("Task preflight requires a clean checked-out Git branch");
     // Every task builds on the Mission's accepted work, not on the user's checkout alone.
     const head = this.integrationHead(project, mission.entityId);
-    const tree = createTaskWorktree(this.research, project, taskId, head);
+    // A retried worker builds on its node's last postflight-passed attempt instead of discarding that work.
+    const events = this.research.scopedEvents(project.projectId, mission.entityId);
+    const resume = role === "general_worker" ? resumePoint(this.research, project, events, node.id, head) : null;
+    if (resume && "skipped" in resume) this.emit(event(project.projectId, mission.entityId, "task.resume_skipped", { taskId, nodeId: node.id, priorTaskId: resume.skipped.taskId, commit: resume.skipped.commit, reason: resume.skipped.reason }));
+    const tree = createTaskWorktree(this.research, project, taskId, head, resume && "commit" in resume ? resume.commit : head);
     const use = this.research.missionBudgetUse(project.projectId, mission.entityId);
     const remainingWall = Math.max(1, mission.value.budgets.maximumWallClockSeconds - use.wallClockSeconds);
     const remainingTokens = Math.max(1, mission.value.budgets.maximumModelTokens - use.modelTokens);
@@ -307,7 +311,7 @@ export class MissionSupervisor {
       scope: { projectId: project.projectId, missionId: mission.entityId, directionId: null, autoresearchId: null, experimentId: null, graphNodeId: node.id },
       goalStack: { projectGoalId: project.projectId, projectGoalSummary: mission.value.objective, missionCriterionIds: node.criterionIds, missionCriterionSummary: acceptanceCriteria.map((criterion) => criterion.statement).join("; "), directionQuestionId: null, directionQuestionSummary: null, nodeObjective: node.title },
       whyNow: "The deterministic Mission frontier selected this ready node.",
-      instructions: [`Complete only ${node.title}`, "Do not modify protected NOSH contracts", ...(researchArtifact ? [`Build on this Mission's finished research: read Artifact ${researchArtifact} with nosh_artifact_read (each research child's question, answer, and promoted experiments with their measured results and code changes; port a promoted change rather than re-deriving it, and cite its results). Their Evidence is in inputEvidenceIds.`] : []), ...(mission.value.startingEvidence.length ? [`Read the starting Evidence (${mission.value.startingEvidence.join(", ")}) with nosh_artifact_read; each record cites the Artifacts that hold its measurements`] : []), ...(commands.length ? taskCommandInstructions(commands, true) : ["You cannot run commands: report only what you verified by reading, and claim a criterion satisfied only as far as that evidence supports"]), ...priorAttemptInstructions(this.research.scopedEvents(project.projectId, mission.entityId), node.id)],
+      instructions: [`Complete only ${node.title}`, "Do not modify protected NOSH contracts", ...(researchArtifact ? [`Build on this Mission's finished research: read Artifact ${researchArtifact} with nosh_artifact_read (each research child's question, answer, and promoted experiments with their measured results and code changes; port a promoted change rather than re-deriving it, and cite its results). Their Evidence is in inputEvidenceIds.`] : []), ...(mission.value.startingEvidence.length ? [`Read the starting Evidence (${mission.value.startingEvidence.join(", ")}) with nosh_artifact_read; each record cites the Artifacts that hold its measurements`] : []), ...(commands.length ? taskCommandInstructions(commands, true) : ["You cannot run commands: report only what you verified by reading, and claim a criterion satisfied only as far as that evidence supports"]), ...priorAttemptInstructions(events, node.id), ...(resume && "commit" in resume ? [resumeInstruction(resume.commit)] : [])],
       inScope: ["**"], outOfScope: [".nosh/contracts/**"], inputArtifactIds: researchArtifact ? [researchArtifact] : [], inputEvidenceIds: [...new Set([...mission.value.startingEvidence, ...research.evidenceIds])], // the researcher's starting Evidence and this node's research children's Evidence (readable with nosh_artifact_read)
       requiredOutputs: [{ outputId: `out_${taskId.slice(4)}`, kind: outputKind, required: true }],
       acceptanceCriteria,

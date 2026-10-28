@@ -18,7 +18,7 @@ import { CHILD_BLOCKED_MS, MIN_AUTORESEARCH_TOKENS, frozenEvaluationFiles, runEv
 const MAX_AUTONOMOUS_AUTORESEARCH = 2;
 /** A schema-valid Research Director cycle that judged the selected node should not run. */
 class DirectorHalt extends Error {}
-import { createTaskWorktree, taskWorktreePath } from "./task-worktree.js";
+import { createTaskWorktree, resumeInstruction, resumePoint, taskWorktreePath } from "./task-worktree.js";
 import { completionInstructions, generalWorkerCompletionTemplate, librarianInstructions, reviewerInstructions, type DaemonEvaluation } from "./task-templates.js";
 import type { JobRecord, JobSpec } from "@nosh/jobs";
 
@@ -210,7 +210,11 @@ export class DirectionSupervisor {
     const head = direction.value.baseCommit ?? directionGit(project.repositoryRoot, ["rev-parse", "HEAD"]);
     const branch = directionGit(project.repositoryRoot, ["branch", "--show-current"]);
     if (!branch || directionGit(project.repositoryRoot, ["status", "--porcelain"])) throw new Error("Direction Task preflight requires a clean checked-out Git branch");
-    const tree = createTaskWorktree(this.research, project, taskId, head);
+    // A retried worker builds on its node's last postflight-passed attempt instead of discarding that work.
+    const events = this.research.eventsAfter(project.projectId, 0).filter((entry) => entry.scope.directionId === direction.entityId);
+    const resume = role === "general_worker" ? resumePoint(this.research, project, events, node.id, head) : null;
+    if (resume && "skipped" in resume) this.emit(event(project.projectId, direction.entityId, direction.value.missionId, "task.resume_skipped", { taskId, nodeId: node.id, priorTaskId: resume.skipped.taskId, commit: resume.skipped.commit, reason: resume.skipped.reason }));
+    const tree = createTaskWorktree(this.research, project, taskId, head, resume && "commit" in resume ? resume.commit : head);
     const libraryNetwork = role === "librarian_researcher" && librarianNetworkAllowed(project);
     const commands = role === "general_worker" ? declaredTaskCommands(project) : [];
     const permissions: TaskPermissions = {
@@ -237,7 +241,7 @@ export class DirectionSupervisor {
       scope: { projectId: project.projectId, missionId: direction.value.missionId, directionId: direction.entityId, autoresearchId: null, experimentId: null, graphNodeId: node.id },
       goalStack: { projectGoalId: project.projectId, projectGoalSummary: direction.value.decisionUse, missionCriterionIds: direction.value.missionId ? [direction.value.missionId] : [], missionCriterionSummary: direction.value.decisionUse, directionQuestionId: `question_${direction.entityId.slice(4)}`, directionQuestionSummary: direction.value.question, nodeObjective: node.title },
       whyNow: "The deterministic Direction frontier selected this ready node.",
-      instructions: [`Complete only ${node.title}`, "Preserve the frozen evaluation contract", ...(commands.length ? taskCommandInstructions(commands, true) : ["You cannot run commands: report only what you verified by reading, and claim a criterion satisfied only as far as that evidence supports"]), ...priorAttemptInstructions(this.research.eventsAfter(project.projectId, 0).filter((entry) => entry.scope.directionId === direction.entityId), node.id)],
+      instructions: [`Complete only ${node.title}`, "Preserve the frozen evaluation contract", ...(commands.length ? taskCommandInstructions(commands, true) : ["You cannot run commands: report only what you verified by reading, and claim a criterion satisfied only as far as that evidence supports"]), ...priorAttemptInstructions(events, node.id), ...(resume && "commit" in resume ? [resumeInstruction(resume.commit)] : [])],
       inScope: ["**"], outOfScope: [".nosh/contracts/**"], inputArtifactIds: [], inputEvidenceIds: [],
       requiredOutputs: [{ outputId: `output_${taskId.slice(4)}`, kind: role === "general_worker" ? "output_code.commit" : role === "librarian_researcher" ? "output_research.report" : "output_review.verdict", required: true }],
       acceptanceCriteria: [{ criterionId: node.id, statement: node.title, validatorIds: ["validator_direction.postflight"], reviewRubricIds: ["rubric_scientific.correctness"], required: true }],

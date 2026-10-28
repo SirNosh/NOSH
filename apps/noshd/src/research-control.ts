@@ -76,6 +76,21 @@ export function priorAttemptInstructions(events: EventEnvelope[], nodeId: string
   return failures.length ? [`Earlier attempts at this node failed (most recent first); address these before claiming the work complete: ${failures.map((failure, index) => `(${index + 1}) ${failure.slice(0, 290)}`).join(" ")}`.slice(0, 1_000)] : [];
 }
 /** What a task reviewer must see besides the worker's claims: the daemon's own verified facts for that task. */
+/**
+ * The earlier worker attempt a retry should build on: the latest one at this node that passed postflight, unless its
+ * Review returned REDESIGN (a rejected approach, so start over). REVISE, BLOCKED and a reviewer's own error keep it.
+ */
+export function resumableAttempt(events: EventEnvelope[], nodeId: string): { taskId: string } | null {
+  const passed: string[] = []; let current: string | null = null;
+  for (const entry of events) {
+    const payload = entry.payload as { nodeId?: string; nodeState?: string; leaseId?: string | null; $schema?: string; verdict?: string; target?: { targetId?: string } };
+    if (entry.type === "record.submitted" && payload.$schema === schemaUri("review-verdict") && payload.target?.targetId === nodeId) { if (payload.verdict === "REDESIGN" && current && passed.at(-1) === current) passed.pop(); continue; }
+    if (payload.nodeId !== nodeId || !["mission.node_state_changed", "direction.node_state_changed"].includes(entry.type)) continue;
+    if (payload.nodeState === "leased") current = payload.leaseId ?? null;
+    if (payload.nodeState === "postflight" && payload.leaseId) passed.push(current = payload.leaseId);
+  }
+  return passed.length ? { taskId: passed.at(-1)! } : null;
+}
 export function daemonTaskFacts(research: ResearchControl, projectId: string, taskId: string): string {
   const runs = taskCommandRuns(research)(projectId).filter((run) => run.taskId === taskId).map((run) => ({ jobId: run.jobId, commandId: run.commandId, description: run.description, argv: run.argv, commit: run.commit, cleanWorktree: run.dirty === false, state: run.state, exitCode: run.exitCode, stdoutTail: run.stdoutTail }));
   return `Daemon-verified facts (authoritative; the worker cannot forge them): this completion passed the deterministic postflight (Git scope and branch, no protected or out-of-scope changes, every cited job_ validator is this task's own passing run on its clean ending commit). nosh_run Jobs of this task: ${JSON.stringify(runs)}.`;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { layoutGraph, moveSelection, suggestedCommand, type GraphBox } from './map-graph.js';
+import { boxAt, layoutGraph, moveSelection, shrinkGraph, suggestedCommand, type GraphBox } from './map-graph.js';
 
 // The live shape: a Mission's graph nodes, one of which spawned a Direction whose node spawned an Autoresearch.
 const root = {
@@ -74,6 +74,41 @@ describe('research map graph', () => {
     expect(suggestedCommand(box(boxes, 'job_q'))).toBe('/job job_q');
     for (const id of ['mnode_done', 'ar_z']) expect(suggestedCommand(box(boxes, id))).toBe('');
     expect(suggestedCommand(box(layoutGraph(box(boxes, 'ar_z').node).boxes, 'exp_a'))).toBe('');
+  });
+  it('zooms in to whole titles and the full detail line', () => {
+    const full = layoutGraph(root, 'full');
+    const words = (layout: ReturnType<typeof layoutGraph>, id: string) => { const entry = box(layout.boxes, id); return layout.lines.slice(entry.top, entry.bottom).map(line => line.slice(entry.left, entry.right + 1)).join(' ').replace(/[│┌┐└┘─┬┴├┤]/g, ' ').replace(/\s+/g, ' '); };
+    expect(words(full, 'dnode_eval')).toContain('general worker · attempt 3/3');
+    const long = { ...root, children: [{ kind: 'node', id: 'mnode_long', title: 'Compare temperature, Platt and histogram calibration at natural and shifted prevalence', state: 'ready', detail: 'implementation', children: [] }] };
+    expect(words(layoutGraph(long), 'mnode_long')).toContain('…');
+    expect(words(layoutGraph(long, 'full'), 'mnode_long')).toContain('Compare temperature, Platt and histogram calibration at natural and shifted prevalence');
+    expect(box(full.boxes, 'mnode_dir').right - box(full.boxes, 'mnode_dir').left).toBeGreaterThan(box(layoutGraph(root).boxes, 'mnode_dir').right - box(layoutGraph(root).boxes, 'mnode_dir').left);
+  });
+  it('shrinks the graph like an image: each cell is one Braille glyph for a factor-by-factor block, colored by its box', () => {
+    const layout = layoutGraph(root);
+    for (const factor of [2, 4, 8]) {
+      const shrunk = shrinkGraph(layout, factor);
+      expect(shrunk.lines).toHaveLength(Math.ceil(layout.lines.length / factor));
+      expect(shrunk.lines.every(line => line.length === Math.ceil(layout.lines[0]!.length / factor))).toBe(true);
+      expect(shrunk.owners).toHaveLength(shrunk.lines.length);
+      expect(shrinkGraph(layout, factor)).toBe(shrunk);
+    }
+    const shrunk = shrinkGraph(layout, 2); const mission = box(layout.boxes, 'mis_x'); const index = layout.boxes.indexOf(mission);
+    // The box's top-left corner block draws dots and belongs to the box; a block of empty canvas stays blank.
+    const corner = shrunk.lines[mission.top / 2 | 0]![mission.left / 2 | 0]!;
+    expect(corner.codePointAt(0)).toBeGreaterThan(0x2800); expect(corner.codePointAt(0)).toBeLessThanOrEqual(0x28ff);
+    expect(shrunk.owners[mission.top / 2 | 0]![mission.left / 2 | 0]).toBe(index);
+    const blank = layout.lines.findIndex((line, row) => row % 2 === 0 && /^ +$/.test(line.slice(0, 2)) && /^ +$/.test(layout.lines[row + 1]?.slice(0, 2) ?? ''));
+    if (blank >= 0) { expect(shrunk.lines[blank / 2]![0]).toBe(' '); expect(shrunk.owners[blank / 2]![0]).toBe(-1); }
+    // Each box keeps its #k tag on top of the dots where the shrunk box is wide enough to hold it.
+    expect(shrunk.lines.join('\n')).toContain(`#${mission.index}`);
+    expect(shrinkGraph(layout, 8).lines.join('').replace(/[⠀-⣿ #\d]/gu, '')).toBe('');
+  });
+  it('hit-tests a canvas cell to the box drawn there', () => {
+    const { boxes } = layoutGraph(root); const target = box(boxes, 'mnode_impl');
+    expect(boxAt(boxes, target.left + 1, target.top + 1)).toBe(boxes.indexOf(target));
+    expect(boxAt(boxes, target.right, target.bottom)).toBe(boxes.indexOf(target));
+    expect(boxAt(boxes, -5, -5)).toBe(-1);
   });
   it('is empty without a root', () => {
     expect(layoutGraph(undefined)).toEqual({ lines: [], boxes: [] });

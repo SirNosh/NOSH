@@ -53,8 +53,10 @@ try {
   check(test.captureCharFrame().includes('ctrl+b hide'), 'Session sidebar missing at wide size');
   controller.researchMap = { generatedAt: '2026-10-03T12:00:00.000Z', workers: [{ kind: 'worker', id: 'agt_1', title: 'general worker', state: 'running nosh_run', detail: 'gpt-6-luna:low', children: [] }],
     roots: [{ kind: 'mission', id: 'mis_1', title: 'Boundary tests', state: 'running', detail: 'v4', version: 4, progress: { done: 1, total: 2 }, children: [
-      { kind: 'node', id: 'n1', title: 'Write tests', state: 'failed', detail: 'implementation · attempt 3/3', children: [] },
-      { kind: 'node', id: 'n2', title: 'Final review', state: 'ready', detail: 'final review', children: [] }] }] };
+      { kind: 'node', id: 'n1', title: 'Write the boundary tests for every calibrator and both prevalences', state: 'failed', detail: 'implementation · attempt 3/3', children: [] },
+      { kind: 'node', id: 'n2', title: 'Final review', state: 'ready', detail: 'final review', children: [] },
+      { kind: 'node', id: 'n3', title: 'Collect sources', state: 'accepted', detail: 'librarian', children: [] },
+      { kind: 'node', id: 'n4', title: 'Draft the paper', state: 'accepted', detail: 'implementation', children: [] }] }] };
   controller.view = 'map'; workspace.input.value = ''; workspace.render(); await test.renderOnce();
   frame = test.captureCharFrame();
   check(frame.includes('RESEARCH MAP') && frame.includes('MISSION  1/1  running  Boundary tests') && frame.includes('#0 MISSION') && frame.includes('Boundary tests') && frame.includes('┌') && frame.includes('▼') && frame.includes('▰▰▰▱▱▱ 1/2') && frame.includes('workers'), `Research map did not render as a graph:
@@ -68,6 +70,7 @@ ${frame}`);
   test.mockInput.pressEnter(); await test.renderOnce();
   check(composerText() === '/retry missions mis_1 4 n1' && currentView() === 'map' && !controller.pendingAction(), 'Enter on a failed map node must only fill the composer');
   workspace.input.value = '';
+  await checkMapMouse();
   test.resize(60,20); workspace.render(); await test.renderOnce();
   frame = test.captureCharFrame();
   check(frame.includes(`nosh ${noshVersion()}`) && !frame.includes('ctrl+b hide'), 'Narrow layout must hide sidebar');
@@ -75,7 +78,37 @@ ${frame}`);
   test.resize(100, 30);
   await checkNativeTranscript();
 } finally { workspace.dispose(); controller.dispose(); client.close(); test.renderer.destroy(); }
-console.log('OpenTUI native smoke passed: home/session, multiline input, searchable palette, modal focus, form, research map, resize, transcript reconciliation.');
+console.log('OpenTUI native smoke passed: home/session, multiline input, searchable palette, modal focus, form, research map, map mouse zoom/drag/click, resize, transcript reconciliation.');
+
+/** The map behaves like an image: the wheel zooms at the pointer, a drag moves it, a click selects a box. */
+async function checkMapMouse() {
+  const conversation = test.renderer.root.findDescendantById('conversation')!; let leaked = 0;
+  conversation.onMouseScroll = () => { leaked++; };
+  const settle = async () => { workspace.render(); await test.renderOnce(); return test.captureCharFrame(); };
+  const at = (frame: string, needle: string) => { const rows = frame.split('\n'); const y = rows.findIndex(row => row.includes(needle)); return { x: y < 0 ? -1 : rows[y]!.indexOf(needle), y }; };
+  try {
+    let frame = await settle(); const tag = at(frame, '#1');
+    check(tag.y >= 0, `The selected box's tag must be on screen:\n${frame}`);
+    await test.mockMouse.scroll(tag.x, tag.y, 'down'); frame = await settle();
+    check(/[\u2801-\u28ff]/u.test(frame) && frame.includes('50%') && leaked === 0, `Wheel down must zoom the map out like an image, not scroll the conversation:\n${frame}`);
+    const small = at(frame, '#1');
+    await test.mockMouse.scroll(small.x, small.y, 'up'); await test.mockMouse.scroll(small.x, small.y, 'up'); frame = await settle();
+    // Zoomed in, the box itself holds the long title's first 40-column line (up to its right border), which the normal box cuts at 26.
+    check(frame.includes('150%') && /tests for every\s*│/.test(frame), `Wheel up must zoom in to whole titles:\n${frame}`);
+    const full = at(frame, '#1');
+    await test.mockMouse.scroll(full.x, full.y, 'down'); frame = await settle();
+    check(frame.includes('100%') && !/tests for every\s*│/.test(frame), `Wheel down must return to normal boxes:\n${frame}`);
+    const before = at(frame, '#2');
+    await test.mockMouse.drag(before.x, before.y, before.x - 4, before.y); frame = await settle();
+    const after = at(frame, '#2');
+    check(after.y === before.y && after.x === before.x - 4, `A drag must move the map with the pointer (#2 from ${before.x} to ${after.x}):\n${frame}`);
+    await test.mockMouse.click(after.x, after.y); frame = await settle();
+    check(frame.includes('graph node · ready · final review · n2') && !test.renderer.hasSelection, `A click must select the box under the pointer without selecting text:\n${frame}`);
+    await test.mockInput.typeText('x'); await test.renderOnce();
+    check(composerText() === 'x' && leaked === 0, 'The composer must keep focus after map clicks');
+    workspace.input.value = '';
+  } finally { conversation.onMouseScroll = undefined; }
+}
 
 async function checkNativeTranscript() {
   const syntax = createMarkdownStyle();

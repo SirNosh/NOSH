@@ -4,12 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createId } from "@nosh/core";
 import { approveProjectContract, readProjectContract } from "@nosh/evidence";
+import type { RegisteredProject } from "@nosh/persistence";
 import { schemaUri, validateRecord, type EventEnvelope, type JsonValue } from "@nosh/wire";
 import { describe, expect, it, vi } from "vitest";
 import { NoshDaemon } from "./daemon.js";
-import { priorAttemptInstructions, taskCommandInstructions } from "./research-control.js";
+import { priorAttemptInstructions, resumableAttempt, taskCommandInstructions, type ResearchControl } from "./research-control.js";
 import { citedRunIssues, completionRunIssues, writeUpOnly } from "./task-postflight.js";
-import { createTaskWorktree } from "./task-worktree.js";
+import { createTaskWorktree, resumeInstruction, resumePoint } from "./task-worktree.js";
 
 describe("nosh_run task commands", () => {
   it("runs only contract-declared commands, commits worker edits itself, and fills completion facts without model tool calls", async () => {
@@ -276,5 +277,44 @@ describe("a retried node's prior attempts", () => {
     const [instruction] = priorAttemptInstructions([at("direction.postflight_failed", { taskId: "tsk_1", nodeId: "dnode_a", issues: ["a declared command did not pass"] }), at("direction.task_failed", { taskId: "tsk_2", nodeId: "dnode_a", message: "Task preflight requires a clean checked-out Git branch" })], "dnode_a");
     expect(instruction).toContain("a declared command did not pass");
     expect(instruction).toContain("Task preflight requires a clean checked-out Git branch");
+  });
+  it("resumes only from a commit that still contains the head, and says why it could not", () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-resume-point-")); const repositoryRoot = join(directory, "repository"); mkdirSync(repositoryRoot);
+    const git = (args: string[]) => spawnSync("git", ["-C", repositoryRoot, "-c", "user.name=T", "-c", "user.email=t@example.invalid", ...args], { encoding: "utf8", windowsHide: true }).stdout.trim();
+    const commit = (name: string) => { writeFileSync(join(repositoryRoot, name), `${name}\n`); git(["add", name]); git(["commit", "-m", name]); return git(["rev-parse", "HEAD"]); };
+    try {
+      git(["init", "-b", "main"]); const head = commit("base.txt"); git(["checkout", "-b", "attempt"]); const attempt = commit("attempt.txt"); git(["checkout", "main"]); const moved = commit("other.txt");
+      const passed = [at("mission.node_state_changed", { nodeId: "mnode_a", nodeState: "leased", leaseId: "tsk_1" }), at("mission.node_state_changed", { nodeId: "mnode_a", nodeState: "postflight", leaseId: "tsk_1" })];
+      const research = (endingCommit: string) => ({ terminalRecord: () => ({ codeChanges: { endingCommit } }) }) as unknown as ResearchControl;
+      const project = { projectId: "prj_x", repositoryRoot } as RegisteredProject;
+      expect(resumePoint(research(attempt), project, passed, "mnode_a", head)).toEqual({ taskId: "tsk_1", commit: attempt });
+      expect(resumePoint(research(attempt), project, [], "mnode_a", head)).toBeNull();
+      expect(resumePoint(research(head), project, passed, "mnode_a", head)).toBeNull();
+      // Another node was integrated since: resuming would drop it, so the retry starts at the head and says why.
+      expect(resumePoint(research(attempt), project, passed, "mnode_a", moved)).toEqual({ skipped: { taskId: "tsk_1", commit: attempt, reason: "head_moved" } });
+      expect(resumePoint(research("0".repeat(40)), project, passed, "mnode_a", head)).toEqual({ skipped: { taskId: "tsk_1", commit: "0".repeat(40), reason: "missing_commit" } });
+      expect(resumeInstruction(attempt).length).toBeLessThanOrEqual(1_000);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+  it("resumes from the latest attempt that passed postflight, unless its Review asked for a redesign", () => {
+    const state = (type: string, nodeId: string, nodeState: string, leaseId: string | null) => at(type, { nodeId, nodeState, leaseId, attempt: 1 });
+    const verdict = (nodeId: string, value: string) => at("record.submitted", { $schema: schemaUri("review-verdict"), verdict: value, summary: "s", target: { targetType: "graph_node", targetId: nodeId, targetVersion: 1 }, criteria: [] });
+    const attempt = (taskId: string, passed: boolean, review?: string, nodeId = "mnode_a", type = "mission.node_state_changed") => [
+      state(type, nodeId, "leased", taskId), state(type, nodeId, "working", taskId),
+      ...(passed ? [state(type, nodeId, "postflight", taskId), state(type, nodeId, "reviewing", taskId), ...(review ? [verdict(nodeId, review)] : [])] : [at("task.postflight_failed", { taskId, nodeId, issues: ["x"] })]),
+      state(type, nodeId, "failed", null), state(type, nodeId, "ready", null),
+    ];
+    expect(resumableAttempt([], "mnode_a")).toBeNull();
+    // Run 2: attempt 7 failed postflight, attempt 8 passed it and lost to a reviewer error, attempt 9 failed postflight.
+    expect(resumableAttempt([...attempt("tsk_7", false), ...attempt("tsk_8", true), ...attempt("tsk_9", false)], "mnode_a")).toEqual({ taskId: "tsk_8" });
+    expect(resumableAttempt([...attempt("tsk_1", true, "REVISE"), ...attempt("tsk_2", true, "REVISE")], "mnode_a")).toEqual({ taskId: "tsk_2" });
+    expect(resumableAttempt([...attempt("tsk_1", true, "BLOCKED")], "mnode_a")).toEqual({ taskId: "tsk_1" });
+    // A redesign verdict rejects the approach itself, so the next attempt starts over (or from an earlier passed attempt).
+    expect(resumableAttempt([...attempt("tsk_1", true, "REDESIGN")], "mnode_a")).toBeNull();
+    expect(resumableAttempt([...attempt("tsk_1", true, "REVISE"), ...attempt("tsk_2", true, "REDESIGN")], "mnode_a")).toEqual({ taskId: "tsk_1" });
+    // Another node's attempts and verdicts never count; the Direction supervisor's event names do.
+    expect(resumableAttempt([...attempt("tsk_1", true, "REVISE", "mnode_b")], "mnode_a")).toBeNull();
+    expect(resumableAttempt([...attempt("tsk_1", true, "REVISE"), verdict("mnode_a", "PASS"), ...attempt("tsk_2", true, "REDESIGN", "mnode_b")], "mnode_a")).toEqual({ taskId: "tsk_1" });
+    expect(resumableAttempt([...attempt("tsk_d", true, "REVISE", "dnode_a", "direction.node_state_changed")], "dnode_a")).toEqual({ taskId: "tsk_d" });
   });
 });

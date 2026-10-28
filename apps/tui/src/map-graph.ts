@@ -10,8 +10,13 @@ import { MAP_ROOTS, mapGlyph, mapTone, progressBar, record, text, type MapTone }
 export interface GraphBox { node: Record<string, unknown>; owner: Record<string, unknown> | null; index: number; parent: number | null; opens: boolean; tone: MapTone; top: number; left: number; bottom: number; right: number }
 export interface GraphLayout { lines: string[]; boxes: GraphBox[] }
 export type GraphDirection = 'up' | 'down' | 'left' | 'right';
+/** `normal` boxes hold a title on two lines; zoomed in, `full` boxes hold whole titles and the node's detail. */
+export type GraphDetail = 'normal' | 'full';
+/** A shrunk graph: one Braille glyph per factor-by-factor block of the layout, and the box index (or -1) each glyph belongs to. */
+export interface ShrunkGraph { lines: string[]; owners: number[][] }
 
-const LABEL = 26;
+const LABELS: Record<GraphDetail, { width: number; lines: number }> = { normal: { width: 26, lines: 2 }, full: { width: 40, lines: 3 } };
+const LABEL = LABELS.normal.width;
 const layouts = new Map<string, GraphLayout>();
 
 /** One terminal cell per character: no astral (emoji), wide, zero-width or combining characters, and nothing Mermaid parses inside a label. */
@@ -20,11 +25,11 @@ function cell(value: unknown, limit = LABEL): string {
     .replaceAll('"', "'").replaceAll('`', "'").replaceAll('<', '‹').replaceAll('>', '›').replace(/\s+/g, ' ').trim();
   return plain.length > limit ? `${plain.slice(0, limit - 1)}…` : plain;
 }
-/** A title on up to two box lines, broken at a word where one fits. */
-function title(value: unknown): string {
-  const whole = cell(value, 400); if (whole.length <= LABEL) return whole;
-  const space = whole.lastIndexOf(' ', LABEL); const cut = space > LABEL / 2 ? space : LABEL;
-  return `${whole.slice(0, cut).trim()}<br>${cell(whole.slice(cut).trim())}`;
+/** A title on up to `lines` box lines of `width`, each broken at a word where one fits; the last line ends in … when cut. */
+function title(value: unknown, width = LABEL, lines = 2): string {
+  const whole = cell(value, 400); if (whole.length <= width || lines <= 1) return cell(whole, width);
+  const space = whole.lastIndexOf(' ', width); const cut = space > width / 2 ? space : width;
+  return `${whole.slice(0, cut).trim()}<br>${title(whole.slice(cut).trim(), width, lines - 1)}`;
 }
 /** Progress (▰▰▰▰▱▱ 4/6), a score ("… score 0.0050378 (+0.0136)"), an attempt ("attempt 8/8") or a version, short enough for a box. */
 function fact(node: Record<string, unknown>): string {
@@ -35,8 +40,8 @@ function fact(node: Record<string, unknown>): string {
   return /attempt \d+\/\d+/.exec(detail)?.[0] ?? /^v\d+$/.exec(detail)?.[0] ?? '';
 }
 
-export function layoutGraph(root: unknown): GraphLayout {
-  const value = record(root);
+export function layoutGraph(root: unknown, detail: GraphDetail = 'normal'): GraphLayout {
+  const value = record(root); const label = LABELS[detail];
   if (!value.kind) return { lines: [], boxes: [] };
   const nodes: Array<{ node: Record<string, unknown>; owner: Record<string, unknown> | null; parent: number | null; opens: boolean }> = [];
   const source = ['flowchart TD'];
@@ -47,8 +52,10 @@ export function layoutGraph(root: unknown): GraphLayout {
     const opens = kind === 'autoresearch' && index > 0 && experiments > 0;
     nodes.push({ node, owner, parent, opens });
     const tag = [`#${index}`, MAP_ROOTS[kind]?.label ?? (kind === 'job' || kind === 'worker' ? kind.toUpperCase() : '')].filter(Boolean).join(' ');
-    const status = cell([`${mapGlyph(kind, state)} ${state}`, fact(node), opens ? `${experiments} exp ▸` : ''].filter(Boolean).join(' · '), opens ? LABEL + 8 : LABEL);
-    source.push(`  n${index}["${tag}<br>${title(node.title) || cell(node.id)}${status ? `<br>${status}` : ''}"]`);
+    const status = cell([`${mapGlyph(kind, state)} ${state}`, fact(node), opens ? `${experiments} exp ▸` : ''].filter(Boolean).join(' · '), opens ? label.width + 8 : label.width);
+    // Zoomed in, the node's whole detail line (role, attempt, score) follows its state.
+    const more = detail === 'full' ? cell(node.detail, label.width) : '';
+    source.push(`  n${index}["${tag}<br>${title(node.title, label.width, label.lines) || cell(node.id)}${status ? `<br>${status}` : ''}${more ? `<br>${more}` : ''}"]`);
     if (parent !== null) source.push(`  n${parent} --> n${index}`);
     const nextOwner = kind === 'mission' || kind === 'direction' ? node : owner;
     const children = opens ? [] : all;
@@ -112,4 +119,53 @@ export function suggestedCommand(box: GraphBox): string {
   }
   if (kind === 'job' && id) return `/job ${id}`;
   return '';
+}
+
+/** The box drawn at a layout cell, or -1. */
+export function boxAt(boxes: GraphBox[], x: number, y: number): number {
+  return boxes.findIndex(box => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom);
+}
+
+// Braille dot bits by [row][column] within a glyph's 2x4 dot grid.
+const DOTS = [[0x01, 0x08], [0x02, 0x10], [0x04, 0x20], [0x40, 0x80]];
+const shrunk = new WeakMap<GraphLayout, Map<number, ShrunkGraph>>();
+
+/**
+ * The layout zoomed out by `factor`, like an image: each output cell covers a factor-by-factor block of layout cells (a
+ * cell is about twice as tall as wide, so the picture keeps its shape). A dot is set where its part of the block holds
+ * any character, the glyph belongs to the box owning most of its inked cells, and each box keeps its #k tag where it fits.
+ */
+export function shrinkGraph(layout: GraphLayout, factor: number): ShrunkGraph {
+  const cached = shrunk.get(layout)?.get(factor); if (cached) return cached;
+  const { lines, boxes } = layout; const height = lines.length; const width = lines[0]?.length ?? 0;
+  const ownerOf = lines.map(() => new Int16Array(width).fill(-1));
+  boxes.forEach((box, index) => { for (let row = box.top; row <= box.bottom; row++) ownerOf[row]!.fill(index, box.left, box.right + 1); });
+  const rows = Math.ceil(height / factor); const cols = Math.ceil(width / factor);
+  const glyphs: string[][] = []; const owners: number[][] = [];
+  for (let y = 0; y < rows; y++) {
+    const glyphRow: string[] = []; const ownerRow: number[] = [];
+    for (let x = 0; x < cols; x++) {
+      let bits = 0; const votes = new Map<number, number>();
+      for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 2; dx++) {
+        const top = Math.floor(y * factor + dy * factor / 4); const bottom = Math.min(height, Math.max(top + 1, Math.floor(y * factor + (dy + 1) * factor / 4)));
+        const left = x * factor + dx * factor / 2; const right = Math.min(width, left + factor / 2);
+        for (let row = top; row < bottom; row++) for (let column = left; column < right; column++) {
+          if (lines[row]![column] === ' ') continue;
+          bits |= DOTS[dy]![dx]!; const owner = ownerOf[row]![column]!; votes.set(owner, (votes.get(owner) ?? 0) + 1);
+        }
+      }
+      glyphRow.push(bits ? String.fromCharCode(0x2800 + bits) : ' ');
+      ownerRow.push([...votes].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0] ?? -1);
+    }
+    glyphs.push(glyphRow); owners.push(ownerRow);
+  }
+  boxes.forEach((box, index) => {
+    const tag = `#${box.index}`; const left = Math.ceil(box.left / factor) + 1; const right = Math.floor(box.right / factor) - 1;
+    if (right - left + 1 < tag.length) return;
+    const row = Math.floor((box.top + box.bottom) / 2 / factor); const start = Math.max(left, Math.floor((left + right + 1 - tag.length) / 2));
+    for (let i = 0; i < tag.length; i++) { glyphs[row]![start + i] = tag[i]!; owners[row]![start + i] = index; }
+  });
+  const result = { lines: glyphs.map(row => row.join('')), owners };
+  const byFactor = shrunk.get(layout) ?? new Map<number, ShrunkGraph>(); byFactor.set(factor, result); shrunk.set(layout, byFactor);
+  return result;
 }

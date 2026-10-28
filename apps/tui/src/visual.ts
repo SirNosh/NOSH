@@ -6,7 +6,7 @@ import { BoxRenderable, TextRenderable, MarkdownRenderable, TextAttributes, Styl
   type CliRenderer, type SyntaxStyle } from '@opentui/core';
 import { safeText, type MapLine, type MapTone, type TranscriptEntry, type ViewRow } from './controller.js';
 import { MAP_ROOTS, record, text as plain } from './view-model.js';
-import { layoutGraph, moveSelection, suggestedCommand, type GraphBox, type GraphDirection } from './map-graph.js';
+import { boxAt, layoutGraph, moveSelection, shrinkGraph, suggestedCommand, type GraphBox, type GraphDetail, type GraphDirection } from './map-graph.js';
 import { theme, splitBorder } from './theme.js';
 
 export function text(renderer: CliRenderer, id: string, content: string, color: string = theme.text): TextRenderable {
@@ -213,80 +213,149 @@ const clipped = (value: string, width: number) => value.length > width ? `${valu
  * The research map: one research root at a time as a laid-out graph (map-graph.ts), panned to keep the selected box in
  * view, with the selected node named underneath and the one command it needs. Rebuilt only when what is drawn changes.
  */
-export function createResearchMap(renderer: CliRenderer) {
+// Zoom levels, like an image: in to whole titles, the normal boxes, then out where each cell is a factor-by-factor block.
+const ZOOMS: Array<{ label: string; detail: GraphDetail; factor: number }> = [
+  { label: '150%', detail: 'full', factor: 1 }, { label: '100%', detail: 'normal', factor: 1 },
+  { label: '50%', detail: 'normal', factor: 2 }, { label: '25%', detail: 'normal', factor: 4 }, { label: '12%', detail: 'normal', factor: 8 }];
+
+export function createResearchMap(renderer: CliRenderer, changed: () => void) {
   const root = new BoxRenderable(renderer, { id: 'research-map', width: '100%', flexDirection: 'column', flexShrink: 0 });
-  let previous = ''; let rootIndex = 0; let selectedId = ''; let panX = 0; let panY = 0;
+  // The canvas rows persist (only their content changes): a mouse drag stays captured by the row it started on.
+  const header = new BoxRenderable(renderer, { id: 'map-header', width: '100%', flexDirection: 'column', flexShrink: 0 });
+  const canvas = new BoxRenderable(renderer, { id: 'map-canvas', width: '100%', flexDirection: 'column', flexShrink: 0 });
+  const panel = new BoxRenderable(renderer, { id: 'map-panel', width: '100%', flexDirection: 'column', flexShrink: 0 });
+  root.add(header); root.add(canvas); root.add(panel);
+  const rowPool: TextRenderable[] = [];
+  // Pan is in layout cells; the view starts at the origin (pan snapped to the zoom factor).
+  let previous = ''; let rootIndex = 0; let selectedId = ''; let panX = 0; let panY = 0; let originX = 0; let originY = 0;
+  let zoom = 1; let follow = true; let fits = true; let graph: unknown;
+  let drag: { x: number; y: number; panX: number; panY: number; moved: boolean } | null = null;
   // Autoresearch boxes opened from a Mission or Direction graph, innermost last.
   const opened: string[] = [];
   let shown: { boxes: GraphBox[]; selected: number } = { boxes: [], selected: 0 };
   const find = (node: Record<string, unknown>, id: string): Record<string, unknown> | undefined => node.id === id ? node : (Array.isArray(node.children) ? node.children.map(record) : []).map(child => find(child, id)).find(Boolean);
+  const replace = (box: BoxRenderable, children: TextRenderable[]) => { for (const child of box.getChildren()) { box.remove(child); child.destroyRecursively(); } for (const child of children) box.add(child); };
+  const line = (id: string, content: StyledText) => new TextRenderable(renderer, { id, content, width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 });
+  function setRows(count: number) {
+    while (rowPool.length < count) { const row = new TextRenderable(renderer, { id: `map-row-${rowPool.length}`, content: '', width: '100%', height: 1, wrapMode: 'none', flexShrink: 0, selectable: false }); rowPool.push(row); canvas.add(row); }
+    while (rowPool.length > count) { const row = rowPool.pop()!; canvas.remove(row); row.destroyRecursively(); }
+  }
   function update(map: unknown, width: number, height: number) {
     const roots = Array.isArray(record(map).roots) ? (record(map).roots as unknown[]).map(record) : [];
     rootIndex = roots.length ? (rootIndex % roots.length + roots.length) % roots.length : 0;
     const top = roots[rootIndex];
     while (top && opened.length && !find(top, opened.at(-1)!)) opened.pop();
     const drilled = top && opened.length ? find(top, opened.at(-1)!) : undefined;
-    const { lines, boxes } = layoutGraph(drilled ?? top);
+    graph = drilled ?? top;
+    const level = ZOOMS[zoom]!; const factor = level.factor;
+    const layout = layoutGraph(graph, level.detail); const { boxes } = layout;
     const found = selectedId ? boxes.findIndex(box => plain(box.node.id, 80) === selectedId) : -1;
     const selected = Math.max(0, found); selectedId = plain(boxes[selected]?.node.id, 80);
     shown = { boxes, selected };
+    const view = factor === 1 ? { lines: layout.lines, owners: null } : shrinkGraph(layout, factor);
     // Live workers outside any graph node (the chat agent): one line under the path.
     const workers = (Array.isArray(record(map).workers) ? (record(map).workers as unknown[]).map(record) : []).map(worker => `⚙ ${plain(worker.title, 40)} ${plain(worker.state, 40)}`.trim());
     // Path line, the workers line, the canvas, then three lines naming the selected node.
     const rows = Math.max(4, height - 5 - (workers.length ? 1 : 0)); const cols = Math.max(12, width);
+    // The view spans cols x rows cells, each covering factor x factor layout cells.
+    const spanX = cols * factor; const spanY = rows * factor; const canvasWidth = layout.lines[0]?.length ?? 0;
     const box = boxes[selected];
-    if (box) {
-      if (box.left < panX) panX = Math.max(0, box.left - 2); else if (box.right >= panX + cols) panX = Math.max(0, Math.min(box.left - 2, box.right - cols + 3));
-      if (box.top < panY) panY = Math.max(0, box.top - 1); else if (box.bottom >= panY + rows) panY = Math.max(0, Math.min(box.top - 1, box.bottom - rows + 2));
+    if (box && follow) {
+      if (box.left < panX) panX = Math.max(0, box.left - 2); else if (box.right >= panX + spanX) panX = Math.max(0, Math.min(box.left - 2, box.right - spanX + 3));
+      if (box.top < panY) panY = Math.max(0, box.top - 1); else if (box.bottom >= panY + spanY) panY = Math.max(0, Math.min(box.top - 1, box.bottom - spanY + 2));
     }
-    panX = Math.max(0, Math.min(panX, (lines[0]?.length ?? 0) - cols)); panY = Math.max(0, Math.min(panY, lines.length - rows));
-    const signature = JSON.stringify([lines, boxes.map(entry => entry.tone), selected, panX, panY, width, height, rootIndex, opened, roots.length, workers]);
+    panX = Math.max(0, Math.min(panX, canvasWidth - spanX)); panY = Math.max(0, Math.min(panY, layout.lines.length - spanY));
+    fits = canvasWidth <= spanX && layout.lines.length <= spanY;
+    const x0 = Math.floor(panX / factor); const y0 = Math.floor(panY / factor); originX = x0 * factor; originY = y0 * factor;
+    const signature = JSON.stringify([view.lines, boxes.map(entry => entry.tone), selected, x0, y0, zoom, width, height, rootIndex, opened, roots.length, workers]);
     if (signature === previous) return;
     previous = signature;
-    for (const child of root.getChildren()) { root.remove(child); child.destroyRecursively(); }
     // Workers alone (the chat agent) are not research; say how research starts.
-    if (!top) { const empty = text(renderer, 'map-empty', EMPTY_MAP, theme.muted); empty.marginBottom = 1; root.add(empty); return; }
+    if (!top) { const empty = text(renderer, 'map-empty', EMPTY_MAP, theme.muted); empty.marginBottom = 1; replace(header, [empty]); setRows(0); replace(panel, []); return; }
     const kind = plain(top.kind);
     const path = [MAP_ROOTS[kind]?.label ?? kind.toUpperCase(), `${rootIndex + 1}/${roots.length}`, plain(top.state), plain(top.title, 200), ...(drilled ? [`› ${plain(drilled.title, 80)}`] : [])].join('  ');
-    const hint = `${roots.length > 1 ? 'tab next · ' : ''}${opened.length ? 'backspace back · ' : ''}↑↓←→ select`;
-    root.add(new TextRenderable(renderer, { id: 'map-path', content: new StyledText([bold(fg(theme.accent)(clipped(path, Math.max(8, cols - hint.length - 2)))), fg(theme.muted)(`  ${hint}`)]), width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 }));
-    if (workers.length) root.add(new TextRenderable(renderer, { id: 'map-workers', content: new StyledText([fg(theme.secondary)(clipped(`workers  ${workers.join('  ·  ')}`, cols))]), width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 }));
+    // Keys and mouse are in the footer; the header keeps room for the path.
+    const hint = `${level.label}${roots.length > 1 ? ' · tab next' : ''}${opened.length ? ' · backspace back' : ''}`;
+    replace(header, [line('map-path', new StyledText([bold(fg(theme.accent)(clipped(path, Math.max(8, cols - hint.length - 2)))), fg(theme.muted)(`  ${hint}`)])),
+      ...(workers.length ? [line('map-workers', new StyledText([fg(theme.secondary)(clipped(`workers  ${workers.join('  ·  ')}`, cols))]))] : [])]);
     // Each cell takes its box's state color (the selected box the accent, bold); edges between boxes stay muted.
-    for (let row = panY; row < Math.min(lines.length, panY + rows); row++) {
-      const line = lines[row]!.slice(panX, panX + cols); const chunks: ReturnType<ReturnType<typeof fg>>[] = [];
-      const ownerAt = (column: number) => boxes.findIndex(entry => row >= entry.top && row <= entry.bottom && column + panX >= entry.left && column + panX <= entry.right);
+    const visible = Math.max(0, Math.min(rows, view.lines.length - y0)); setRows(visible);
+    for (let index = 0; index < visible; index++) {
+      const row = y0 + index; const cells = view.lines[row]!.slice(x0, x0 + cols); const chunks: ReturnType<ReturnType<typeof fg>>[] = [];
+      const ownerAt = (column: number) => view.owners ? view.owners[row]![column + x0] ?? -1 : boxAt(boxes, column + x0, row);
       let start = 0; let owner = ownerAt(0);
-      for (let column = 1; column <= line.length; column++) {
-        const next = column < line.length ? ownerAt(column) : -2;
+      for (let column = 1; column <= cells.length; column++) {
+        const next = column < cells.length ? ownerAt(column) : -2;
         if (next === owner) continue;
-        const piece = fg(owner === -1 ? theme.muted : owner === selected ? theme.accent : MAP_TONES[boxes[owner]!.tone])(line.slice(start, column));
+        const piece = fg(owner === -1 ? theme.muted : owner === selected ? theme.accent : MAP_TONES[boxes[owner]!.tone])(cells.slice(start, column));
         chunks.push(owner === selected ? bold(piece) : piece); start = column; owner = next;
       }
-      root.add(new TextRenderable(renderer, { id: `map-row-${row}`, content: new StyledText(chunks), width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 }));
+      rowPool[index]!.content = new StyledText(chunks);
     }
-    if (!box) return;
+    if (!box) { replace(panel, []); return; }
     const command = suggestedCommand(box);
     // Siblings can share a connector line, so the panel names the box this one hangs from.
     const parent = boxes.find(entry => entry.index === box.parent);
     const facts = [plain(box.node.kind) === 'node' ? 'graph node' : plain(box.node.kind), plain(box.node.state, 40), plain(box.node.detail, 200).replace(/(\d\.\d{5})\d+/g, '$1'), plain(box.node.id, 80), parent ? `under #${parent.index} ${clipped(plain(parent.node.title, 200), 40)}` : ''].filter(Boolean).join(' · ');
     const action = box.opens ? 'enter  open its experiments' : command ? `enter  ${command}   (fills the composer; nothing changes until you confirm)` : '';
-    const line = (id: string, content: StyledText) => new TextRenderable(renderer, { id, content, width: '100%', height: 1, wrapMode: 'none', flexShrink: 0 });
-    const name = line('map-selected', new StyledText([bold(fg(theme.text)(clipped(plain(box.node.title, 400) || plain(box.node.id, 80), cols)))])); name.marginTop = 1; root.add(name);
-    root.add(line('map-selected-facts', new StyledText([fg(MAP_TONES[box.tone])(clipped(facts, cols))])));
-    if (action) root.add(line('map-selected-action', new StyledText([fg(theme.accent)(clipped(action, cols))])));
+    const name = line('map-selected', new StyledText([bold(fg(theme.text)(clipped(plain(box.node.title, 400) || plain(box.node.id, 80), cols)))])); name.marginTop = 1;
+    replace(panel, [name, line('map-selected-facts', new StyledText([fg(MAP_TONES[box.tone])(clipped(facts, cols))])),
+      ...(action ? [line('map-selected-action', new StyledText([fg(theme.accent)(clipped(action, cols))]))] : [])]);
   }
   const select = (index: number) => { selectedId = plain(shown.boxes[index]?.node.id, 80); };
+  /** Zoom to another level, keeping the point under the pointer in place (across layouts: the box under it). */
+  function zoomTo(next: number, cell: { x: number; y: number }) {
+    const from = ZOOMS[zoom]!; const to = ZOOMS[next]!;
+    const point = { x: originX + cell.x * from.factor, y: originY + cell.y * from.factor };
+    if (from.detail === to.detail) { panX = point.x - cell.x * to.factor; panY = point.y - cell.y * to.factor; }
+    else {
+      const before = layoutGraph(graph, from.detail).boxes; const after = layoutGraph(graph, to.detail).boxes;
+      const centre = (box: GraphBox) => Math.abs((box.left + box.right) / 2 - point.x) + 2 * Math.abs((box.top + box.bottom) / 2 - point.y);
+      const hit = boxAt(before, point.x, point.y); const anchor = hit >= 0 ? before[hit] : [...before].sort((a, b) => centre(a) - centre(b))[0];
+      const target = after.find(box => box.index === anchor?.index);
+      if (anchor && target) {
+        panX = target.left + (point.x - anchor.left) * (target.right - target.left) / Math.max(1, anchor.right - anchor.left) - cell.x;
+        panY = target.top + (point.y - anchor.top) * (target.bottom - target.top) / Math.max(1, anchor.bottom - anchor.top) - cell.y;
+      }
+    }
+    panX = Math.max(0, Math.round(panX)); panY = Math.max(0, Math.round(panY)); zoom = next; follow = false;
+  }
+  // Mouse, like an image viewer: the wheel zooms at the pointer, a drag moves the view, a click selects a box.
+  // Each handler stops the event so the conversation behind the map neither scrolls nor takes focus.
+  const cellAt = (event: { x: number; y: number }) => ({ x: event.x - canvas.x, y: event.y - canvas.y });
+  canvas.onMouseScroll = (event) => {
+    event.stopPropagation();
+    const direction = event.scroll?.direction;
+    if (direction === 'up' && zoom > 0) zoomTo(zoom - 1, cellAt(event));
+    else if (direction === 'down' && zoom < ZOOMS.length - 1 && !fits) zoomTo(zoom + 1, cellAt(event));
+    else return;
+    changed();
+  };
+  canvas.onMouseDown = (event) => { if (event.button !== 0) return; event.preventDefault(); event.stopPropagation(); drag = { x: event.x, y: event.y, panX: originX, panY: originY, moved: false }; };
+  canvas.onMouseDrag = (event) => {
+    if (!drag) return; event.stopPropagation();
+    const factor = ZOOMS[zoom]!.factor; drag.moved ||= event.x !== drag.x || event.y !== drag.y;
+    panX = Math.max(0, drag.panX - (event.x - drag.x) * factor); panY = Math.max(0, drag.panY - (event.y - drag.y) * factor); follow = false;
+    changed();
+  };
+  canvas.onMouseUp = (event) => {
+    if (!drag) return; event.stopPropagation();
+    const click = !drag.moved; drag = null; if (!click) return;
+    const factor = ZOOMS[zoom]!.factor; const cell = cellAt(event); const index = boxAt(shown.boxes, originX + cell.x * factor, originY + cell.y * factor);
+    if (index < 0) return;
+    select(index); follow = false; changed();
+  };
   return {
     root, update,
-    move(direction: GraphDirection) { select(moveSelection(shown.boxes, shown.selected, direction)); },
-    cycle(step: number) { rootIndex += step; opened.length = 0; selectedId = ''; panX = 0; panY = 0; },
-    pan(rows: number) { panY = Math.max(0, panY + rows); },
+    move(direction: GraphDirection) { select(moveSelection(shown.boxes, shown.selected, direction)); follow = true; },
+    cycle(step: number) { rootIndex += step; opened.length = 0; selectedId = ''; panX = 0; panY = 0; follow = true; },
+    pan(rows: number) { panY = Math.max(0, panY + rows * ZOOMS[zoom]!.factor); follow = false; },
     /** Enter on the selected box: open a nested Autoresearch (''), else the command its node needs ('' when none). */
     open(): string {
       const box = shown.boxes[shown.selected]; if (!box) return '';
-      if (box.opens) { opened.push(plain(box.node.id, 80)); selectedId = ''; panX = 0; panY = 0; return ''; }
+      if (box.opens) { opened.push(plain(box.node.id, 80)); selectedId = ''; panX = 0; panY = 0; follow = true; return ''; }
       return suggestedCommand(box);
     },
-    back(): boolean { if (!opened.length) return false; selectedId = opened.pop()!; return true; },
+    back(): boolean { if (!opened.length) return false; selectedId = opened.pop()!; follow = true; return true; },
   };
 }
