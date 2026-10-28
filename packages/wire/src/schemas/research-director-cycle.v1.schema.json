@@ -207,6 +207,53 @@
         "submittedAt": {
           "type": "string",
           "format": "date-time"
+        },
+        "spawn": {
+          "type": "object",
+          "properties": {
+            "nodeId": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
+              "maxLength": 128
+            },
+            "kind": {
+              "type": "string",
+              "const": "autoresearch"
+            },
+            "question": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "familyTags": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "minItems": 1,
+              "maxItems": 8
+            },
+            "scope": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "minItems": 1,
+              "maxItems": 32
+            }
+          },
+          "required": [
+            "nodeId",
+            "kind",
+            "question",
+            "familyTags",
+            "scope"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [

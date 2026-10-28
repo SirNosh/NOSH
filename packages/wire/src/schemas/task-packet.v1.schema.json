@@ -303,13 +303,11 @@
             },
             "branch": {
               "type": "string",
-              "minLength": 1,
-              "maxLength": 2000
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$"
             },
             "startingCommit": {
               "type": "string",
-              "minLength": 7,
-              "maxLength": 128
+              "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
             },
             "writeScopes": {
               "type": "array",
@@ -368,6 +366,14 @@
               "type": "string",
               "const": "request_only"
             },
+            "networkAllowlist": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+              },
+              "maxItems": 32
+            },
             "allowedToolIds": {
               "type": "array",
               "items": {
@@ -383,6 +389,7 @@
             "gitCommit",
             "gitPush",
             "delegation",
+            "networkAllowlist",
             "allowedToolIds"
           ],
           "additionalProperties": false

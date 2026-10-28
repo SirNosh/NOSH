@@ -1,0 +1,320 @@
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createId } from "@nosh/core";
+import { approveProjectContract, readProjectContract } from "@nosh/evidence";
+import type { RegisteredProject } from "@nosh/persistence";
+import { schemaUri, validateRecord, type EventEnvelope, type JsonValue } from "@nosh/wire";
+import { describe, expect, it, vi } from "vitest";
+import { NoshDaemon } from "./daemon.js";
+import { priorAttemptInstructions, resumableAttempt, taskCommandInstructions, type ResearchControl } from "./research-control.js";
+import { citedRunIssues, completionRunIssues, writeUpOnly } from "./task-postflight.js";
+import { createTaskWorktree, resumeInstruction, resumePoint } from "./task-worktree.js";
+
+describe("nosh_run task commands", () => {
+  it("runs only contract-declared commands, commits worker edits itself, and fills completion facts without model tool calls", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-run-"));
+    const daemon = new NoshDaemon({ dataDirectory: join(directory, "data"), bootstrapToken: "test" });
+    try {
+      const project = daemon.initializeProject({ path: join(directory, "repository"), createRepository: true, workingTitle: "Run fixture" });
+      const git = (args: string[]) => spawnSync("git", ["-C", project.repositoryRoot, ...args], { encoding: "utf8", windowsHide: true }).stdout.trim();
+      const draft = readProjectContract(project.repositoryRoot);
+      const approved = approveProjectContract(project.repositoryRoot, { ...draft, contractVersion: 2 });
+      // Before amendment no command is declared, so nothing can run.
+      const taskId = createId("tsk"); const agentId = createId("agt");
+      writeFileSync(join(project.repositoryRoot, "README.md"), "# fixture\n"); git(["add", "README.md"]); git(["-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-m", "initial"]);
+      const head = git(["rev-parse", "HEAD"]);
+      const tree = createTaskWorktree(daemon.research, project, taskId, head);
+      vi.spyOn(daemon.agents, "inspect").mockReturnValue([{ agentId, projectId: project.projectId, taskId, role: "general_worker", missionId: null, directionId: null, autoresearchId: null, experimentId: null }] as unknown as ReturnType<typeof daemon.agents.inspect>);
+      const packet: Record<string, JsonValue> & { permissions: Record<string, JsonValue> } = { taskId, permissions: { subprocess: "allowlisted", allowedToolIds: ["tool_nosh.run"] }, workspace: { worktreeId: tree.worktreeId } };
+      const records = daemon.research.records.bind(daemon.research);
+      vi.spyOn(daemon.research, "records").mockImplementation((projectId, schema) => schema === "task-packet" ? [packet] : records(projectId, schema));
+      expect(await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_check" }, agentId)).toMatchObject({ accepted: false, error: expect.stringContaining("declares: none") });
+
+      daemon.amendProjectContract(project.projectId, { ...approved, contractVersion: 3, execution: { runner: "native", commands: [
+        { commandId: "command_check", description: "Exit with the code in exit.txt", argv: [process.execPath, "-e", "const c=Number(require('fs').readFileSync('exit.txt','utf8'));console.log('code '+c);process.exit(c)"], timeoutSeconds: 30 },
+      ] } }, "amend-0001");
+      // An edit-test iteration: the first run fails, the worker fixes it. Only the final state counts as the outcome.
+      writeFileSync(join(tree.path, "exit.txt"), "1");
+      expect(await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_check" }, agentId)).toMatchObject({ accepted: true, exitCode: 1 });
+      writeFileSync(join(tree.path, "exit.txt"), "0");
+      const dirty = await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_check" }, agentId) as Record<string, unknown>;
+      expect(dirty).toMatchObject({ accepted: true, exitCode: 0, dirty: true, citable: false, commit: head });
+      expect(String(dirty.stdoutTail)).toContain("code 0");
+
+      // With commit authority, the daemon commits the worker's edits before each run, so every run is tied to an exact clean commit.
+      Object.assign(packet, { attempt: 1, permissions: { network: "disabled", subprocess: "allowlisted", gitCommit: true, gitPush: false, delegation: "request_only", networkAllowlist: [], allowedToolIds: ["tool_nosh.run", "tool_nosh.git.commit", "tool_pi.read", "tool_pi.write"] }, workspace: { worktreeId: tree.worktreeId, branch: tree.branch, startingCommit: head, writeScopes: ["**"], protectedScopes: [".nosh/contracts/**"] } });
+      const clean = await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_check" }, agentId) as Record<string, unknown>;
+      const worktreeGit = (args: string[]) => spawnSync("git", ["-C", tree.path, ...args], { encoding: "utf8", windowsHide: true }).stdout.trim();
+      const ending = worktreeGit(["rev-parse", "HEAD"]);
+      expect(ending).not.toBe(head);
+      expect(clean).toMatchObject({ accepted: true, exitCode: 0, dirty: false, citable: true, commit: ending });
+      expect(worktreeGit(["log", "-1", "--format=%an|%s"])).toBe(`NOSH general_worker|nosh: ${taskId} edits before command_check`);
+      // The same command on the same clean commit answers from the record instead of launching another Job.
+      const started = Date.now();
+      const rerun = await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_check" }, agentId) as Record<string, unknown>;
+      expect(rerun).toMatchObject({ accepted: true, cached: true, jobId: clean.jobId, exitCode: 0, citable: true, commit: ending });
+      expect(Date.now() - started).toBeLessThan(1_000);
+
+      const runs = daemon.replay(project.projectId, 0).filter((event) => event.type === "task.command_run").map((event) => event.payload as Record<string, unknown>);
+      expect(runs).toHaveLength(3);
+      expect(citedRunIssues(runs, taskId, ending, [{ criterionId: "criterion_1", validatorRunIds: [String(clean.jobId)] }])).toEqual([]);
+      expect(citedRunIssues(runs, taskId, ending, [{ criterionId: "criterion_1", validatorRunIds: [String(dirty.jobId)] }])[0]).toContain("clean ending commit");
+      expect(citedRunIssues(runs, createId("tsk"), ending, [{ criterionId: "criterion_1", validatorRunIds: [String(clean.jobId)] }])[0]).toContain("not a nosh_run of this task");
+      // A Job the daemon itself ran for the task (a Direction baseline evaluation) is an authoritative validator.
+      expect(citedRunIssues(runs, taskId, ending, [{ criterionId: "criterion_1", validatorRunIds: ["job_daemonbaseline"] }], ["job_daemonbaseline"])).toEqual([]);
+      expect(citedRunIssues(runs, taskId, ending, [{ criterionId: "criterion_1", validatorRunIds: ["job_daemonbaseline"] }])[0]).toContain("not a nosh_run of this task");
+
+      // commands[] is daemon-owned: whatever shape the model wrote, the completion carries each command's latest run.
+      const normalized = (daemon as unknown as { withDaemonCommands(context: unknown, record: Record<string, unknown>): Record<string, unknown> }).withDaemonCommands({ projectId: project.projectId, taskId }, { $schema: schemaUri("general-worker-completion"), commands: [{ commandId: "command_check", jobId: clean.jobId }] });
+      expect(normalized.commands).toEqual([{ commandId: "command_check", displayCommand: expect.stringContaining("exit.txt"), exitCode: 0, resultArtifactId: null }]);
+
+      // Final answer: the daemon commits the remaining edits, fills codeChanges and changedFiles, and snapshots "artifact:<path>" citations.
+      writeFileSync(join(tree.path, "report.md"), "# report\n"); writeFileSync(join(tree.path, "notes.md"), "notes\n");
+      const withFacts = (records: Array<Record<string, unknown>>) => (daemon as unknown as { withDaemonFacts(context: unknown, records: Array<Record<string, unknown>>): Array<Record<string, unknown>> }).withDaemonFacts({ projectId: project.projectId, taskId, agentId }, records);
+      const submitted = [
+        { $schema: schemaUri("general-worker-completion"), workPerformed: [{ subject: "artifact: prose with spaces is untouched", artifactIds: ["artifact:report.md"] }], codeChanges: { startingCommit: head, endingCommit: head, changedPaths: [], diffArtifactId: null, branch: tree.branch } },
+        { $schema: schemaUri("episode-draft"), artifactIds: ["artifact:report.md"], changedFiles: [] },
+      ];
+      const [completion, episode] = withFacts(submitted) as [{ workPerformed: Array<{ subject: string; artifactIds: string[] }>; codeChanges: Record<string, unknown> }, { artifactIds: string[]; changedFiles: string[] }];
+      const final = worktreeGit(["rev-parse", "HEAD"]);
+      expect(final).not.toBe(ending);
+      expect(worktreeGit(["status", "--porcelain"])).toBe("");
+      expect(completion.codeChanges).toEqual({ startingCommit: head, endingCommit: final, changedPaths: expect.arrayContaining(["exit.txt", "notes.md", "report.md"]), diffArtifactId: expect.stringMatching(/^art_[0-9a-f]{32}$/), branch: tree.branch });
+      // Each nosh_run is a daemon-produced Artifact cited by commands[] and by the criteria that name its Job.
+      // Cited runs are checked when the worker answers, so a mis-claimed criterion is correctable in-session: `clean` ran before the final commit.
+      const claimed = (workerClaim: string, validatorRunIds: string[]) => () => withFacts([{ $schema: schemaUri("general-worker-completion"), commands: [], criteria: [{ criterionId: "criterion_1", workerClaim, validatorRunIds, artifactIds: [] }] }]);
+      expect(claimed("satisfied", [String(clean.jobId)])).toThrow(/^Cited runs: criterion criterion_1 cites job_\w+, which did not run on the clean ending commit/);
+      expect(claimed("deferred_to_review", [String(clean.jobId)])).not.toThrow();
+      // A job the daemon ran itself (a Direction baseline) is left to postflight, which knows those jobs.
+      expect(claimed("satisfied", ["job_daemonbaseline"])).not.toThrow();
+      // Deliberately deferred: the cited run predates the final commit (comparison-style citation).
+      const withRuns = withFacts([{ $schema: schemaUri("general-worker-completion"), commands: [], criteria: [{ criterionId: "criterion_1", workerClaim: "deferred_to_review", validatorRunIds: [String(clean.jobId)], artifactIds: [] }] }])[0] as { commands: Array<{ resultArtifactId: string }>; criteria: Array<{ artifactIds: string[] }> };
+      const cleanRunArtifact = withRuns.commands[0]!.resultArtifactId;
+      expect(withRuns.criteria[0]!.artifactIds).toEqual([cleanRunArtifact]);
+      expect(await daemon.submitTool("nosh_artifact_read", project.projectId, `task:${taskId}`, { artifactId: cleanRunArtifact }, agentId)).toMatchObject({ accepted: true, kind: "artifact_run-result", content: expect.stringContaining(String(clean.jobId)) });
+      // The exact change is a daemon-produced Artifact, so reviewers judge the code itself.
+      expect(await daemon.submitTool("nosh_artifact_read", project.projectId, `task:${taskId}`, { artifactId: completion.codeChanges.diffArtifactId }, agentId)).toMatchObject({ accepted: true, kind: "artifact_diff", content: expect.stringContaining("+notes") });
+      expect(completion.codeChanges.changedPaths).toHaveLength(3);
+      expect(episode.changedFiles).toEqual(completion.codeChanges.changedPaths);
+      const artifactId = completion.workPerformed[0]!.artifactIds[0]!;
+      expect(artifactId).toMatch(/^art_[0-9a-f]{32}$/);
+      expect(episode.artifactIds).toEqual([artifactId]);
+      expect(completion.workPerformed[0]!.subject).toBe("artifact: prose with spaces is untouched");
+      expect(daemon.research.records(project.projectId, "artifact").find((entry) => entry.artifactId === artifactId)).toMatchObject({ kind: "artifact_file", producer: { type: "agent", agentId, taskId, path: "report.md" } });
+      expect(await daemon.submitTool("nosh_artifact_read", project.projectId, `task:${taskId}`, { artifactId }, agentId)).toMatchObject({ accepted: true, kind: "artifact_file", content: "# report\n", remainingCharacters: 0 });
+      expect(await daemon.submitTool("nosh_artifact_read", project.projectId, `task:${taskId}`, { artifactId: "art_missing" }, agentId)).toMatchObject({ accepted: false });
+      // Review Requests cite Evidence by evd_ id; the reader returns the record so a reviewer can follow it to its Artifacts.
+      const evidence = daemon.research.submitUserEvidence(project.projectId, { evidenceType: "evidence_observation", statement: "The report exists.", polarity: "supports", sourceRefs: [{ refType: "ref_artifact", refId: artifactId, locator: "report.md" }], evaluationContractHash: null, scopeLimitations: [], quality: { status: "unreviewed", reviewId: null, confidence: "medium" } }, "evidence-read").payload as { evidenceId: string };
+      expect(await daemon.submitTool("nosh_artifact_read", project.projectId, `task:${taskId}`, { artifactId: evidence.evidenceId }, agentId)).toMatchObject({ accepted: true, kind: "evidence", content: expect.stringContaining(artifactId) });
+      expect(await daemon.submitTool("nosh_artifact_read", project.projectId, `task:${taskId}`, { artifactId: "evd_0123abcd" }, agentId)).toMatchObject({ accepted: false });
+      // Candidate Evidence frozen for an open Review is readable until the Review ends.
+      daemon.research.offerCandidateEvidence(project.projectId, { evidenceId: "evd_0123abcd", statement: "candidate" });
+      expect(await daemon.submitTool("nosh_artifact_read", project.projectId, `task:${taskId}`, { artifactId: "evd_0123abcd" }, agentId)).toMatchObject({ accepted: true, kind: "evidence_candidate", content: expect.stringContaining("candidate") });
+      daemon.research.withdrawCandidateEvidence(project.projectId, "evd_0123abcd");
+      expect(await daemon.submitTool("nosh_artifact_read", project.projectId, `task:${taskId}`, { artifactId: "evd_0123abcd" }, agentId)).toMatchObject({ accepted: false });
+      // A corrected or replayed answer is idempotent: same Artifact, no new commit.
+      const [again] = withFacts(submitted) as [{ workPerformed: Array<{ artifactIds: string[] }>; codeChanges: { endingCommit: string } }];
+      expect(again.workPerformed[0]!.artifactIds).toEqual([artifactId]);
+      expect(again.codeChanges.endingCommit).toBe(final);
+      // One file cited under different fields (report field and episode) is one Artifact with the most specific kind.
+      const [librarian, librarianEpisode] = withFacts([{ $schema: schemaUri("librarian-completion"), reportArtifactId: "artifact:report.md" }, { $schema: schemaUri("episode-draft"), artifactIds: ["artifact:report.md"] }]) as [{ reportArtifactId: string }, { artifactIds: string[] }];
+      expect(librarianEpisode.artifactIds).toEqual([librarian.reportArtifactId]);
+      expect(daemon.research.records(project.projectId, "artifact").find((entry) => entry.artifactId === librarian.reportArtifactId)).toMatchObject({ kind: "artifact_report" });
+      // A source's canonical URL is filled when derivable: a cited worktree file, or a DOI.
+      const [sourced] = withFacts([{ $schema: schemaUri("librarian-completion"), sources: [{ sourceId: "source_1", artifactId: "artifact:report.md" }, { sourceId: "source_2", persistentId: "doi:10.1109/ICPR.2016.7900006" }, { sourceId: "source_3", canonicalUrl: "https://example.org/kept" }] }]) as [{ sources: Array<{ canonicalUrl?: string }> }];
+      expect(sourced.sources.map((source) => source.canonicalUrl)).toEqual(["file:///report.md", "https://doi.org/10.1109/ICPR.2016.7900006", "https://example.org/kept"]);
+      // A source may cite recorded Evidence: it becomes a readable snapshot Artifact of that record.
+      const [fromEvidence] = withFacts([{ $schema: schemaUri("librarian-completion"), sources: [{ sourceId: "source_4", artifactId: evidence.evidenceId }] }]) as [{ sources: Array<{ artifactId: string; canonicalUrl: string }> }];
+      expect(fromEvidence.sources[0]!.artifactId).toMatch(/^art_[0-9a-f]{32}$/);
+      expect(fromEvidence.sources[0]!.canonicalUrl).toBe(`nosh://evidence/${evidence.evidenceId}`);
+      expect(await daemon.submitTool("nosh_artifact_read", project.projectId, `task:${taskId}`, { artifactId: fromEvidence.sources[0]!.artifactId }, agentId)).toMatchObject({ accepted: true, content: expect.stringContaining(evidence.evidenceId) });
+      expect(() => withFacts([{ $schema: schemaUri("librarian-completion"), sources: [{ sourceId: "source_5", artifactId: "evd_0123abcd" }] }])).toThrow("not recorded Evidence");
+      // Citations must name files inside the worktree; the reason is correctable by the model.
+      for (const [path, reason] of [["missing.md", "names no file"], ["../outside.md", "inside your worktree"], [".git/HEAD", "inside your worktree"]] as const) expect(() => withFacts([{ $schema: schemaUri("general-worker-completion"), workPerformed: [{ artifactIds: [`artifact:${path}`] }] }])).toThrow(reason);
+
+      // Progress is a text line the daemon turns into a schema-valid progress-update (no model tool call).
+      const recorded: unknown[] = [];
+      vi.spyOn(daemon, "submitRecord").mockImplementation((tool, _projectId, attemptKey, record) => { recorded.push({ tool, attemptKey, record }); return { accepted: true } as ReturnType<typeof daemon.submitRecord>; });
+      expect(await daemon.submitTool("nosh_progress_note", project.projectId, `task:${taskId}`, { note: "tests pass -> write the report" }, agentId)).toMatchObject({ accepted: true });
+      const note = recorded[0] as { tool: string; attemptKey: string; record: Record<string, unknown> };
+      expect(note).toMatchObject({ tool: "nosh_progress_emit", attemptKey: `task:${taskId}`, record: { taskId, agentId, attempt: 1, summary: "tests pass", nextOperation: "write the report" } });
+      expect(validateRecord(schemaUri("progress-update"), note.record as never)).toMatchObject({ ok: true });
+      expect(await daemon.submitTool("nosh_progress_note", project.projectId, `task:${createId("tsk")}`, { note: "spoofed" }, agentId)).toMatchObject({ accepted: false });
+
+      // A session whose packet lacks subprocess authority cannot run anything.
+      packet.permissions = { ...packet.permissions, subprocess: "disabled" };
+      expect(await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_check" }, agentId)).toMatchObject({ accepted: false, error: "This task is not authorized to run commands" });
+    } finally { daemon.stop(); rmSync(directory, { recursive: true, force: true }); }
+  }, 60_000);
+  it("refuses an experiment worker any variant of the frozen evaluation program, and allows its other commands", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-run-experiment-"));
+    const daemon = new NoshDaemon({ dataDirectory: join(directory, "data"), bootstrapToken: "test" });
+    try {
+      const project = daemon.initializeProject({ path: join(directory, "repository"), createRepository: true, workingTitle: "Experiment run fixture" });
+      const git = (args: string[]) => spawnSync("git", ["-C", project.repositoryRoot, ...args], { encoding: "utf8", windowsHide: true }).stdout.trim();
+      const approved = approveProjectContract(project.repositoryRoot, { ...readProjectContract(project.repositoryRoot), contractVersion: 2 });
+      daemon.amendProjectContract(project.projectId, { ...approved, contractVersion: 3, execution: { runner: "native", commands: [
+        { commandId: "command_check", description: "Unit tests", argv: [process.execPath, "-e", "process.exit(0)"], timeoutSeconds: 30 },
+        { commandId: "command_evaluate-test", description: "Held-out test evaluation", argv: [process.execPath, "evaluate.mjs", "--split=test"], timeoutSeconds: 30 },
+      ] } }, "amend-experiment-0001");
+      writeFileSync(join(project.repositoryRoot, "README.md"), "# fixture\n"); git(["add", "README.md"]); git(["-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-m", "initial"]);
+      const taskId = createId("tsk"); const agentId = createId("agt"); const autoresearchId = createId("ar");
+      const tree = createTaskWorktree(daemon.research, project, taskId, git(["rev-parse", "HEAD"]));
+      vi.spyOn(daemon.agents, "inspect").mockReturnValue([{ agentId, projectId: project.projectId, taskId, role: "general_worker", missionId: null, directionId: null, autoresearchId, experimentId: createId("exp") }] as unknown as ReturnType<typeof daemon.agents.inspect>);
+      const packet = { taskId, taskType: "task_experiment.implementation", permissions: { subprocess: "allowlisted", allowedToolIds: ["tool_nosh.run"] }, workspace: { worktreeId: tree.worktreeId } };
+      const records = daemon.research.records.bind(daemon.research);
+      vi.spyOn(daemon.research, "records").mockImplementation((projectId, schema) => schema === "task-packet" ? [packet] : records(projectId, schema));
+      vi.spyOn(daemon.research, "autoresearchExecution").mockReturnValue({ entityId: autoresearchId, value: { evaluationContract: { execution: { command: [process.execPath, "evaluate.mjs", "--split=dev"] } } } } as unknown as ReturnType<typeof daemon.research.autoresearchExecution>);
+      // The daemon evaluates every variant with the frozen command; a worker running it (or its held-out split) is refused.
+      expect(await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_evaluate-test" }, agentId)).toMatchObject({ accepted: false, error: expect.stringContaining("frozen evaluation") });
+      expect(await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_check" }, agentId)).toMatchObject({ accepted: true, exitCode: 0 });
+    } finally { vi.restoreAllMocks(); daemon.stop(); rmSync(directory, { recursive: true, force: true }); }
+  });
+  it("shows the worker which tests failed when the failure scrolled out of the output tail", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-run-tap-"));
+    const daemon = new NoshDaemon({ dataDirectory: join(directory, "data"), bootstrapToken: "test" });
+    try {
+      const project = daemon.initializeProject({ path: join(directory, "repository"), createRepository: true, workingTitle: "TAP fixture" });
+      const git = (args: string[]) => spawnSync("git", ["-C", project.repositoryRoot, ...args], { encoding: "utf8", windowsHide: true }).stdout.trim();
+      const approved = approveProjectContract(project.repositoryRoot, { ...readProjectContract(project.repositoryRoot), contractVersion: 2 });
+      daemon.amendProjectContract(project.projectId, { ...approved, contractVersion: 3, execution: { runner: "native", commands: [
+        { commandId: "command_test", description: "Unit tests", argv: [process.execPath, "tap.cjs"], timeoutSeconds: 30 },
+      ] } }, "amend-tap-0001");
+      // node --test writes TAP when not on a terminal: each failure where it happens, only the counts at the end.
+      const passing = Array.from({ length: 60 }, (_, index) => `# Subtest: passes ${index + 3}\nok ${index + 3} - passes ${index + 3}\n  ---\n  duration_ms: 0.2\n  ...`);
+      const tap = ["TAP version 13", "# Subtest: parses", "ok 1 - parses", "  ---", "  duration_ms: 0.1", "  ...", "# Subtest: calibrates", "not ok 2 - calibrates", "  ---", "  error: |-", "    Expected values to be strictly equal:", "    0.3 !== 0.25", "  code: 'ERR_ASSERTION'", "  ...", ...passing, "1..62", "# pass 61", "# fail 1"].join("\n");
+      writeFileSync(join(project.repositoryRoot, "tap.cjs"), `console.log(${JSON.stringify(tap)}); process.exit(1);\n`); git(["add", "tap.cjs"]); git(["-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-m", "initial"]);
+      const taskId = createId("tsk"); const agentId = createId("agt");
+      const tree = createTaskWorktree(daemon.research, project, taskId, git(["rev-parse", "HEAD"]));
+      vi.spyOn(daemon.agents, "inspect").mockReturnValue([{ agentId, projectId: project.projectId, taskId, role: "general_worker", missionId: null, directionId: null, autoresearchId: null, experimentId: null }] as unknown as ReturnType<typeof daemon.agents.inspect>);
+      const packet = { taskId, permissions: { subprocess: "allowlisted", allowedToolIds: ["tool_nosh.run"] }, workspace: { worktreeId: tree.worktreeId } };
+      const records = daemon.research.records.bind(daemon.research);
+      vi.spyOn(daemon.research, "records").mockImplementation((projectId, schema) => schema === "task-packet" ? [packet] : records(projectId, schema));
+      const run = await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_test" }, agentId) as Record<string, unknown>;
+      expect(run).toMatchObject({ accepted: true, exitCode: 1 });
+      expect(String(run.stdoutTail)).not.toContain("not ok");
+      expect(String(run.failedTests)).toContain("not ok 2 - calibrates");
+      expect(String(run.failedTests)).toContain("0.3 !== 0.25");
+      expect(String(run.failedTests)).not.toContain("passes");
+      // Re-running on the unchanged commit answers from the record, failures included.
+      expect(await daemon.submitTool("nosh_run", project.projectId, `task:${taskId}`, { commandId: "command_test" }, agentId)).toMatchObject({ cached: true, jobId: run.jobId, failedTests: run.failedTests });
+    } finally { vi.restoreAllMocks(); daemon.stop(); rmSync(directory, { recursive: true, force: true }); }
+  });
+
+});
+
+describe("paper write-up after a cited run", () => {
+  it("keeps a run valid when only docs/paper.md or docs/paper.bib changed since it, and not after any other change", () => {
+    const repository = mkdtempSync(join(tmpdir(), "nosh-writeup-"));
+    const git = (...args: string[]) => spawnSync("git", ["-C", repository, "-c", "user.name=t", "-c", "user.email=t@t", ...args], { encoding: "utf8" }).stdout.trim();
+    try {
+      git("init", "-q"); writeFileSync(join(repository, "a.txt"), "a"); git("add", "."); git("commit", "-qm", "base");
+      const runCommit = git("rev-parse", "HEAD");
+      mkdirSync(join(repository, "docs")); writeFileSync(join(repository, "docs", "paper.md"), "# results"); git("add", "."); git("commit", "-qm", "paper");
+      const paper = git("rev-parse", "HEAD");
+      writeFileSync(join(repository, "a.txt"), "changed"); git("commit", "-qam", "code");
+      const code = git("rev-parse", "HEAD");
+      const runs = [{ taskId: "tsk_1", jobId: "job_1", commit: runCommit, dirty: false, state: "completed", exitCode: 0 }];
+      const cited = [{ criterionId: "criterion_1", validatorRunIds: ["job_1"] }];
+      expect(citedRunIssues(runs, "tsk_1", paper, cited, [], writeUpOnly(repository))).toEqual([]);
+      expect(citedRunIssues(runs, "tsk_1", code, cited, [], writeUpOnly(repository))[0]).toContain("only the paper write-up");
+      expect(citedRunIssues(runs, "tsk_1", paper, cited)[0]).toContain("did not run on the clean ending commit");
+    } finally { rmSync(repository, { recursive: true, force: true }); }
+  });
+  it("lets a criterion deferred to Review cite this task's clean passing runs on earlier commits (one per compared configuration), and nothing else", () => {
+    const runs = [
+      { taskId: "tsk_1", jobId: "job_a", commit: "commit_a", dirty: false, state: "completed", exitCode: 0 },
+      { taskId: "tsk_1", jobId: "job_b", commit: "commit_b", dirty: false, state: "completed", exitCode: 0 },
+      { taskId: "tsk_1", jobId: "job_failed", commit: "commit_b", dirty: false, state: "failed", exitCode: 1 },
+      { taskId: "tsk_1", jobId: "job_dirty", commit: "commit_b", dirty: true, state: "completed", exitCode: 0 },
+      { taskId: "tsk_2", jobId: "job_other", commit: "commit_b", dirty: false, state: "completed", exitCode: 0 },
+    ];
+    const claim = (workerClaim: string, validatorRunIds: string[]) => [{ criterionId: "criterion_2", workerClaim, validatorRunIds }];
+    expect(citedRunIssues(runs, "tsk_1", "commit_final", claim("deferred_to_review", ["job_a", "job_b"]))).toEqual([]);
+    expect(completionRunIssues(runs, "tsk_1", { codeChanges: { endingCommit: "commit_final" }, criteria: claim("deferred_to_review", ["job_a", "job_b"]) })).toEqual([]);
+    // A claim about the final code still needs a run on the final code.
+    expect(citedRunIssues(runs, "tsk_1", "commit_final", claim("satisfied", ["job_a"]))[0]).toContain("did not run on the clean ending commit");
+    expect(citedRunIssues(runs, "tsk_1", "commit_final", claim("deferred_to_review", ["job_failed"]))[0]).toContain("did not pass");
+    expect(citedRunIssues(runs, "tsk_1", "commit_final", claim("deferred_to_review", ["job_dirty"]))[0]).toContain("uncommitted edits");
+    expect(citedRunIssues(runs, "tsk_1", "commit_final", claim("deferred_to_review", ["job_other"]))[0]).toContain("not a nosh_run of this task");
+  });
+  it("tells Mission and Direction workers how to evidence a comparison, within the packet's per-instruction limit, and not Autoresearch implementers", () => {
+    // The live spam-calibration contract's commands.
+    const commands = [["test", "node --test", "package.json script \"test\""], ["evaluate", "node evaluate.mjs --split=dev", "package.json script \"evaluate\""], ["evaluate-shift", "node evaluate.mjs --split=dev --shift=0.3", "package.json script \"evaluate:shift\""], ["evaluate-cv", "node evaluate.mjs --folds=5 --bootstrap=1000", "package.json script \"evaluate:cv\""], ["evaluate-test", "node evaluate.mjs --split=test", "Held-out test evaluation"], ["evaluate-test-shift", "node evaluate.mjs --split=test --shift=0.3", "Held-out test evaluation at 0.3 spam prevalence"]].map(([id, argv, description]) => ({ commandId: `command_${id}`, description: description!, argv: argv!.split(" "), timeoutSeconds: 600 }));
+    const withComparisons = taskCommandInstructions(commands, true);
+    expect(withComparisons).toHaveLength(2);
+    expect(withComparisons[1]).toContain("deferred_to_review");
+    expect(withComparisons.every((line) => line.length <= 1_000)).toBe(true);
+    // Experiment implementers do not compare methods (later rounds do), and their postflight accepts only satisfied claims.
+    expect(taskCommandInstructions(commands).join(" ")).not.toContain("deferred_to_review");
+  });
+});
+
+describe("a retried node's prior attempts", () => {
+  const at = (type: string, payload: Record<string, unknown>) => ({ type, payload }) as unknown as EventEnvelope;
+  it("reaches the next worker as one bounded instruction: the node's last three failures, newest first, without the reviewer's own errors", () => {
+    const events = [
+      at("task.postflight_failed", { taskId: "tsk_1", nodeId: "mnode_a", issues: ["oldest issue"] }),
+      at("task.postflight_failed", { taskId: "tsk_2", nodeId: "mnode_a", issues: ["criterion criterion_1 cites job_x, which did not run on the clean ending commit", "x".repeat(2_000)] }),
+      at("task.postflight_failed", { taskId: "tsk_9", nodeId: "mnode_b", issues: ["another node's issue"] }),
+      at("task.review_failed", { taskId: "tsk_3", nodeId: "mnode_a", message: "Terminal output rejected: Episode references unknown record art_1" }),
+      at("record.submitted", { $schema: schemaUri("review-verdict"), verdict: "REVISE", summary: "The no-calibration baseline was never run.", target: { targetType: "graph_node", targetId: "mnode_a", targetVersion: 1 }, criteria: [{ criterionId: "criterion_1", status: "PASS", finding: "fine" }, { criterionId: "criterion_2", status: "FAIL", finding: "only histogram binning was measured at 30%" }] }),
+    ];
+    const [instruction, ...rest] = priorAttemptInstructions(events, "mnode_a");
+    expect(rest).toEqual([]);
+    expect(instruction!.length).toBeLessThanOrEqual(1_000);
+    expect(instruction).toMatch(/^Earlier attempts at this node failed/);
+    expect(instruction!.indexOf("REVISE")).toBeLessThan(instruction!.indexOf("did not complete"));
+    expect(instruction!.indexOf("did not complete")).toBeLessThan(instruction!.indexOf("clean ending commit"));
+    expect(instruction).toContain("criterion_2 FAIL: only histogram binning was measured at 30%");
+    expect(instruction).not.toContain("criterion_1 PASS");
+    for (const absent of ["oldest issue", "another node's issue", "art_1"]) expect(instruction).not.toContain(absent);
+  });
+  it("is empty for a first attempt and reads the Direction supervisor's failure events", () => {
+    expect(priorAttemptInstructions([], "dnode_a")).toEqual([]);
+    const [instruction] = priorAttemptInstructions([at("direction.postflight_failed", { taskId: "tsk_1", nodeId: "dnode_a", issues: ["a declared command did not pass"] }), at("direction.task_failed", { taskId: "tsk_2", nodeId: "dnode_a", message: "Task preflight requires a clean checked-out Git branch" })], "dnode_a");
+    expect(instruction).toContain("a declared command did not pass");
+    expect(instruction).toContain("Task preflight requires a clean checked-out Git branch");
+  });
+  it("resumes only from a commit that still contains the head, and says why it could not", () => {
+    const directory = mkdtempSync(join(tmpdir(), "nosh-resume-point-")); const repositoryRoot = join(directory, "repository"); mkdirSync(repositoryRoot);
+    const git = (args: string[]) => spawnSync("git", ["-C", repositoryRoot, "-c", "user.name=T", "-c", "user.email=t@example.invalid", ...args], { encoding: "utf8", windowsHide: true }).stdout.trim();
+    const commit = (name: string) => { writeFileSync(join(repositoryRoot, name), `${name}\n`); git(["add", name]); git(["commit", "-m", name]); return git(["rev-parse", "HEAD"]); };
+    try {
+      git(["init", "-b", "main"]); const head = commit("base.txt"); git(["checkout", "-b", "attempt"]); const attempt = commit("attempt.txt"); git(["checkout", "main"]); const moved = commit("other.txt");
+      const passed = [at("mission.node_state_changed", { nodeId: "mnode_a", nodeState: "leased", leaseId: "tsk_1" }), at("mission.node_state_changed", { nodeId: "mnode_a", nodeState: "postflight", leaseId: "tsk_1" })];
+      const research = (endingCommit: string) => ({ terminalRecord: () => ({ codeChanges: { endingCommit } }) }) as unknown as ResearchControl;
+      const project = { projectId: "prj_x", repositoryRoot } as RegisteredProject;
+      expect(resumePoint(research(attempt), project, passed, "mnode_a", head)).toEqual({ taskId: "tsk_1", commit: attempt });
+      expect(resumePoint(research(attempt), project, [], "mnode_a", head)).toBeNull();
+      expect(resumePoint(research(head), project, passed, "mnode_a", head)).toBeNull();
+      // Another node was integrated since: resuming would drop it, so the retry starts at the head and says why.
+      expect(resumePoint(research(attempt), project, passed, "mnode_a", moved)).toEqual({ skipped: { taskId: "tsk_1", commit: attempt, reason: "head_moved" } });
+      expect(resumePoint(research("0".repeat(40)), project, passed, "mnode_a", head)).toEqual({ skipped: { taskId: "tsk_1", commit: "0".repeat(40), reason: "missing_commit" } });
+      expect(resumeInstruction(attempt).length).toBeLessThanOrEqual(1_000);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+  it("resumes from the latest attempt that passed postflight, unless its Review asked for a redesign", () => {
+    const state = (type: string, nodeId: string, nodeState: string, leaseId: string | null) => at(type, { nodeId, nodeState, leaseId, attempt: 1 });
+    const verdict = (nodeId: string, value: string) => at("record.submitted", { $schema: schemaUri("review-verdict"), verdict: value, summary: "s", target: { targetType: "graph_node", targetId: nodeId, targetVersion: 1 }, criteria: [] });
+    const attempt = (taskId: string, passed: boolean, review?: string, nodeId = "mnode_a", type = "mission.node_state_changed") => [
+      state(type, nodeId, "leased", taskId), state(type, nodeId, "working", taskId),
+      ...(passed ? [state(type, nodeId, "postflight", taskId), state(type, nodeId, "reviewing", taskId), ...(review ? [verdict(nodeId, review)] : [])] : [at("task.postflight_failed", { taskId, nodeId, issues: ["x"] })]),
+      state(type, nodeId, "failed", null), state(type, nodeId, "ready", null),
+    ];
+    expect(resumableAttempt([], "mnode_a")).toBeNull();
+    // Run 2: attempt 7 failed postflight, attempt 8 passed it and lost to a reviewer error, attempt 9 failed postflight.
+    expect(resumableAttempt([...attempt("tsk_7", false), ...attempt("tsk_8", true), ...attempt("tsk_9", false)], "mnode_a")).toEqual({ taskId: "tsk_8" });
+    expect(resumableAttempt([...attempt("tsk_1", true, "REVISE"), ...attempt("tsk_2", true, "REVISE")], "mnode_a")).toEqual({ taskId: "tsk_2" });
+    expect(resumableAttempt([...attempt("tsk_1", true, "BLOCKED")], "mnode_a")).toEqual({ taskId: "tsk_1" });
+    // A redesign verdict rejects the approach itself, so the next attempt starts over (or from an earlier passed attempt).
+    expect(resumableAttempt([...attempt("tsk_1", true, "REDESIGN")], "mnode_a")).toBeNull();
+    expect(resumableAttempt([...attempt("tsk_1", true, "REVISE"), ...attempt("tsk_2", true, "REDESIGN")], "mnode_a")).toEqual({ taskId: "tsk_1" });
+    // Another node's attempts and verdicts never count; the Direction supervisor's event names do.
+    expect(resumableAttempt([...attempt("tsk_1", true, "REVISE", "mnode_b")], "mnode_a")).toBeNull();
+    expect(resumableAttempt([...attempt("tsk_1", true, "REVISE"), verdict("mnode_a", "PASS"), ...attempt("tsk_2", true, "REDESIGN", "mnode_b")], "mnode_a")).toEqual({ taskId: "tsk_1" });
+    expect(resumableAttempt([...attempt("tsk_d", true, "REVISE", "dnode_a", "direction.node_state_changed")], "dnode_a")).toEqual({ taskId: "tsk_d" });
+  });
+});

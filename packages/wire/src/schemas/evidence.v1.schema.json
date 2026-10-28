@@ -126,9 +126,23 @@
           ],
           "additionalProperties": false
         },
-        "createdByAgentId": {
+        "createdBy": {
           "type": "string",
-          "pattern": "^agt_[0-9a-f]{32}$"
+          "enum": [
+            "user",
+            "agent"
+          ]
+        },
+        "createdByAgentId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^agt_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "createdAt": {
           "type": "string",
@@ -147,6 +161,7 @@
         "evaluationContractHash",
         "scopeLimitations",
         "quality",
+        "createdBy",
         "createdByAgentId",
         "createdAt"
       ],

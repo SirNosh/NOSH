@@ -1,5 +1,0 @@
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "composite": true, "rootDir": "src", "outDir": "dist", "module": "ESNext", "moduleResolution": "Bundler", "lib": ["ES2022", "WebWorker"], "types": ["@cloudflare/workers-types"] },
-  "include": ["src"]
-}

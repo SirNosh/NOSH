@@ -126,14 +126,40 @@
           "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
           "maxLength": 128
         },
+        "evaluationContract": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            ]
+          }
+        },
         "evaluationContractHash": {
           "type": "string",
           "pattern": "^sha256:[0-9a-f]{64}$"
         },
         "baselineExperimentId": {
           "type": "string",
-          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
-          "maxLength": 128
+          "pattern": "^exp_[0-9a-f]{32}$"
         },
         "integrationBranch": {
           "type": "string"
@@ -241,8 +267,7 @@
         },
         "approvedBy": {
           "type": "string",
-          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
-          "maxLength": 128
+          "const": "user"
         },
         "activatedAt": {
           "type": "string",
@@ -268,6 +293,7 @@
         "projectClaimIds",
         "scope",
         "evaluationContractId",
+        "evaluationContract",
         "evaluationContractHash",
         "baselineExperimentId",
         "integrationBranch",

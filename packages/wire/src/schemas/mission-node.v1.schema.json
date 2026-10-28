@@ -98,8 +98,11 @@
         },
         "assignedRole": {
           "type": "string",
-          "pattern": "^[a-z][a-z0-9]*_[a-z0-9][a-z0-9.:-]*$",
-          "maxLength": 128
+          "enum": [
+            "librarian_researcher",
+            "general_worker",
+            "reviewer"
+          ]
         },
         "preconditionValidatorIds": {
           "type": "array",

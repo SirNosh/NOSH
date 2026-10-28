@@ -1,0 +1,173 @@
+import { createTestRenderer } from '@opentui/core/testing';
+import { DaemonClient } from './client.js';
+import { Controller, type TranscriptEntry } from './controller.js';
+import { createTranscript } from './visual.js';
+import { createMarkdownStyle } from './theme.js';
+import { createWorkspace, noshVersion } from './ui.js';
+check(/^\d+\.\d+\.\d+$/.test(noshVersion()), `TUI could not read the NOSH version (got "${noshVersion()}")`);
+const test = await createTestRenderer({width:100,height:30,kittyKeyboard:true});
+const client = new DaemonClient({baseUrl:'http://127.0.0.1',sessionToken:'test'});
+const controller = new Controller(client);
+const workspace = createWorkspace(test.renderer,controller,() => {});
+function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
+// Read live state without the narrowing left behind by earlier assertions.
+const currentView = (): string => controller.view, composerText = (): string => workspace.input.value;
+try {
+  await test.renderOnce();
+  let frame = test.captureCharFrame();
+  check(frame.includes('███╗   ██╗') && frame.includes(`nosh ${noshVersion()}`) && frame.includes('Choose a project first'), 'OpenTUI workspace did not render');
+  await test.mockInput.typeText('research draft');
+  test.mockInput.pressEnter({shift:true});
+  await test.renderOnce();
+  check(workspace.input.value.includes('\n'), 'Shift+Enter must insert a newline');
+  const draft = workspace.input.value;
+  test.mockInput.pressKey('p',{ctrl:true});
+  await test.renderOnce();
+  check(workspace.dialogs.isOpen && test.captureCharFrame().includes('Commands'), 'Ctrl+P must open palette');
+  await test.mockInput.typeText('model'); await test.renderOnce();
+  check(test.captureCharFrame().includes('Select model'), 'Palette must filter command choices');
+  check(workspace.input.value === draft, 'Dialog typing leaked into composer');
+  test.mockInput.pressEscape(); await test.renderOnce();
+  check(!workspace.dialogs.isOpen && workspace.input.value === draft, 'Escape must restore unchanged composer');
+  workspace.input.value = '';
+  await test.mockInput.typeText('/'); await test.renderOnce();
+  check(workspace.dialogs.isOpen, 'Slash must open command search');
+  test.mockInput.pressEscape(); await test.renderOnce();
+  await test.mockInput.typeText('model example example low'); await test.renderOnce();
+  check(!workspace.dialogs.isOpen && workspace.input.value.startsWith('/model '), 'Dismissed slash menu must permit raw commands');
+  workspace.input.value = '';
+  await test.mockInput.typeText('/help'); await test.renderOnce();
+  test.mockInput.pressEnter(); await new Promise(resolve => setTimeout(resolve, 50)); await test.renderOnce();
+  check(controller.view === 'help' && workspace.input.value === '', 'A command chosen from the slash menu must consume its composer trigger');
+  test.mockInput.pressEscape(); await new Promise(resolve => setTimeout(resolve, 50)); await test.renderOnce();
+  check(currentView() === 'chat', 'Esc must return to the conversation');
+  test.mockInput.pressArrow('up'); await new Promise(resolve => setTimeout(resolve, 50)); await test.renderOnce();
+  check(composerText() === '/help' && !workspace.dialogs.isOpen, 'History recall of a slash command must not reopen slash search (and Esc navigation is not history)');
+  test.mockInput.pressEscape(); test.mockInput.pressEscape(); await test.renderOnce();
+  check(composerText() === '', 'Esc Esc must clear a recalled draft');
+  workspace.dialogs.openProjectForm(); await test.renderOnce();
+  check(test.captureCharFrame().includes('Repository path'), 'Project form missing');
+  test.mockInput.pressEscape(); await test.renderOnce();
+  controller.view = 'help'; controller.detail = 'Native help check'; workspace.render();
+  await test.renderOnce();
+  check(test.captureCharFrame().includes('ctrl+b hide'), 'Session sidebar missing at wide size');
+  controller.researchMap = { generatedAt: '2026-10-03T12:00:00.000Z', workers: [{ kind: 'worker', id: 'agt_1', title: 'general worker', state: 'running nosh_run', detail: 'gpt-6-luna:low', children: [] }],
+    roots: [{ kind: 'mission', id: 'mis_1', title: 'Boundary tests', state: 'running', detail: 'v4', version: 4, progress: { done: 1, total: 2 }, children: [
+      { kind: 'node', id: 'n1', title: 'Write the boundary tests for every calibrator and both prevalences', state: 'failed', detail: 'implementation · attempt 3/3', children: [] },
+      { kind: 'node', id: 'n2', title: 'Final review', state: 'ready', detail: 'final review', children: [] },
+      { kind: 'node', id: 'n3', title: 'Collect sources', state: 'accepted', detail: 'librarian', children: [] },
+      { kind: 'node', id: 'n4', title: 'Draft the paper', state: 'accepted', detail: 'implementation', children: [] }] }] };
+  controller.view = 'map'; workspace.input.value = ''; workspace.render(); await test.renderOnce();
+  frame = test.captureCharFrame();
+  check(frame.includes('RESEARCH MAP') && frame.includes('MISSION  1/1  running  Boundary tests') && frame.includes('#0 MISSION') && frame.includes('Boundary tests') && frame.includes('┌') && frame.includes('▼') && frame.includes('▰▰▰▱▱▱ 1/2') && frame.includes('workers'), `Research map did not render as a graph:
+${frame}`);
+  // Down selects the failed node under the Mission; Enter fills the composer with its retry, applied only after confirmation.
+  test.mockInput.pressArrow('down'); await test.renderOnce(); workspace.render(); await test.renderOnce();
+  frame = test.captureCharFrame();
+  // In a 30-row terminal the canvas pans to the selected box, bringing its state line into view.
+  check(frame.includes('✗ failed · attempt 3/3') && frame.includes('enter  /retry missions mis_1 4 n1'), `Selecting a failed map node must offer its retry:
+${frame}`);
+  test.mockInput.pressEnter(); await test.renderOnce();
+  check(composerText() === '/retry missions mis_1 4 n1' && currentView() === 'map' && !controller.pendingAction(), 'Enter on a failed map node must only fill the composer');
+  workspace.input.value = '';
+  await checkMapMouse();
+  test.resize(60,20); workspace.render(); await test.renderOnce();
+  frame = test.captureCharFrame();
+  check(frame.includes(`nosh ${noshVersion()}`) && !frame.includes('ctrl+b hide'), 'Narrow layout must hide sidebar');
+  workspace.dispose();
+  test.resize(100, 30);
+  await checkNativeTranscript();
+} finally { workspace.dispose(); controller.dispose(); client.close(); test.renderer.destroy(); }
+console.log('OpenTUI native smoke passed: home/session, multiline input, searchable palette, modal focus, form, research map, map mouse zoom/drag/click, resize, transcript reconciliation.');
+
+/** The map behaves like an image: the wheel zooms at the pointer, a drag moves it, a click selects a box. */
+async function checkMapMouse() {
+  const conversation = test.renderer.root.findDescendantById('conversation')!; let leaked = 0;
+  conversation.onMouseScroll = () => { leaked++; };
+  const settle = async () => { workspace.render(); await test.renderOnce(); return test.captureCharFrame(); };
+  const at = (frame: string, needle: string) => { const rows = frame.split('\n'); const y = rows.findIndex(row => row.includes(needle)); return { x: y < 0 ? -1 : rows[y]!.indexOf(needle), y }; };
+  try {
+    let frame = await settle(); const tag = at(frame, '#1');
+    check(tag.y >= 0, `The selected box's tag must be on screen:\n${frame}`);
+    await test.mockMouse.scroll(tag.x, tag.y, 'down'); frame = await settle();
+    check(/[\u2801-\u28ff]/u.test(frame) && frame.includes('50%') && leaked === 0, `Wheel down must zoom the map out like an image, not scroll the conversation:\n${frame}`);
+    const small = at(frame, '#1');
+    await test.mockMouse.scroll(small.x, small.y, 'up'); await test.mockMouse.scroll(small.x, small.y, 'up'); frame = await settle();
+    // Zoomed in, the box itself holds the long title's first 40-column line (up to its right border), which the normal box cuts at 26.
+    check(frame.includes('150%') && /tests for every\s*│/.test(frame), `Wheel up must zoom in to whole titles:\n${frame}`);
+    const full = at(frame, '#1');
+    await test.mockMouse.scroll(full.x, full.y, 'down'); frame = await settle();
+    check(frame.includes('100%') && !/tests for every\s*│/.test(frame), `Wheel down must return to normal boxes:\n${frame}`);
+    const before = at(frame, '#2');
+    await test.mockMouse.drag(before.x, before.y, before.x - 4, before.y); frame = await settle();
+    const after = at(frame, '#2');
+    check(after.y === before.y && after.x === before.x - 4, `A drag must move the map with the pointer (#2 from ${before.x} to ${after.x}):\n${frame}`);
+    await test.mockMouse.click(after.x, after.y); frame = await settle();
+    check(frame.includes('graph node · ready · final review · n2') && !test.renderer.hasSelection, `A click must select the box under the pointer without selecting text:\n${frame}`);
+    await test.mockInput.typeText('x'); await test.renderOnce();
+    check(composerText() === 'x' && leaked === 0, 'The composer must keep focus after map clicks');
+    workspace.input.value = '';
+  } finally { conversation.onMouseScroll = undefined; }
+}
+
+async function checkNativeTranscript() {
+  const syntax = createMarkdownStyle();
+  const transcript = createTranscript(test.renderer, syntax);
+  test.renderer.root.add(transcript.root);
+  const warnings: string[] = [];
+  const warn = console.warn;
+  const error = console.error;
+  // Keep warnings visible and fail the smoke; do not mask renderer diagnostics.
+  console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); warn(...args); };
+  console.error = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); error(...args); };
+  const entry = (id: string, text = id): TranscriptEntry => ({
+    id, kind: 'assistant', title: 'Assistant', text, sequence: null, status: 'streaming',
+  });
+  const checkOrder = (ids: string[]) => {
+    check(JSON.stringify(transcript.root.getChildren().map(child => child.id)) === JSON.stringify(ids.map(id => 'message-' + id)),
+      'Native transcript order differs from replay order');
+    check(transcript.root.getLayoutNode().getChildCount() === ids.length,
+      'Native Yoga child count differs from transcript (duplicate or missing layout nodes)');
+  };
+  try {
+    transcript.update([entry('a', 'Alpha'), entry('live', 'Draft')]);
+    await test.renderOnce();
+    const [a, live] = transcript.root.getChildren();
+    const body = live!.getChildren()[1];
+    transcript.update([entry('a', 'Alpha'), entry('live', 'Streaming delta'), entry('b', 'Beta')]);
+    await test.renderOnce();
+    checkOrder(['a', 'live', 'b']);
+    check(live!.getChildren()[1] === body, 'Streaming must preserve native body identity');
+    check(test.captureCharFrame().includes('Streaming delta'), 'Stream delta did not render');
+    transcript.update([entry('b', 'Beta'), entry('a', 'Alpha'), entry('live', 'Streaming delta')]);
+    await test.renderOnce();
+    checkOrder(['b', 'a', 'live']);
+    check(transcript.root.getChildren()[1] === a, 'Reorder rebuilt an existing message');
+    transcript.update([entry('b', 'Beta'), entry('a', 'Alpha'), { ...entry('saved', 'Final answer'), status: 'complete' }]);
+    await test.renderOnce();
+    checkOrder(['b', 'a', 'saved']);
+    check(live!.isDestroyed, 'Settled ephemeral block was not released');
+    const frame = test.captureCharFrame();
+    // Completed Markdown may parse asynchronously. Check its native position,
+    // and the visible order of the already-rendered streaming blocks.
+    const [b, alpha, saved] = transcript.root.getChildren();
+    check(frame.includes('Beta') && frame.indexOf('Beta') < frame.indexOf('Alpha')
+      && b!.y < alpha!.y && alpha!.y < saved!.y, 'Native rendered rows do not match transcript order');
+    const entries = Array.from({ length: 101 }, (_, i) => entry(String(i), 'Message ' + i));
+    transcript.update(entries.slice(0, 100));
+    const [first, second] = transcript.root.getChildren();
+    transcript.update(entries);
+    await test.renderOnce();
+    checkOrder(entries.slice(1).map(entry => entry.id));
+    check(transcript.root.getChildren().length === 100 && transcript.root.getChildren()[0] === second && first!.isDestroyed,
+      'Native transcript must evict old rows and retain surviving nodes');
+    transcript.update([]);
+    await test.renderOnce();
+    checkOrder([]);
+    check(warnings.length === 0, 'Native transcript emitted warnings: ' + warnings.join('; '));
+  } finally {
+    console.warn = warn; console.error = error;
+    transcript.root.destroyRecursively();
+    syntax.destroy();
+  }
+}
