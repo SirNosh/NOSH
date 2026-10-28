@@ -1226,3 +1226,53 @@ async fn passes_the_actual_base_prompt_through_the_resource_loader_to_pi() {
         adapter.stop(AGENT);
     }
 }
+
+/// Records each rejection reason; never accepts.
+struct Rejections {
+    reasons: Mutex<Vec<String>>,
+}
+
+impl TerminalHost for Rejections {
+    fn submit(&self, _: &TerminalContext, _: Vec<Value>) -> BoxFuture<Result<Value, String>> {
+        Box::pin(async { Err("unexpected submission".into()) })
+    }
+    fn reject(&self, _: &TerminalContext, reason: String) -> BoxFuture<Result<Value, String>> {
+        self.reasons.lock().unwrap().push(reason);
+        Box::pin(async { Ok(json!({ "accepted": false, "retryAllowed": false })) })
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_that_fails_on_a_tool_call_message_is_rejected_as_a_tool_call_stop() {
+    let host = Arc::new(Rejections {
+        reasons: Mutex::new(Vec::new()),
+    });
+    let recorded = adapter(
+        Some(Arc::new(Accepting)),
+        Some(Arc::clone(&host) as Arc<dyn TerminalHost>),
+    )
+    .await;
+    let adapter = &recorded.adapter;
+    faux_runtime(
+        adapter,
+        json!({ "provider": "stop-proof", "api": "stop-proof-api", "models": [{ "id": "deterministic", "reasoning": false }] }),
+        json!([{ "toolCalls": [{ "name": "nosh_workspace_read", "arguments": { "path": "a.txt" }, "id": "call_read" }], "stopReason": "error", "errorMessage": "stream ended mid tool call" }]),
+    )
+    .await;
+    let directory = tempfile::tempdir().unwrap();
+    adapter.start(options(json!({
+        "cwd": directory.path(), "model": { "provider": "stop-proof", "id": "deterministic" },
+        "taskPermissions": permissions(&["tool_pi.read", "tool_nosh.response.submit"], "disabled"), "taskWorkspace": workspace(&["**"]),
+    }))).await.unwrap();
+    let error = adapter
+        .prompt(AGENT, "Read a.txt.", None)
+        .await
+        .unwrap_err();
+    assert!(error.contains("Terminal output discarded"), "{error}");
+    // The final message's tool call outranks its stop reason, as in TypeScript's finalAnswer.
+    assert_eq!(
+        *host.reasons.lock().unwrap(),
+        vec!["Non-successful provider stop: toolCall".to_owned()]
+    );
+    adapter.stop(AGENT);
+}
