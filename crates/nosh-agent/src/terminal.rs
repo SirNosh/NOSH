@@ -2,6 +2,7 @@
 //! `docs/protocols/terminal-output.md`): a scoped turn ends with one JSON envelope of typed records,
 //! which the host validates; a rejected envelope gets at most one schema-only correction.
 
+use crate::async_calls::BoxFuture;
 use crate::js_json::{self, SyntaxError};
 use nosh_wire::js::strict_equal;
 use serde::{Deserialize, Serialize};
@@ -424,4 +425,111 @@ pub fn with_json_excerpt(error: &TerminalError, text: &str) -> String {
         slice(at.saturating_sub(80), at),
         slice(at, at + 40)
     )
+}
+
+/// The host's side of a terminal turn. Receipts are objects with at least `accepted` and
+/// `retryAllowed`.
+pub trait TerminalHost: Send + Sync {
+    /// The receipt of a turn that is already closed (an earlier attempt's outcome), else `None`.
+    fn admit(&self, _context: &TerminalContext) -> BoxFuture<Result<Option<Value>, String>> {
+        Box::pin(async { Ok(None) })
+    }
+    fn submit(
+        &self,
+        context: &TerminalContext,
+        records: Vec<Value>,
+    ) -> BoxFuture<Result<Value, String>>;
+    fn reject(&self, context: &TerminalContext, reason: String)
+    -> BoxFuture<Result<Value, String>>;
+}
+
+/// One provider run of a terminal turn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptOutcome {
+    pub text: String,
+    pub stop_reason: String,
+    pub cancelled: bool,
+}
+
+/// Prompts for the final envelope and submits it, allowing one schema-only correction when the
+/// host permits a retry. `prompt` receives the correction text on the second attempt.
+pub async fn run_terminal_turn<F, Fut>(
+    context: &TerminalContext,
+    host: &dyn TerminalHost,
+    mut prompt: F,
+) -> Result<Value, String>
+where
+    F: FnMut(Option<String>) -> Fut,
+    Fut: Future<Output = Result<PromptOutcome, String>>,
+{
+    let accepted = |receipt: &Value| nosh_wire::js::truthy(receipt.get("accepted"));
+    let mut last_receipt: Option<Value> = None;
+    for attempt in 0..2 {
+        if let Some(prior) = host.admit(context).await? {
+            if accepted(&prior) {
+                return Ok(prior);
+            }
+            return Err(format!("Terminal turn closed: {}", clipped(&prior)));
+        }
+        let correction = last_receipt.as_ref().map(|receipt| {
+            format!("The host rejected the final JSON. Correct the envelope/record validation errors below. Do not repeat execution tools. {}", clipped(receipt))
+        });
+        let result = match prompt(correction).await {
+            Ok(result) => result,
+            Err(error) => {
+                host.reject(
+                    context,
+                    "Non-successful provider stop: prompt failed".into(),
+                )
+                .await?;
+                return Err(error);
+            }
+        };
+        if result.cancelled || result.stop_reason != "stop" {
+            let stop = if result.cancelled {
+                "cancelled"
+            } else {
+                result.stop_reason.as_str()
+            };
+            host.reject(context, format!("Non-successful provider stop: {stop}"))
+                .await?;
+            return Err(
+                "Terminal output discarded: cancelled, failed, or truncated provider turn".into(),
+            );
+        }
+        // An accepted repaired envelope says so in its receipt, which is journaled as agent.terminal_receipt.
+        let submitted = match parse_terminal_output(&result.text, context) {
+            Ok(envelope) => host
+                .submit(context, envelope.records())
+                .await
+                .map(|mut receipt| {
+                    if let (Some(repaired), true, Some(object)) = (
+                        &envelope.repaired,
+                        accepted(&receipt),
+                        receipt.as_object_mut(),
+                    ) {
+                        object.insert("repaired".into(), json!(repaired));
+                    }
+                    receipt
+                }),
+            Err(error) => Err(with_json_excerpt(&error, &result.text)),
+        };
+        let receipt = match submitted {
+            Ok(receipt) => receipt,
+            Err(reason) => host.reject(context, reason).await?,
+        };
+        if accepted(&receipt) {
+            return Ok(receipt);
+        }
+        if !nosh_wire::js::truthy(receipt.get("retryAllowed")) || attempt == 1 {
+            return Err(format!("Terminal output rejected: {}", clipped(&receipt)));
+        }
+        last_receipt = Some(receipt);
+    }
+    Err("Terminal correction budget exhausted".into())
+}
+
+/// `JSON.stringify(receipt).slice(0, 4000)`.
+fn clipped(receipt: &Value) -> String {
+    nosh_wire::js::slice_to(&nosh_wire::canonical_json(receipt), 4_000)
 }

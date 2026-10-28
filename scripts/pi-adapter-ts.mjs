@@ -5,6 +5,13 @@
 //   { terminal: [text, ctx] }   parseTerminalOutput, plus { excerpt } = withJsonExcerpt on failure
 //   { piError: message }        userFacingPiError(new Error(message)).message
 //   { value: name }             an exported constant (a Set becomes a sorted array)
+//   { tools: options, env? }    createSessionTools definitions: [{ name, label, description, parameters }]
+//   { exec: { options, name, callId, params, receipts, grace?, wake? }, env? }
+//                               one tool execute against a scripted daemon; ok = { result | error,
+//                               submits, events, wake? } (wake: the next async message, when asked)
+//   { turn: { context, admits?, prompts, submits, rejects } }
+//                               runTerminalTurn with a scripted host and provider; ok = { result | error, trace }
+// A scripted reply is { value }, { throw: message }, or { delay: ms, value }; a missing one is { accepted: true }.
 // The TypeScript tree is NOSH_TS_ROOT, else the parent of this worktree.
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -14,10 +21,43 @@ const tsRoot = resolve(process.env.NOSH_TS_ROOT ?? resolve(dirname(fileURLToPath
 const adapter = await import(pathToFileURL(join(tsRoot, "packages/pi-adapter/dist/index.js")).href);
 const ops = JSON.parse(readFileSync(0, "utf8"));
 
-function withEnv(env, work) {
+async function withEnv(env, work) {
   const previous = Object.fromEntries(Object.keys(env ?? {}).map((key) => [key, process.env[key]]));
   for (const [key, value] of Object.entries(env ?? {})) { if (value === null) delete process.env[key]; else process.env[key] = value; }
-  try { return work(); } finally { for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } }
+  try { return await work(); } finally { for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } }
+}
+
+function reply(script) {
+  const next = script.shift() ?? { value: { accepted: true } };
+  if (next.throw !== undefined) throw new Error(next.throw);
+  if (next.delay !== undefined) return new Promise((resolve) => setTimeout(() => resolve(next.value), next.delay));
+  return next.value;
+}
+
+const errorText = (error) => error instanceof Error ? error.message : String(error);
+
+async function exec({ options, name, callId, params, receipts, grace, wake }) {
+  const submits = []; const events = []; const script = [...(receipts ?? [])];
+  const calls = new adapter.AsyncToolCalls(grace ?? 2000);
+  const tools = adapter.createSessionTools(options, (...values) => { submits.push(values); return reply(script); }, calls, (event) => events.push(event));
+  const tool = tools.find((candidate) => candidate.name === name);
+  const outcome = {};
+  try { const result = await tool.execute(callId, params, undefined, undefined, {}); outcome.result = { content: result.content, details: result.details ?? null }; }
+  catch (error) { outcome.error = errorText(error); }
+  if (wake) outcome.wake = (await calls.next(10_000)) ?? null;
+  return { ...outcome, submits, events };
+}
+
+async function turn({ context, admits, prompts, submits, rejects }) {
+  const trace = []; const promptScript = [...prompts]; const submitScript = [...submits]; const rejectScript = [...rejects]; const admitScript = [...(admits ?? [])];
+  const host = {
+    submit: async (_context, records) => { trace.push(["submit", records]); return reply(submitScript); },
+    reject: async (_context, reason) => { trace.push(["reject", reason]); return reply(rejectScript); },
+    ...(admits ? { admit: async () => { trace.push(["admit"]); const next = admitScript.shift(); return next === null || next === undefined ? undefined : reply([next]); } } : {}),
+  };
+  const prompt = async (correction) => { trace.push(["prompt", correction ?? null]); return reply(promptScript); };
+  try { return { result: await adapter.runTerminalTurn(context, host, prompt), trace }; }
+  catch (error) { return { error: errorText(error), trace }; }
 }
 
 const output = [];
@@ -31,7 +71,10 @@ for (const op of ops) {
     }
     if (op.piError !== undefined) { output.push({ ok: adapter.userFacingPiError(new Error(op.piError)).message }); continue; }
     if (op.value) { const value = adapter[op.value]; output.push({ ok: value instanceof Set ? [...value].sort() : value }); continue; }
-    output.push({ ok: withEnv(op.env, () => adapter[op.fn](...(op.args ?? []))) ?? null });
+    if (op.tools) { output.push({ ok: await withEnv(op.env, () => adapter.createSessionTools(op.tools, () => ({ accepted: true })).map(({ name, label, description, parameters }) => JSON.parse(JSON.stringify({ name, label, description, parameters })))) }); continue; }
+    if (op.exec) { output.push({ ok: await withEnv(op.env, () => exec(op.exec)) }); continue; }
+    if (op.turn) { output.push({ ok: await turn(op.turn) }); continue; }
+    output.push({ ok: (await withEnv(op.env, () => adapter[op.fn](...(op.args ?? [])))) ?? null });
   } catch (error) {
     output.push({ error: error instanceof Error ? error.message : String(error), syntax: error instanceof SyntaxError });
   }
