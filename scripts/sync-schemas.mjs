@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Copies the TypeScript wire JSON Schemas and golden fixtures into conformance/schemas,
+// Copies the TypeScript wire JSON Schemas and golden fixtures into conformance/schemas, and the
+// Pi resource package (pi-package/, loaded by every Pi session) to the same path here,
 // recording the source commit in conformance/schemas/SOURCE.json.
 // Syncing also writes conformance/schemas/refinements.json and submission-tools.json from the built TypeScript wire package
 // (packages/wire/dist): the zod refinements, defaults, and date formats that the generated JSON
@@ -20,22 +21,23 @@ const check = args.includes("--check");
 const tsRoot = resolve(option("--ts-root") ?? process.env.NOSH_TS_ROOT ?? resolve(rustRoot, ".."));
 const vendored = join(rustRoot, "conformance", "schemas");
 const sources = [
-  ["packages/wire/src/schemas", "json"],
-  ["fixtures/schemas", "fixtures"],
+  ["packages/wire/src/schemas", "conformance/schemas/json"],
+  ["fixtures/schemas", "conformance/schemas/fixtures"],
+  ["pi-package", "pi-package"],
 ];
 
 if (check) {
   let differences = 0;
   for (const [from, to] of sources) {
     const theirs = listFiles(join(tsRoot, from));
-    const ours = listFiles(join(vendored, to));
+    const ours = listFiles(join(rustRoot, to));
     if (!theirs.length) {
       console.log(`missing in TypeScript tree: ${from}`);
       differences += 1;
     }
     for (const file of new Set([...theirs, ...ours])) {
       const a = theirs.includes(file) ? text(join(tsRoot, from, file)) : null;
-      const b = ours.includes(file) ? text(join(vendored, to, file)) : null;
+      const b = ours.includes(file) ? text(join(rustRoot, to, file)) : null;
       if (a === b) continue;
       console.log(`${a === null ? "removed upstream" : b === null ? "added upstream" : "changed"}: ${from}/${file}`);
       differences += 1;
@@ -45,14 +47,14 @@ if (check) {
     console.log(`${differences} difference(s); run node scripts/sync-schemas.mjs and port the changes`);
     process.exit(1);
   }
-  console.log("vendored schemas and fixtures match the TypeScript tree");
+  console.log("vendored schemas, fixtures, and pi-package match the TypeScript tree");
 } else {
   for (const [from, to] of sources) {
     const files = listFiles(join(tsRoot, from));
     if (!files.length) throw new Error(`no files under ${join(tsRoot, from)}`);
-    rmSync(join(vendored, to), { recursive: true, force: true });
+    rmSync(join(rustRoot, to), { recursive: true, force: true });
     for (const file of files) {
-      const target = join(vendored, to, file);
+      const target = join(rustRoot, to, file);
       mkdirSync(dirname(target), { recursive: true });
       writeFileSync(target, text(join(tsRoot, from, file)));
     }

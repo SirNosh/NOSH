@@ -80,6 +80,7 @@
       "synced": null,
       "paths": [
         "packages/pi-adapter/src",
+        "packages/pi-adapter/package.json",
         "pi-package"
       ],
       "strict": [
