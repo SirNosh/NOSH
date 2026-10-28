@@ -3,6 +3,7 @@
 
 pub mod async_calls;
 pub mod code_mode;
+pub mod commit;
 pub mod js_json;
 pub mod network;
 pub mod policy;

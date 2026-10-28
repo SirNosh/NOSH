@@ -51,7 +51,7 @@ node scripts/drift.mjs --check
 | P2 | `nosh-store`: SQLite migrations, event store, host registry | done |
 | P3 | `nosh-sys`: Windows paths, processes, jobs, git, artifacts, backups | done |
 | P4 | Domain: graph, scheduler, skills, episodes, threads, projects, papers, research control | done (`packages/templates` is unused in TypeScript and not ported) |
-| P5 | `nosh-agent`: tools, `nosh_code`, Pi sidecar | in progress: P5a (terminal-output protocol, V8 `JSON.parse` errors, system prompt, tool policy) and P5b (async tool calls, `nosh_code` on QuickJS, session tools, network reader, terminal turns) done |
+| P5 | `nosh-agent`: tools, `nosh_code`, Pi sidecar | in progress: P5a (terminal-output protocol, V8 `JSON.parse` errors, system prompt, tool policy) and P5b (async tool calls, `nosh_code` on QuickJS, session tools, network reader, terminal turns) and P5c (git commit plumbing) done |
 | P6 | `nosh-orchestration` and `nosh-server`: supervisors, HTTP, WebSocket | — |
 | P7 | `nosh` CLI | — |
 | T  | `nosh-tui` (ratatui) | — |

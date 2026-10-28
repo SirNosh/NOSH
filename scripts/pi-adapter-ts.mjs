@@ -11,9 +11,14 @@
 //                               submits, events, wake? } (wake: the next async message, when asked)
 //   { turn: { context, admits?, prompts, submits, rejects } }
 //                               runTerminalTurn with a scripted host and provider; ok = { result | error, trace }
+//   { commit: { options, heads, message, paths } }   commitWorkspaceFiles; ok = { commit, paths }
+//   { commitAll: { options, message } }              commitAllWorkspaceChanges; ok = { commit, paths } or null
+//   { git: { cwd, args } }                           test setup: git with a hermetic config and fixed identity and dates
+//   { writeFile: [path, content] } / { removeFile: path } / { mkdir: path } / { link: [existing, path] }   test setup
 // A scripted reply is { value }, { throw: message }, or { delay: ms, value }; a missing one is { accepted: true }.
 // The TypeScript tree is NOSH_TS_ROOT, else the parent of this worktree.
-import { readFileSync } from "node:fs";
+import { linkSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -32,6 +37,13 @@ function reply(script) {
   if (next.throw !== undefined) throw new Error(next.throw);
   if (next.delay !== undefined) return new Promise((resolve) => setTimeout(() => resolve(next.value), next.delay));
   return next.value;
+}
+
+const hermeticGit = { GIT_CONFIG_GLOBAL: process.platform === "win32" ? "NUL" : "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.invalid", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.invalid", GIT_AUTHOR_DATE: "2026-01-01T00:00:00Z", GIT_COMMITTER_DATE: "2026-01-01T00:00:00Z" };
+function git({ cwd, args }) {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8", windowsHide: true, env: { ...process.env, ...hermeticGit } });
+  if (result.status !== 0) throw new Error(`git ${args.join(" ")}: ${result.stderr}`);
+  return result.stdout.trim();
 }
 
 const errorText = (error) => error instanceof Error ? error.message : String(error);
@@ -73,6 +85,13 @@ for (const op of ops) {
     if (op.value) { const value = adapter[op.value]; output.push({ ok: value instanceof Set ? [...value].sort() : value }); continue; }
     if (op.tools) { output.push({ ok: await withEnv(op.env, () => adapter.createSessionTools(op.tools, () => ({ accepted: true })).map(({ name, label, description, parameters }) => JSON.parse(JSON.stringify({ name, label, description, parameters })))) }); continue; }
     if (op.exec) { output.push({ ok: await withEnv(op.env, () => exec(op.exec)) }); continue; }
+    if (op.commit) { output.push({ ok: adapter.commitWorkspaceFiles(op.commit.options, { heads: new Set(op.commit.heads ?? []) }, op.commit.message, op.commit.paths) }); continue; }
+    if (op.commitAll) { output.push({ ok: adapter.commitAllWorkspaceChanges(op.commitAll.options, op.commitAll.message) }); continue; }
+    if (op.git) { output.push({ ok: git(op.git) }); continue; }
+    if (op.writeFile) { writeFileSync(op.writeFile[0], op.writeFile[1]); output.push({ ok: null }); continue; }
+    if (op.mkdir) { mkdirSync(op.mkdir, { recursive: true }); output.push({ ok: null }); continue; }
+    if (op.link) { linkSync(op.link[0], op.link[1]); output.push({ ok: null }); continue; }
+    if (op.removeFile) { rmSync(op.removeFile, { recursive: true, force: true }); output.push({ ok: null }); continue; }
     if (op.turn) { output.push({ ok: await turn(op.turn) }); continue; }
     output.push({ ok: (await withEnv(op.env, () => adapter[op.fn](...(op.args ?? [])))) ?? null });
   } catch (error) {

@@ -774,7 +774,7 @@ fn write_new(path: &Path, content: &str) -> io::Result<()> {
 }
 
 /// Node's message for a failed filesystem call, for the errors a model can cause.
-fn fs_error(error: &io::Error, syscall: &str, path: &Path) -> String {
+pub(crate) fn fs_error(error: &io::Error, syscall: &str, path: &Path) -> String {
     let (code, text) = match error.kind() {
         io::ErrorKind::NotFound => ("ENOENT", "no such file or directory"),
         io::ErrorKind::PermissionDenied => ("EPERM", "operation not permitted"),
