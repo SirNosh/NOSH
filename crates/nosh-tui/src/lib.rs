@@ -38,8 +38,9 @@ pub use config::TuiConfig;
 /// Synchronous: it builds its own `current_thread` runtime and `LocalSet`, so it must be called
 /// outside any tokio runtime. It restores the terminal before returning or unwinding. `Ok(())` is a
 /// normal quit (exit 0); `Err(message)` is a startup failure the CLI prints to stderr with no
-/// `nosh: ` prefix (exit 1). The finished version installs the rustls ring provider first
+/// `nosh: ` prefix (exit 1). It installs the rustls ring provider first
 /// ([`transport::install_crypto_provider`]) and delegates to `app::run`.
-pub fn run(_config: TuiConfig) -> Result<(), String> {
-    Err("the terminal UI is not implemented yet".into())
+pub fn run(config: TuiConfig) -> Result<(), String> {
+    transport::install_crypto_provider();
+    app::run(config)
 }
