@@ -78,6 +78,10 @@ struct State {
     /// In start order, as a `Map` iterates.
     pending: Vec<(String, String, Instant)>,
     inbox: VecDeque<String>,
+    /// An interrupt (abort/stop) no sleeping loop has seen yet: `Notify::notify_waiters` wakes
+    /// only registered waiters, so one that lands while the loop is between sleeps (on its Pi
+    /// round-trip) would otherwise be lost and the loop would sleep until a result arrives.
+    interrupted: bool,
     programs: AbortSignal,
     deliver: Deliver,
 }
@@ -95,6 +99,7 @@ impl AsyncToolCalls {
             state: Mutex::new(State {
                 pending: Vec::new(),
                 inbox: VecDeque::new(),
+                interrupted: false,
                 programs: AbortSignal::new(),
                 deliver: Arc::new(|_| Box::pin(async { false })),
             }),
@@ -214,9 +219,11 @@ impl AsyncToolCalls {
         let notified = self.wake.notified();
         tokio::pin!(notified);
         notified.as_mut().enable();
-        if self.state().inbox.is_empty() {
+        let interrupted = std::mem::take(&mut self.state().interrupted);
+        if !interrupted && self.state().inbox.is_empty() {
             let woke = tokio::time::timeout(heartbeat, notified).await.is_ok();
-            let state = self.state();
+            let mut state = self.state();
+            state.interrupted = false;
             if !woke && state.inbox.is_empty() {
                 return Some(format!(
                     "Heartbeat: waited {} seconds. Still running: {}. They continue in the background; end your turn with no tool calls to keep waiting.",
@@ -232,13 +239,18 @@ impl AsyncToolCalls {
 
     /// Wakes a sleeping wake loop at once (abort/stop); the loop re-checks cancellation.
     pub fn interrupt(&self) {
+        self.state().interrupted = true;
         self.wake.notify_waiters();
     }
 
     /// Abort/stop: stops running nosh_code programs and wakes the loop; later programs get a
     /// fresh signal.
     pub fn cancel(&self) {
-        let previous = std::mem::take(&mut self.state().programs);
+        let previous = {
+            let mut state = self.state();
+            state.interrupted = true;
+            std::mem::take(&mut state.programs)
+        };
         previous.abort();
         self.wake.notify_waiters();
     }

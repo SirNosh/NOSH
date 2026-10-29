@@ -971,6 +971,27 @@ fn implements_first_minimum_count_and_deadline_joins_without_returning_a_stale_e
     });
 }
 
+/// Rust-only: a wake that finds both the deadline and a step that finished after it due (as
+/// after a stall) still honours the deadline, as JavaScript fires the earlier timer first.
+#[test]
+fn a_deadline_join_ignores_a_step_that_finished_after_its_deadline_when_both_come_due_together() {
+    local(async {
+        tokio::time::pause();
+        let fixture = setup();
+        let (rt, project_id) = (&fixture.runtime, fixture.project_id.as_str());
+        let slow = open(project_id, "slow", Overrides::default());
+        rt.execute(&slow).await.unwrap();
+        fixture.sessions.delay.set(50);
+        let slow_run = rt.execute(&step(project_id, &slow["threadId"], "slow result"));
+        let deadline = nosh_wire::iso_from_ms(time_ms() + 10.0).unwrap();
+        let timed = rt.execute(&base(project_id, json!({ "operation": "THREAD_AWAIT", "threadIds": [slow["threadId"]], "policy": "deadline", "minimumCount": null, "deadline": deadline })));
+        // Both timers come due in one jump.
+        tokio::time::advance(Duration::from_millis(100)).await;
+        assert_eq!(timed.await.unwrap()["episodeIds"], json!([]));
+        slow_run.await.unwrap();
+    });
+}
+
 fn time_ms() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

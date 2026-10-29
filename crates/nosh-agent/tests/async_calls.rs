@@ -217,3 +217,30 @@ async fn wakes_a_sleeping_loop_on_interrupt_and_keeps_requeued_results_in_order(
         Some("first a\n\nfirst b\n\nsecond")
     );
 }
+
+/// Rust-only: an abort that lands while the wake loop is between sleeps (on its Pi round-trip)
+/// must still end the loop's next sleep, not leave it waiting for a result.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_abort_before_the_loop_sleeps_still_ends_its_next_sleep() {
+    let calls = calls(5);
+    let (_finish, work) = pending();
+    calls
+        .start("call_a", "nosh_run command_test", work, string)
+        .await;
+    calls.cancel();
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(5), calls.next(Duration::from_secs(600)))
+            .await
+            .unwrap(),
+        Some(String::new())
+    );
+    // The interrupt is consumed: the following sleep waits again.
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(200),
+            calls.next(Duration::from_secs(600))
+        )
+        .await
+        .is_err()
+    );
+}

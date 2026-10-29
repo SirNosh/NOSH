@@ -462,9 +462,19 @@ impl<H: RuntimeHost + 'static> OrchestrationRuntime<H> {
                     Some(deadline) if policy == "deadline" => {
                         let wait = nosh_wire::js::max(0.0, parse_ms(deadline) - now_ms());
                         let wait = if wait.is_nan() { 0.0 } else { wait };
-                        tokio::time::timeout(Duration::from_millis(wait as u64), join_all(waits))
-                            .await
-                            .unwrap_or_default()
+                        let mut all = std::pin::pin!(join_all(waits));
+                        // Waits that settle at once win, as JavaScript microtasks run before any
+                        // timer. After that the deadline is polled first: a late wake can find it
+                        // and a step that finished after it both ready, where JavaScript fires the
+                        // earlier timer first (`tokio::time::timeout` polls its future first).
+                        match all.as_mut().now_or_never() {
+                            Some(settled) => settled,
+                            None => tokio::select! {
+                                biased;
+                                () = tokio::time::sleep(Duration::from_millis(wait as u64)) => Vec::new(),
+                                settled = all => settled,
+                            },
+                        }
                     }
                     _ => join_all(waits).await,
                 };
