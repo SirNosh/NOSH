@@ -144,6 +144,20 @@ pub trait Agents {
     }
     /// The model of every new session without an explicit selection.
     fn set_default_model(&self, _selection: Option<ModelSelection>) {}
+    fn default_model(&self) -> Option<ModelSelection> {
+        None
+    }
+    /// The models Pi can run, as `GET /models` lists them.
+    fn available_models(&self) -> LocalBoxFuture<'_, std::result::Result<Value, String>> {
+        Box::pin(async { Ok(Value::Array(Vec::new())) })
+    }
+    fn compact<'a>(
+        &'a self,
+        _agent_id: &'a str,
+        _instructions: Option<&'a str>,
+    ) -> LocalBoxFuture<'a, std::result::Result<(), String>> {
+        Box::pin(async { Err("compaction is not supported by these sessions".to_owned()) })
+    }
     /// Whether the session's terminal turn may still record its outcome.
     fn terminal_turn_active(&self, _context: &TerminalContext) -> bool {
         false
@@ -208,6 +222,19 @@ impl Agents for PiAdapter {
     }
     fn set_default_model(&self, selection: Option<ModelSelection>) {
         PiAdapter::set_default_model(self, selection);
+    }
+    fn default_model(&self) -> Option<ModelSelection> {
+        PiAdapter::default_model(self)
+    }
+    fn available_models(&self) -> LocalBoxFuture<'_, std::result::Result<Value, String>> {
+        PiAdapter::available_models(self).boxed_local()
+    }
+    fn compact<'a>(
+        &'a self,
+        agent_id: &'a str,
+        instructions: Option<&'a str>,
+    ) -> LocalBoxFuture<'a, std::result::Result<(), String>> {
+        PiAdapter::compact(self, agent_id, instructions).boxed_local()
     }
     fn terminal_turn_active(&self, context: &TerminalContext) -> bool {
         PiAdapter::terminal_turn_active(self, context)

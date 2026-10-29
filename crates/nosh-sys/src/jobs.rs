@@ -355,7 +355,34 @@ impl JobSupervisor {
 
     /// Elapsed time, memory, GPU use, and output staleness, cached for 5 s per Job.
     pub fn resource_snapshot(&self, job_id: &str) -> Result<ResourceSnapshot> {
-        let inner = &self.inner;
+        self.inner.resource_snapshot(job_id)
+    }
+
+    /// [`resource_snapshot`](Self::resource_snapshot) for another thread: it runs telemetry
+    /// commands, which would otherwise block the caller's event loop for seconds.
+    pub fn resource_snapshot_task(
+        &self,
+        job_id: &str,
+    ) -> impl FnOnce() -> Result<ResourceSnapshot> + Send + 'static {
+        let (inner, job_id) = (Arc::clone(&self.inner), job_id.to_owned());
+        move || inner.resource_snapshot(&job_id)
+    }
+
+    /// Stops watching: after this, exits are reconciled by the next daemon's `recover()`.
+    pub fn close(&self) {
+        self.inner.closed.store(true, Ordering::SeqCst);
+    }
+}
+
+impl Drop for JobSupervisor {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
+impl Inner {
+    fn resource_snapshot(&self, job_id: &str) -> Result<ResourceSnapshot> {
+        let inner = self;
         if let Some((expires, value)) = inner
             .telemetry
             .lock()
@@ -390,19 +417,6 @@ impl JobSupervisor {
         Ok(value)
     }
 
-    /// Stops watching: after this, exits are reconciled by the next daemon's `recover()`.
-    pub fn close(&self) {
-        self.inner.closed.store(true, Ordering::SeqCst);
-    }
-}
-
-impl Drop for JobSupervisor {
-    fn drop(&mut self) {
-        self.close();
-    }
-}
-
-impl Inner {
     fn lock(&self) -> MutexGuard<'_, ()> {
         self.records
             .lock()

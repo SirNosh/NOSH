@@ -3,6 +3,7 @@
 
 pub mod fs;
 pub mod git;
+pub mod job_wrapper;
 pub mod jobs;
 pub mod paths;
 pub mod process;
