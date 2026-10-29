@@ -63,6 +63,55 @@ pub fn alive(pid: Option<u32>, expected: Option<&str>) -> bool {
     }
 }
 
+/// Whether a process with this PID runs, as Node's `process.kill(pid, 0)` answers it: `None`
+/// when the system refuses to say (Node's `EPERM`).
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn pid_exists(pid: u32) -> Option<bool> {
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, ERROR_ACCESS_DENIED, GetLastError, STILL_ACTIVE,
+    };
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SYNCHRONIZE,
+        PROCESS_TERMINATE,
+    };
+    // SAFETY: OpenProcess takes no pointers; a null result is checked before any use.
+    let handle = unsafe {
+        OpenProcess(
+            PROCESS_TERMINATE | PROCESS_QUERY_INFORMATION | PROCESS_SYNCHRONIZE,
+            0,
+            pid,
+        )
+    };
+    if handle.is_null() {
+        // SAFETY: reads this thread's last error, set by the failed call just above.
+        return if unsafe { GetLastError() } == ERROR_ACCESS_DENIED {
+            None
+        } else {
+            Some(false)
+        };
+    }
+    let mut code = 0u32;
+    // SAFETY: `handle` is the open process handle from above and `code` is writable; the handle
+    // is closed exactly once, after its last use.
+    let running = unsafe {
+        let ok = GetExitCodeProcess(handle, &mut code) != 0;
+        CloseHandle(handle);
+        ok && code == STILL_ACTIVE as u32
+    };
+    Some(running)
+}
+
+#[cfg(not(windows))]
+pub fn pid_exists(pid: u32) -> Option<bool> {
+    let status = Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .stderr(Stdio::null())
+        .status()
+        .ok()?;
+    Some(status.success())
+}
+
 /// Kills a process and its descendants, then waits (at most 5 s) until its identity is gone.
 pub fn kill_tree(pid: u32, fingerprint_now: Option<&str>) {
     #[cfg(windows)]
@@ -237,5 +286,16 @@ mod tests {
             spawn_error_message("nosh-definitely-missing-program", &error),
             "spawn nosh-definitely-missing-program ENOENT"
         );
+    }
+
+    #[test]
+    fn pid_exists_until_the_process_exits() {
+        assert_eq!(pid_exists(std::process::id()), Some(true));
+        let mut child = hidden("cmd").args(["/c", "exit 0"]).spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        // The exited child's handle is closed, so its PID names no process.
+        drop(child);
+        assert_eq!(pid_exists(pid), Some(false));
     }
 }

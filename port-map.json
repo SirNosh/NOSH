@@ -95,12 +95,26 @@
       ],
       "strict": []
     },
+    "nosh-orchestration:daemon": {
+      "synced": "27d45b172809df98c710bf9fdc15953b56d7c0dc",
+      "paths": [
+        "apps/noshd/src/daemon.ts",
+        "apps/noshd/src/research-map.ts",
+        "apps/noshd/src/single-instance.ts",
+        "apps/noshd/src/task-postflight.ts",
+        "apps/noshd/src/task-worktree.ts"
+      ],
+      "strict": []
+    },
     "nosh-orchestration": {
       "synced": null,
       "paths": [
         "apps/noshd/src/mission-supervisor.ts",
         "apps/noshd/src/direction-supervisor.ts",
-        "apps/noshd/src/autoresearch-supervisor.ts"
+        "apps/noshd/src/autoresearch-supervisor.ts",
+        "apps/noshd/src/research-spawner.ts",
+        "apps/noshd/src/director-brief.ts",
+        "apps/noshd/src/task-templates.ts"
       ],
       "strict": []
     },

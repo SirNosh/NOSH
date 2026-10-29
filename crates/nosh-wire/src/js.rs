@@ -131,10 +131,107 @@ pub fn sort_by_number<T>(items: &mut [T], compare: impl Fn(&T, &T) -> f64) {
     }
 }
 
+/// `String(number)`.
+pub fn number_string(value: f64) -> String {
+    if value.is_nan() {
+        "NaN".into()
+    } else if value.is_infinite() {
+        if value > 0.0 { "Infinity" } else { "-Infinity" }.into()
+    } else {
+        string(Some(&Value::from(value)))
+    }
+}
+
+/// `Number(text)` for the decimal forms a regex such as `-?[\d.e-]+` admits: NaN when JavaScript
+/// would not parse it either.
+pub fn parse_number(text: &str) -> f64 {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return 0.0;
+    }
+    trimmed.parse().unwrap_or(f64::NAN)
+}
+
+/// `value.toFixed(digits)` (digits ≤ 20): the exact decimal expansion rounded half away from
+/// zero, as ECMAScript picks "the larger n" on a tie.
+pub fn to_fixed(value: f64, digits: usize) -> String {
+    if !value.is_finite() || value.abs() >= 1e21 {
+        return number_string(value);
+    }
+    // 1100 fractional digits hold any f64's exact expansion.
+    let exact = format!("{:.1100}", value.abs());
+    let (whole, fraction) = exact.split_once('.').unwrap_or((&exact, ""));
+    let mut kept: Vec<u8> = whole.bytes().chain(fraction.bytes().take(digits)).collect();
+    if fraction
+        .as_bytes()
+        .get(digits)
+        .is_some_and(|digit| *digit >= b'5')
+    {
+        let mut index = kept.len();
+        loop {
+            if index == 0 {
+                kept.insert(0, b'1');
+                break;
+            }
+            index -= 1;
+            if kept[index] == b'9' {
+                kept[index] = b'0';
+            } else {
+                kept[index] += 1;
+                break;
+            }
+        }
+    }
+    let split = kept.len() - digits;
+    let mut text = String::from_utf8(kept[..split].to_vec()).expect("digits");
+    if digits > 0 {
+        text.push('.');
+        text.push_str(std::str::from_utf8(&kept[split..]).expect("digits"));
+    }
+    // (-0.00001).toFixed(2) is "-0.00": the sign is kept for any negative x.
+    if value < 0.0 {
+        text.insert(0, '-');
+    }
+    text
+}
+
+/// `Number(value.toPrecision(precision))`: `value` rounded to `precision` significant digits.
+pub fn to_precision_number(value: f64, precision: usize) -> f64 {
+    if !value.is_finite() || value == 0.0 {
+        return value;
+    }
+    let exponent = value.abs().log10().floor() as i32;
+    let digits = precision as i32 - 1 - exponent;
+    if digits >= 0 {
+        parse_number(&to_fixed(value, digits as usize))
+    } else {
+        let scale = 10f64.powi(-digits);
+        parse_number(&to_fixed(value / scale, 0)) * scale
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// Outputs of Node for `toFixed`, `Number(toPrecision)`, and `String`.
+    #[test]
+    fn number_formatting_matches_javascript() {
+        assert_eq!(to_fixed(0.03125, 4), "0.0313");
+        assert_eq!(to_fixed(1.005, 2), "1.00");
+        assert_eq!(to_fixed(-0.12345, 4), "-0.1235");
+        assert_eq!(to_fixed(-0.00001, 2), "-0.00");
+        assert_eq!(to_fixed(9.99995, 4), "10.0000");
+        assert_eq!(to_fixed(99.5, 0), "100");
+        assert_eq!(to_fixed(2.5, 0), "3");
+        assert_eq!(to_precision_number(0.123456, 4), 0.1235);
+        assert_eq!(to_precision_number(123456.0, 4), 123500.0);
+        assert_eq!(number_string(0.1 + 0.2), "0.30000000000000004");
+        assert_eq!(number_string(f64::NAN), "NaN");
+        assert!(parse_number("1.2.3").is_nan());
+        assert_eq!(parse_number("-0.5"), -0.5);
+    }
 
     #[test]
     fn string_and_truthiness_match_javascript() {

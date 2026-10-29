@@ -53,9 +53,19 @@ jobs:
       - name: Install the Pi sidecar
         working-directory: rust/sidecar/pi-host
         run: npm ci
-      - name: Test
+      # Split so a failure names its layer and each step's time shows where the job's minutes go.
+      - name: Test (wire, store, sys, research)
         working-directory: rust
-        run: cargo test --workspace --locked
+        run: cargo test --locked -p nosh-wire -p nosh-store -p nosh-sys -p nosh-research
+      - name: Test (agent)
+        working-directory: rust
+        run: cargo test --locked -p nosh-agent
+      - name: Test (orchestration)
+        working-directory: rust
+        run: cargo test --locked -p nosh-orchestration
+      - name: Test (everything else)
+        working-directory: rust
+        run: cargo test --workspace --locked --exclude nosh-wire --exclude nosh-store --exclude nosh-sys --exclude nosh-research --exclude nosh-agent --exclude nosh-orchestration
       - name: Vendored schemas match TypeScript
         working-directory: rust
         run: node scripts/sync-schemas.mjs --check

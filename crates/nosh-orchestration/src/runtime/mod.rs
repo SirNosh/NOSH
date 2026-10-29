@@ -1262,14 +1262,14 @@ fn terminal_thread(thread: &Value) -> bool {
 }
 
 /// `Date.now()`.
-fn now_ms() -> f64 {
+pub(crate) fn now_ms() -> f64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0.0, |elapsed| elapsed.as_millis() as f64)
 }
 
 /// `Date.parse` for the ISO timestamps NOSH writes; NaN otherwise.
-fn parse_ms(value: &str) -> f64 {
+pub(crate) fn parse_ms(value: &str) -> f64 {
     time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339)
         .map_or(f64::NAN, |at| {
             (at.unix_timestamp_nanos() / 1_000_000) as f64
