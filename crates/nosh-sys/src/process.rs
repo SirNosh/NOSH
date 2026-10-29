@@ -55,6 +55,59 @@ pub fn fingerprint(pid: u32) -> Option<String> {
     }
 }
 
+/// The fingerprint of a process just spawned, read from its handle rather than by PID, so a
+/// process that has already exited still has one. TypeScript queries PowerShell after spawning
+/// and records null when the Job finished first.
+///
+/// On Windows this is the creation time PowerShell's `StartTime` reports, in the same
+/// `ToUniversalTime().ToString('O')` form, so it compares equal to [`fingerprint`].
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn child_fingerprint(child: &Child) -> Option<String> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::Threading::GetProcessTimes;
+    let zero = || FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut created, mut exited, mut kernel, mut user) = (zero(), zero(), zero(), zero());
+    // SAFETY: the handle is owned by `child`, which outlives the call, and every out-pointer is a
+    // writable FILETIME.
+    let ok = unsafe {
+        GetProcessTimes(
+            child.as_raw_handle(),
+            &mut created,
+            &mut exited,
+            &mut kernel,
+            &mut user,
+        )
+    };
+    if ok == 0 {
+        return None;
+    }
+    // 100 ns ticks since 1601-01-01 UTC; 11644473600 s separate that epoch from Unix's.
+    let ticks = (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime);
+    let unix_ticks = i128::from(ticks) - 11_644_473_600 * 10_000_000;
+    let at = time::OffsetDateTime::from_unix_timestamp_nanos(unix_ticks * 100).ok()?;
+    Some(format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:07}Z",
+        at.year(),
+        u8::from(at.month()),
+        at.day(),
+        at.hour(),
+        at.minute(),
+        at.second(),
+        at.nanosecond() / 100
+    ))
+}
+
+/// The fingerprint of a process just spawned. Until it is waited for, its `/proc` entry stays.
+#[cfg(not(windows))]
+pub fn child_fingerprint(child: &Child) -> Option<String> {
+    fingerprint(child.id())
+}
+
 /// Whether the process recorded as `pid` with `expected` fingerprint is still running.
 pub fn alive(pid: Option<u32>, expected: Option<&str>) -> bool {
     match (pid, expected) {
@@ -237,6 +290,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_spawned_process_keeps_its_fingerprint_after_a_fast_exit() {
+        let mut child = hidden("cmd").args(["/c", "exit 7"]).spawn().unwrap();
+        while child.try_wait().unwrap().is_none() {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(
+            fingerprint(child.id()),
+            None,
+            "the PID query loses the race"
+        );
+        let identity = child_fingerprint(&child).expect("the handle still knows its start time");
+        assert!(!alive(Some(child.id()), Some(&identity)));
+    }
+
+    #[test]
     fn fingerprints_identify_a_live_process_until_it_exits() {
         let mut child = hidden("cmd")
             .args(["/c", "ping -n 30 127.0.0.1 >NUL"])
@@ -247,6 +315,7 @@ mod tests {
             identity.ends_with('Z') && identity.contains('T'),
             "{identity}"
         );
+        assert_eq!(child_fingerprint(&child).as_deref(), Some(&*identity));
         assert!(alive(Some(child.id()), Some(&identity)));
         assert!(!alive(
             Some(child.id()),

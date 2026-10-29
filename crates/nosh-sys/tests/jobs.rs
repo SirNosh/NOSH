@@ -293,14 +293,15 @@ fn typescript(data: &Path, calls: Value) -> Vec<Value> {
 const TERMINAL: [&str; 4] = ["completed", "failed", "cancelled", "lost"];
 
 /// A record's canonical JSON with the fields that legitimately differ between runs (time,
-/// process, paths) masked.
+/// process, paths) masked. TypeScript asks PowerShell for the fingerprint after spawning and
+/// records null when the Job has already exited, so whether it is null is a race there; Rust reads
+/// it from the child's handle.
 fn comparable(record: &Value) -> String {
     let mut record = record.clone();
     for key in [
         "startedAt",
         "finishedAt",
         "windowsPid",
-        "processFingerprint",
         "stdoutPath",
         "stderrPath",
     ] {
@@ -308,6 +309,7 @@ fn comparable(record: &Value) -> String {
             record[key] = json!("<masked>");
         }
     }
+    record["processFingerprint"] = json!("<masked>");
     nosh_wire::canonical_json(&record)
 }
 
@@ -329,6 +331,11 @@ fn records_match_the_typescript_supervisor() {
     for (index, (id, command)) in cases.iter().enumerate() {
         jobs.start(&spec(id, dir.path(), command)).unwrap();
         let ours = serde_json::to_value(wait_terminal(&jobs, id)).unwrap();
+        assert_eq!(
+            ours["processFingerprint"].is_null(),
+            ours["windowsPid"].is_null(),
+            "{id}: every spawned Job has a fingerprint"
+        );
         assert_eq!(
             comparable(&ours),
             comparable(&theirs[index * 2 + 1]),

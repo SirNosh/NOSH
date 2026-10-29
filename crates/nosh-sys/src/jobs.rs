@@ -7,7 +7,7 @@
 
 use crate::paths::resolve;
 use crate::process::{
-    self, alive, detach, fingerprint, hidden, node_exit_code, spawn_error_message,
+    self, alive, child_fingerprint, detach, hidden, node_exit_code, spawn_error_message,
 };
 use crate::{Result, rejected};
 use nosh_wire::{canonical_json, now_utc, sha256};
@@ -230,7 +230,7 @@ impl JobSupervisor {
             Err(error) => return inner.launch_failed(record, &error.to_string()),
         };
         record.windows_pid = Some(child.id());
-        record.process_fingerprint = fingerprint(child.id());
+        record.process_fingerprint = child_fingerprint(&child);
         record.state = JobState::Running;
         inner.save(&record)?;
         drop(guard);
