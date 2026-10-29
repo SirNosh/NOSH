@@ -1395,14 +1395,18 @@ fn snapshot_bundle(bundle: &Path) -> Result<(String, String)> {
 }
 
 fn bundle_heads(bundle: &Path) -> Result<Vec<(String, String)>> {
-    let mut command = hidden("git");
-    command
-        .arg("bundle")
-        .arg("list-heads")
-        .arg(resolve(bundle)?)
-        .env_clear()
-        .envs(hardened_environment(&[]));
-    let heads = git_output(&mut command, None);
+    // Listed inside a scratch SHA-1 repository, not the caller's cwd: outside a repository Git 2.46
+    // segfaults on a v2 (SHA-1) bundle, so a backup from a non-repository cwd failed (TypeScript's
+    // `bundleHeads` has the same defect). A SHA-1 repository lists SHA-256 bundles too; the reverse
+    // fails.
+    let scratch = tempfile::Builder::new()
+        .prefix("nosh-bundle-heads-")
+        .tempdir()?;
+    let absolute = resolve(bundle)?.to_string_lossy().into_owned();
+    if !run_git(scratch.path(), &["init", "--bare", "--object-format=sha1"]).ok {
+        return rejected("Backup Git bundle head listing failed");
+    }
+    let heads = run_git(scratch.path(), &["bundle", "list-heads", &absolute]);
     if !heads.ok {
         return rejected("Backup Git bundle head listing failed");
     }
