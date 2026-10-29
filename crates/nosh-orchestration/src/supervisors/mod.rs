@@ -5,6 +5,7 @@
 //! A supervisor's cycle runs as an un-awaited task (`void this.cycle()` in TypeScript); a busy set
 //! keeps one cycle per scope, and each cycle records its own failures as events.
 
+pub mod autoresearch;
 pub mod direction;
 pub mod mission;
 
