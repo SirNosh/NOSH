@@ -1,8 +1,8 @@
-//! The `nosh` command. The CLI proper is P7; this binary already runs the daemon (`nosh daemon`)
-//! and the Job exit wrapper (`nosh job-wrapper`), the two commands NOSH starts itself.
+//! The `nosh` command (`apps/cli/src/main.ts`), plus the two commands NOSH starts itself: the
+//! daemon (`nosh daemon`) and the Job exit wrapper (`nosh job-wrapper`).
 
 fn main() {
-    // Arguments come from NOSH or from JSON Job specs, so they are Unicode.
+    // Arguments come from NOSH, from JSON Job specs, or from a terminal, so they are Unicode.
     let args: Vec<String> = std::env::args_os()
         .skip(1)
         .map(|argument| argument.to_string_lossy().into_owned())
@@ -19,13 +19,7 @@ fn main() {
             }
         },
         Some("job-wrapper") => nosh_sys::job_wrapper::run(&args[1..]),
-        _ => {
-            println!(
-                "nosh {} (Rust port in progress; see port-map.json)",
-                env!("CARGO_PKG_VERSION")
-            );
-            0
-        }
+        _ => nosh::cli::run(&args),
     };
     std::process::exit(code);
 }

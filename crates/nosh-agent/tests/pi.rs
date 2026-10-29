@@ -6,7 +6,8 @@
 
 use nosh_agent::async_calls::{AsyncToolCalls, BoxFuture};
 use nosh_agent::pi::{
-    Emit, ModelSelection, ModelUsage, PiAdapter, PiConfig, map_event, typebox_json,
+    AuthInteraction, AuthSignal, Emit, ModelSelection, ModelUsage, PiAdapter, PiConfig, map_event,
+    typebox_json,
 };
 use nosh_agent::policy::SessionOptions;
 use nosh_agent::terminal::{TerminalContext, TerminalHost};
@@ -100,6 +101,7 @@ async fn adapter(
         host_script: root().join("sidecar/pi-host/host.mjs"),
         env: vec![("NOSH_PI_HOST_TEST".into(), "1".into())],
         schema_dir: schema_dir(),
+        forward_stderr: true,
     };
     let adapter = PiAdapter::spawn(config, emit, host, terminal)
         .await
@@ -630,6 +632,53 @@ async fn offers_chatgpt_and_claude_subscriptions_and_api_keys_from_pis_providers
             .iter()
             .all(|provider| provider["connected"].is_boolean())
     );
+}
+
+/// Answers no prompt: it waits until the prompt is abandoned, as the CLI's terminal reader does.
+struct Abandoned(Arc<Mutex<Vec<String>>>);
+
+impl AuthInteraction for Abandoned {
+    fn prompt(&self, prompt: Value, signal: AuthSignal) -> BoxFuture<Result<String, String>> {
+        let seen = Arc::clone(&self.0);
+        Box::pin(async move {
+            let started = std::time::Instant::now();
+            while !signal.aborted() && started.elapsed() < Duration::from_secs(10) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            let outcome = if signal.aborted() {
+                "aborted"
+            } else {
+                "waited"
+            };
+            seen.lock()
+                .unwrap()
+                .push(format!("{} {outcome}", prompt["type"].as_str().unwrap()));
+            Err("The operation was aborted".into())
+        })
+    }
+    fn notify(&self, _: Value) {}
+}
+
+/// Pi aborts a manual-code prompt once the browser callback wins (`AuthPrompt.signal`); the
+/// sidecar forwards that as `auth.cancel`, so the prompt stops waiting while the flow still runs.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_prompt_pi_abandons_during_sign_in_is_cancelled() {
+    let recorded = adapter(None, None).await;
+    static_runtime(&recorded.adapter).await;
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let started = std::time::Instant::now();
+    recorded
+        .adapter
+        .login(
+            "provider-a",
+            "oauth",
+            Arc::new(Abandoned(Arc::clone(&seen))),
+        )
+        .await
+        .unwrap();
+    // The scripted flow returns only after the prompt answered, so the abort came from the sidecar.
+    assert_eq!(*seen.lock().unwrap(), ["manual_code aborted"]);
+    assert!(started.elapsed() < Duration::from_secs(5));
 }
 
 /// Arguments for one tool: each value under each parameter, alone and next to valid others.

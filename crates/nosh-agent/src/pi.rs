@@ -42,6 +42,10 @@ pub struct PiConfig {
     pub env: Vec<(String, String)>,
     /// The record JSON Schemas the submission tool descriptions point at.
     pub schema_dir: PathBuf,
+    /// Echo the sidecar's stderr as `[pi-host] …` lines (the daemon log). The CLI turns this off,
+    /// as Pi in-process printed nothing between its prompts; either way a sidecar that exits is
+    /// reported with its last stderr line.
+    pub forward_stderr: bool,
 }
 
 /// The Node that runs the sidecar: `NOSH_NODE` (set by the release's launcher stub to the Node
@@ -132,8 +136,26 @@ pub struct ModelUsage {
 
 /// A login flow's prompts and progress, as Pi's `AuthInteraction`.
 pub trait AuthInteraction: Send + Sync {
-    fn prompt(&self, prompt: Value) -> BoxFuture<Result<String, String>>;
+    /// Answers one `AuthPrompt`; `signal` is its `signal`, which cannot cross the sidecar protocol
+    /// as an object.
+    fn prompt(&self, prompt: Value, signal: AuthSignal) -> BoxFuture<Result<String, String>>;
     fn notify(&self, event: Value);
+}
+
+/// `AuthPrompt.signal`: aborted when Pi abandons the prompt (the sidecar's `auth.cancel`), as an
+/// OAuth flow does to its manual-code prompt once the browser callback wins the race.
+#[derive(Clone, Default)]
+pub struct AuthSignal(Arc<AtomicBool>);
+
+impl AuthSignal {
+    pub fn aborted(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+
+    /// `AbortController.abort()`.
+    pub fn abort(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
 }
 
 pub struct PiAdapter {
@@ -152,6 +174,8 @@ struct Shared {
     /// be rewritten by other Pi clients.
     default_model: Mutex<Option<ModelSelection>>,
     login: Mutex<Option<Arc<dyn AuthInteraction>>>,
+    /// The sign-in prompts awaiting an answer, by the sidecar's request id.
+    auth_prompts: Mutex<HashMap<String, AuthSignal>>,
 }
 
 struct Managed {
@@ -187,6 +211,7 @@ impl PiAdapter {
             model_usage: Mutex::new(HashMap::new()),
             default_model: Mutex::new(None),
             login: Mutex::new(None),
+            auth_prompts: Mutex::new(HashMap::new()),
         });
         let rpc = Rpc::spawn(&config, Arc::downgrade(&shared))?;
         Ok(Self { rpc, shared })
@@ -670,7 +695,7 @@ impl PiAdapter {
         self.rpc.call("authProviders", json!({})).await
     }
 
-    /// Runs the provider's own sign-in flow (`type` is `oauth` or `apiKey`).
+    /// Runs the provider's own sign-in flow (`type` is `oauth` or `api_key`).
     pub async fn login(
         &self,
         provider_id: &str,
@@ -686,6 +711,10 @@ impl PiAdapter {
             )
             .await;
         *lock(&self.shared.login) = None;
+        // A prompt still open when the flow has ended (or the sidecar died) is abandoned too.
+        for (_, signal) in lock(&self.shared.auth_prompts).drain() {
+            signal.abort();
+        }
         result.map(drop)
     }
 
@@ -1068,11 +1097,13 @@ impl Rpc {
         });
         let last_error = Arc::new(Mutex::new(String::new()));
         {
-            let last_error = Arc::clone(&last_error);
+            let (last_error, forward) = (Arc::clone(&last_error), config.forward_stderr);
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stderr).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    eprintln!("[pi-host] {line}");
+                    if forward {
+                        eprintln!("[pi-host] {line}");
+                    }
                     if !line.trim().is_empty() {
                         *lock(&last_error) = line;
                     }
@@ -1127,31 +1158,51 @@ impl Rpc {
                     interaction.notify(params["event"].clone());
                 }
             }
+            "auth.cancel" => {
+                if let Some(signal) = lock(&shared.auth_prompts).get(&params["id"].to_string()) {
+                    signal.abort();
+                }
+            }
+            "auth.prompt" => {
+                // Registered before the prompt's task runs, so an `auth.cancel` read next finds it.
+                let (rpc, id, signal) = (
+                    Arc::clone(self),
+                    message["id"].clone(),
+                    AuthSignal::default(),
+                );
+                lock(&shared.auth_prompts).insert(id.to_string(), signal.clone());
+                tokio::spawn(async move {
+                    let interaction = lock(&shared.login).clone();
+                    let result = match interaction {
+                        Some(interaction) => interaction
+                            .prompt(params["prompt"].clone(), signal)
+                            .await
+                            .map(Value::String),
+                        None => Err("No sign-in is in progress".into()),
+                    };
+                    lock(&shared.auth_prompts).remove(&id.to_string());
+                    rpc.reply(&id, result);
+                });
+            }
             _ => {
                 let (rpc, id, method) =
                     (Arc::clone(self), message["id"].clone(), method.to_owned());
                 tokio::spawn(async move {
                     let result = match method.as_str() {
                         "tool" => shared.run_tool(&params).await,
-                        "auth.prompt" => {
-                            let interaction = lock(&shared.login).clone();
-                            match interaction {
-                                Some(interaction) => interaction
-                                    .prompt(params["prompt"].clone())
-                                    .await
-                                    .map(Value::String),
-                                None => Err("No sign-in is in progress".into()),
-                            }
-                        }
                         _ => Err(format!("Unknown NOSH method {method}")),
                     };
-                    rpc.send(&match result {
-                        Ok(result) => json!({ "id": id, "result": result }),
-                        Err(message) => json!({ "id": id, "error": { "message": message } }),
-                    });
+                    rpc.reply(&id, result);
                 });
             }
         }
+    }
+
+    fn reply(&self, id: &Value, result: Result<Value, String>) {
+        self.send(&match result {
+            Ok(result) => json!({ "id": id, "result": result }),
+            Err(message) => json!({ "id": id, "error": { "message": message } }),
+        });
     }
 
     fn send(&self, message: &Value) {

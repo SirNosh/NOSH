@@ -1382,15 +1382,22 @@ dependencies = [
 name = "nosh"
 version = "0.0.0"
 dependencies = [
+ "base64 0.23.1",
+ "crossterm",
  "futures-util",
+ "getrandom 0.4.3",
+ "nosh-agent",
  "nosh-research",
  "nosh-server",
+ "nosh-store",
  "nosh-sys",
  "nosh-tui",
+ "nosh-wire",
  "ratatui",
  "regex",
  "reqwest",
  "serde_json",
+ "sha2 0.11.1",
  "tempfile",
  "tokio",
  "tokio-tungstenite",

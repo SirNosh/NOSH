@@ -270,6 +270,7 @@ fn a_real_pi_session_reaches_the_daemon_through_the_bridge_and_its_events_are_st
             host_script: repository_root().join("sidecar/pi-host/host.mjs"),
             env: vec![("NOSH_PI_HOST_TEST".into(), "1".into())],
             schema_dir: repository_root().join("conformance/schemas/json"),
+            forward_stderr: true,
         };
         let adapter = Rc::new(
             PiAdapter::spawn(

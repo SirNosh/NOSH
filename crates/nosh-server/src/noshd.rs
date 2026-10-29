@@ -182,6 +182,7 @@ async fn run(args: &[String], job_wrapper: Vec<OsString>) -> Result<(), String> 
             host_script: installation.host_script.clone(),
             env: Vec::new(),
             schema_dir: installation.schema_dir.clone(),
+            forward_stderr: true,
         },
         connected.emitter(),
         Some(connected.agent_host()),

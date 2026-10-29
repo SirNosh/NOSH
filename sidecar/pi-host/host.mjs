@@ -7,28 +7,35 @@
 // are answered with { id, result } or { id, error: { message } }; notifications have no id. Both
 // sides send requests: Rust calls the methods below, and the host calls Rust's `tool` and
 // `auth.prompt`. Events are the notification { method: "event", params: { agentId, kind, ... } },
-// written before the reply of the call that caused them.
+// written before the reply of the call that caused them. A sign-in prompt Pi abandons (its
+// `signal` aborts) is the notification { method: "auth.cancel", params: { id } }.
 
 // Pi and its dependencies may print; stdout carries only protocol lines.
 console.log = console.info = console.debug = console.error;
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const PI_VERSION = "0.80.10";
 const here = dirname(fileURLToPath(import.meta.url));
 
+// Pi's own install: the source tree's (npm ci here), else the nosh-runtime package's dependencies as npm installs
+// them: under the package (npm install -g) or beside it (npm install --prefix, as the nosh-harness launcher does).
+const packageRoot = resolve(here, "..", "..");
+const modules = [join(here, "node_modules"), join(packageRoot, "node_modules"), ...(basename(dirname(packageRoot)) === "node_modules" ? [dirname(packageRoot)] : [])]
+  .find((directory) => existsSync(join(directory, "@earendil-works", "pi-coding-agent", "package.json"))) ?? join(here, "node_modules");
+
 /**
- * Loads a Pi package from this host's own node_modules, never by bare specifier, so the host cannot
- * resolve another project's copy. pi-coding-agent ships an npm shrinkwrap, which installs its own
- * pi-ai under it; that copy is the one its runtime uses, so the host uses it too.
+ * Loads a Pi package from that install, never by bare specifier, so the host cannot resolve another
+ * project's copy. pi-coding-agent ships an npm shrinkwrap, which installs its own pi-ai under it;
+ * that copy is the one its runtime uses, so the host uses it too.
  */
 async function piPackage(name) {
-  const agent = join(here, "node_modules", "@earendil-works", "pi-coding-agent");
-  const directory = name === "pi-coding-agent" ? agent : [join(agent, "node_modules", "@earendil-works", name), join(here, "node_modules", "@earendil-works", name)].find((candidate) => existsSync(candidate));
+  const agent = join(modules, "@earendil-works", "pi-coding-agent");
+  const directory = name === "pi-coding-agent" ? agent : [join(agent, "node_modules", "@earendil-works", name), join(modules, "@earendil-works", name)].find((candidate) => existsSync(candidate));
   if (!directory || !existsSync(join(directory, "package.json"))) throw new Error(`@earendil-works/${name} is not installed; run npm ci in ${here}`);
   const manifest = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
   if (manifest.version !== PI_VERSION) throw new Error(`@earendil-works/${name} ${manifest.version} is installed; the NOSH Pi host needs ${PI_VERSION} (run npm ci in ${here})`);
@@ -45,8 +52,10 @@ let nextId = 0;
 const waiting = new Map();
 function send(message) { process.stdout.write(`${JSON.stringify(message)}\n`); }
 function notify(method, params) { send({ method, params }); }
-function request(method, params) {
+/** An AbortSignal cannot cross the protocol: its abort is sent as `auth.cancel` with the request's id. */
+function request(method, params, signal) {
   const id = `h${++nextId}`;
+  signal?.addEventListener("abort", () => notify("auth.cancel", { id }), { once: true });
   return new Promise((resolve, reject) => { waiting.set(id, { resolve, reject }); send({ id, method, params }); });
 }
 
@@ -306,8 +315,8 @@ const methods = {
 
   /** Runs the provider's own sign-in flow; prompts go to Rust as `auth.prompt` requests, progress as `auth.notify`. */
   async login({ providerId, type }) {
-    const current = await ModelRuntime.create();
-    await current.login(providerId, type, { prompt: (prompt) => request("auth.prompt", { prompt }), notify: (event) => notify("auth.notify", { event: json(event) }) });
+    const current = injectedRuntime ?? await ModelRuntime.create();
+    await current.login(providerId, type, { prompt: (prompt) => request("auth.prompt", { prompt }, prompt.signal), notify: (event) => notify("auth.notify", { event: json(event) }) });
   },
 
   async logout({ providerId }) {
@@ -327,7 +336,16 @@ if (process.env.NOSH_PI_HOST_TEST === "1") {
     return holds.get(name);
   };
   const captured = [];
-  const fakeAuth = { hasConfiguredAuth: () => true, getAuth: async () => ({ auth: { apiKey: "fake" }, env: {} }) };
+  const fakeAuth = {
+    hasConfiguredAuth: () => true, getAuth: async () => ({ auth: { apiKey: "fake" }, env: {} }),
+    /** An OAuth flow's shape: a manual-code prompt raced by the browser callback, which wins after 100 ms; the abandoned prompt is aborted, then awaited so its answer reaches the test. */
+    async login(providerId, type, interaction) {
+      const manual = new AbortController();
+      const answer = interaction.prompt({ type: "manual_code", message: "Paste the code", signal: manual.signal }).catch(() => undefined);
+      try { await new Promise((resolve) => setTimeout(resolve, 100)); } finally { manual.abort(); }
+      await answer;
+    },
+  };
   const message = ({ text = "", toolCalls, stopReason, errorMessage }) => fauxAssistantMessage(toolCalls ? toolCalls.map((call) => fauxToolCall(call.name, call.arguments, call.id ? { id: call.id } : {})) : text, { ...(stopReason ? { stopReason } : {}), ...(errorMessage ? { errorMessage } : {}) });
   Object.assign(methods, {
     /** Static models (any Model fields) for sessions that never prompt, or a faux provider that streams. */

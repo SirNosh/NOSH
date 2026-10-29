@@ -28,6 +28,28 @@ pub fn detach(command: &mut Command) {
     std::os::unix::process::CommandExt::process_group(command, 0);
 }
 
+/// Node's `uv_disable_stdio_inheritance` (run at every Node start): this process's std handles stop
+/// being inheritable, so a daemon it spawns never holds a pipe its caller is reading (a captured
+/// `nosh start` would otherwise wait for the daemon to exit). `Stdio::inherit()` still works for
+/// later children: std duplicates the handle as inheritable for each spawn.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn disable_stdio_inheritance() {
+    use windows_sys::Win32::Foundation::{HANDLE_FLAG_INHERIT, SetHandleInformation};
+    use windows_sys::Win32::System::Console::{
+        GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+    };
+    for id in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+        // SAFETY: GetStdHandle takes no pointers; SetHandleInformation only changes a flag on this
+        // process's own handle, and an invalid or null handle makes it fail harmlessly.
+        unsafe { SetHandleInformation(GetStdHandle(id), HANDLE_FLAG_INHERIT, 0) };
+    }
+}
+
+/// POSIX children inherit fds 0-2 only as passed; redirected stdio replaces them.
+#[cfg(not(windows))]
+pub fn disable_stdio_inheritance() {}
+
 /// A process's identity: its start time, so a reused PID is never mistaken for the same process.
 /// On Windows this runs the exact PowerShell query the TypeScript daemon runs, so records written
 /// by either daemon compare equal.
