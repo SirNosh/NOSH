@@ -152,6 +152,10 @@ pub fn parse_number(text: &str) -> f64 {
     trimmed.parse().unwrap_or(f64::NAN)
 }
 
+/// [`is_js_whitespace`] as the body of a `regex` character class: JavaScript's `\s`, which is not
+/// Rust's (Unicode White_Space has U+0085 and lacks U+FEFF).
+pub const JS_SPACE_CLASS: &str = r"\t\n\x0B\x0C\r \x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}";
+
 /// JavaScript's `String.prototype.trim` whitespace and line terminators.
 pub fn is_js_whitespace(character: char) -> bool {
     matches!(

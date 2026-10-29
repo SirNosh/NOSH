@@ -16,8 +16,7 @@ const THINKING_LEVELS: [&str; 7] = ["off", "minimal", "low", "medium", "high", "
 /// `parseModelSelection(text)` (`@nosh/wire`): provider, id and thinking level.
 fn parse_model_selection(text: &str) -> Result<(String, String, Option<String>), String> {
     static PATTERN: LazyLock<regex::Regex> = LazyLock::new(|| {
-        // JavaScript's `\s`, which is not Rust's (Unicode White_Space): U+FEFF in, U+0085 out.
-        const SPACE: &str = r"\t\n\x0B\x0C\r \x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}";
+        const SPACE: &str = nosh_wire::js::JS_SPACE_CLASS;
         regex::Regex::new(&format!(r"^([^/{SPACE}]+)/([^:{SPACE}]+)(?::([a-z]+))?$"))
             .expect("pattern compiles")
     });

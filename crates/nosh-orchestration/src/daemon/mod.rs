@@ -1821,7 +1821,9 @@ impl NoshDaemon {
 /// (`/^([^/\s]+)\/([^:\s]+)(?::([a-z]+))?$/` on the trimmed text).
 pub fn parse_model_selection(model: &str) -> Result<ModelSelection> {
     static PATTERN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-        regex::Regex::new(r"^([^/\s]+)/([^:\s]+)(?::([a-z]+))?$").expect("regex")
+        let space = nosh_wire::js::JS_SPACE_CLASS;
+        regex::Regex::new(&format!(r"^([^/{space}]+)/([^:{space}]+)(?::([a-z]+))?$"))
+            .expect("regex")
     });
     let found = PATTERN.captures(js_trim(model)).ok_or_else(|| {
         Error::Rejected(format!(
