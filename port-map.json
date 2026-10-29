@@ -127,14 +127,14 @@
       "strict": []
     },
     "nosh-tui": {
-      "synced": null,
+      "synced": "27d45b172809df98c710bf9fdc15953b56d7c0dc",
       "paths": [
         "apps/tui/src"
       ],
       "strict": []
     },
     "nosh": {
-      "synced": null,
+      "synced": "27d45b172809df98c710bf9fdc15953b56d7c0dc",
       "paths": [
         "apps/cli/src",
         "apps/launcher",
