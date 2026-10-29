@@ -1386,6 +1386,8 @@ dependencies = [
  "nosh-research",
  "nosh-server",
  "nosh-sys",
+ "nosh-tui",
+ "ratatui",
  "regex",
  "reqwest",
  "serde_json",

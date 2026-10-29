@@ -941,3 +941,164 @@ fn the_typescript_tui_drives_the_rust_daemon() {
     );
     runtime.block_on(stop(daemon));
 }
+
+/// The Rust TUI (`nosh-tui`: its DaemonClient, Controller and Workspace) drives `nosh daemon`
+/// through the script the TypeScript TUI runs above, then draws the session: sign-in, the event
+/// page and live stream, the read-only slash commands, a Job in `/activity` and `/tail`.
+#[test]
+fn the_rust_tui_drives_the_rust_daemon() {
+    let scratch = tempfile::tempdir().unwrap();
+    let data = scratch.path().join("data");
+    let project = nosh_research::project::initialize_research_project(
+        &nosh_research::project::ProjectInitialization {
+            path: &scratch.path().join("repository"),
+            data_directory: &data,
+            create_repository: true,
+            working_title: Some("TUI handover"),
+            github_repository_url: None,
+        },
+    )
+    .unwrap();
+    let daemon = Daemon::spawn(Implementation::Rust, &data);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(write(&daemon.base, "/projects", &json!({ "projectId": project.project_id, "repositoryRoot": project.repository_root, "databasePath": project.database_path })));
+    tokio::task::LocalSet::new().block_on(
+        &runtime,
+        rust_tui(&daemon.base, &project.project_id, &project.repository_root),
+    );
+    runtime.block_on(stop(daemon));
+}
+
+async fn rust_tui(base: &str, project_id: &str, repository: &Path) {
+    use nosh_tui::controller::Controller;
+    use nosh_tui::js::js_json_parse;
+    use nosh_tui::transport::{DaemonApi, DaemonClient, install_crypto_provider};
+    use std::rc::Rc;
+
+    install_crypto_provider();
+    let client = Rc::new(
+        DaemonClient::new(&nosh_tui::TuiConfig {
+            base_url: base.into(),
+            bootstrap_token: Some(BOOTSTRAP.into()),
+            ..nosh_tui::TuiConfig::default()
+        })
+        .unwrap(),
+    );
+    let request = |path: &'static str, body: Value| {
+        let body = js_json_parse(&body.to_string()).unwrap();
+        let client = client.clone();
+        async move { serde_json::Value::from(client.request(path, Some(body), None).await.unwrap()) }
+    };
+    let controller = Controller::new(client.clone(), None);
+    controller.initialize().await.unwrap();
+    {
+        let state = controller.state();
+        assert_eq!(
+            state.connection, "connected",
+            "initialize left the connection"
+        );
+        assert_eq!(
+            state.project_id, project_id,
+            "initialize chose another project"
+        );
+    }
+    controller.poll().await;
+    let polled = {
+        let state = controller.state();
+        assert_eq!(state.connection, "connected", "poll failed");
+        assert!(
+            !state.events.is_empty() && state.cursor > 0,
+            "poll loaded no events"
+        );
+        state.events.len()
+    };
+    // A Mission created elsewhere reaches the TUI over the WebSocket, without another poll.
+    request("/missions", json!({ "projectId": project_id, "title": "TUI Mission", "objective": "Reach the TUI", "deliverables": ["A row"], "successCriteria": ["It shows"], "idempotencyKey": "tui-mission-rust" })).await;
+    let started = Instant::now();
+    while controller.state().events.len() <= polled {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the live stream delivered nothing"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let job_id = format!("job_{}", "7".repeat(32));
+    let started = request("/jobs", json!({
+        "jobId": job_id, "projectId": project_id, "missionId": null, "directionId": null, "autoresearchId": null,
+        "runId": format!("run_{}", "8".repeat(32)), "experimentId": null, "commitSha": "0".repeat(40), "workingDirectory": repository,
+        "runner": "native", "distribution": null, "command": ["node", "-e", "console.log('tui job'); setTimeout(() => {}, 4000)"],
+        "checkpointCommand": null, "environmentLockHash": format!("sha256:{}", "0".repeat(64)), "evaluationContractHash": format!("sha256:{}", "0".repeat(64)),
+        "timeoutSeconds": 60, "usesGpu": false,
+    })).await;
+    assert_eq!(
+        started["job"]["jobId"],
+        json!(job_id),
+        "the Job did not start"
+    );
+    let job = format!("/job {job_id}");
+    for (command, view) in [
+        ("/projects", "projects"),
+        ("/status", "status"),
+        ("/jobs", "jobs"),
+        (job.as_str(), "detail"),
+        ("/map", "map"),
+        ("/approvals", "approvals"),
+        ("/help", "help"),
+    ] {
+        controller.execute(command).await.unwrap();
+        let state = controller.state();
+        assert!(
+            state.view == view && state.error.is_empty(),
+            "{command} showed {} ({})",
+            state.view,
+            state.error
+        );
+    }
+    assert!(
+        controller
+            .sidebar_rows()
+            .iter()
+            .any(|row| format!("{row:?}").contains("TUI Mission")),
+        "the sidebar does not list the Mission"
+    );
+    let mut tail = String::new();
+    for _ in 0..60 {
+        controller
+            .execute(&format!("/tail {job_id}"))
+            .await
+            .unwrap();
+        tail = format!("{:?}{}", controller.state().rows, controller.state().detail);
+        if tail.contains("tui job") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    assert!(
+        tail.contains("tui job"),
+        "the Job's output never reached /tail: {tail}"
+    );
+    // The workspace draws the session: the status cards, the sidebar and the footer.
+    controller.execute("/status").await.unwrap();
+    let (sender, _completions) = tokio::sync::mpsc::unbounded_channel();
+    let mut workspace = nosh_tui::workspace::Workspace::new(controller.clone(), sender);
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 40)).unwrap();
+    terminal.draw(|frame| workspace.draw(frame)).unwrap();
+    let frame = nosh_tui::render::frame_text(terminal.backend().buffer());
+    for needle in [
+        "NOSH / STATUS",
+        "TUI Mission",
+        "● connected",
+        "ctrl+b hide",
+    ] {
+        assert!(
+            frame.contains(needle),
+            "the drawn session lacks {needle}:\n{frame}"
+        );
+    }
+    workspace.dispose();
+    controller.dispose();
+    client.close();
+}

@@ -47,6 +47,9 @@ fn an_object_prototype_name_is_sent_as_chat_and_cleared_only_after_it_resolves()
         let (sender, mut completions) = tokio::sync::mpsc::unbounded_channel();
         let mut workspace = Workspace::new(controller, sender);
         type_and_submit(&mut workspace, "constructor");
+        // app.rs yields once after an input event before drawing, so the frame shows `busy`.
+        tokio::task::yield_now().await;
+        assert!(workspace.working());
         wait(&mut workspace, &mut completions).await;
         let call = api.last();
         assert_eq!(call.path, "/chat");

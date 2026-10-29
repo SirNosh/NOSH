@@ -209,7 +209,7 @@ struct Targets {
     canvas: Rect,
     canvas_origin: (i64, i64),
     sidebar_list: Rect,
-    composer: Rect,
+    /// The editor; its own mouse-down handler focuses it.
     input: Rect,
     model: Rect,
     /// Empty while the thinking label is.
@@ -820,7 +820,7 @@ impl Workspace {
                 if button != MouseButton::Left {
                     return;
                 }
-                if targets.composer.contains(at) {
+                if targets.input.contains(at) {
                     self.focus = Focus::Composer;
                 } else if targets.conversation.contains(at) {
                     self.focus = Focus::Conversation;
@@ -1290,7 +1290,6 @@ impl Workspace {
         );
         draw_line(buf, footer.version, &Line::styled(version, muted));
         self.targets.conversation = conversation;
-        self.targets.composer = regions.composer;
         self.targets.input = regions.input;
         self.targets.model = parts.model;
         if !thinking.is_empty() {
