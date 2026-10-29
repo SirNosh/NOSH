@@ -53,7 +53,7 @@ node scripts/drift.mjs --check
 | P3 | `nosh-sys`: Windows paths, processes, jobs, git, artifacts, backups | done |
 | P4 | Domain: graph, scheduler, skills, episodes, threads, projects, papers, research control | done (`packages/templates` is unused in TypeScript and not ported) |
 | P5 | `nosh-agent`: tools, `nosh_code`, Pi sidecar | done: P5a (terminal-output protocol, V8 `JSON.parse` errors, system prompt, tool policy), P5b (async tool calls, `nosh_code` on QuickJS, session tools, network reader, terminal turns), P5c (git commit plumbing), P5d (`PiAdapter` over the Node sidecar `sidecar/pi-host`, which hosts the pinned Pi SDK) |
-| P6 | `nosh-orchestration` and `nosh-server`: supervisors, HTTP, WebSocket | in progress — P6a done (the typed orchestration runtime: threads, Episodes, joins, skills, programs, hooks, interventions), P6b done (the daemon core: projects, chat, jobs, terminal turns, task commands and artifacts, delegation, recovery, and the bridge from Pi sidecar threads to the daemon thread) |
+| P6 | `nosh-orchestration` and `nosh-server`: supervisors, HTTP, WebSocket | in progress — P6a done (the typed orchestration runtime: threads, Episodes, joins, skills, programs, hooks, interventions), P6b done (the daemon core: projects, chat, jobs, terminal turns, task commands and artifacts, delegation, recovery, and the bridge from Pi sidecar threads to the daemon thread), P6c done (the Mission, Direction, and Autoresearch supervisors with the research spawner, director briefs, and task templates, started and stopped by the daemon) |
 | P7 | `nosh` CLI | — |
 | T  | `nosh-tui` (ratatui) | — |
 | P8 | Packaging into the existing `nosh-runtime` release format | — |

@@ -340,3 +340,49 @@ fn a_real_pi_session_reaches_the_daemon_through_the_bridge_and_its_events_are_st
         daemon.stop();
     });
 }
+
+#[test]
+fn starts_its_research_supervisors_with_the_daemon_and_holds_them_without_a_reference_cycle() {
+    local(async {
+        let directory = tempfile::tempdir().unwrap();
+        let agents = Rc::new(FakeAgents::default());
+        let daemon = daemon(&directory.path().join("data"), Rc::clone(&agents));
+        // The supervisors reach the daemon weakly: a cycle would keep it, and its bridge, alive.
+        assert_eq!(Rc::strong_count(&daemon), 1);
+        let (project_id, _) = project(&daemon, directory.path(), "Supervised");
+        let input = serde_json::from_value(json!({ "title": "Supervised", "objective": "Run under the daemon", "deliverables": ["Result"], "successCriteria": ["Reviewed"], "idempotencyKey": "supervised-create" })).unwrap();
+        let mut mission = daemon.research.create_mission(&project_id, &input).unwrap();
+        let mission_id = mission["entityId"].as_str().unwrap().to_owned();
+        for next in ["planning", "awaiting_approval", "running"] {
+            mission = daemon
+                .research
+                .transition_mission(
+                    &project_id,
+                    &mission_id,
+                    mission["version"].as_i64().unwrap(),
+                    next,
+                    &format!("supervised-{next}"),
+                )
+                .unwrap();
+        }
+        let director = || {
+            agents
+                .started
+                .borrow()
+                .iter()
+                .any(|session| session.role == Role::MissionDirector)
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(1_500)).await;
+        assert!(!director(), "supervisors tick only once the daemon starts");
+        daemon.start().unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while std::time::Instant::now() < deadline && !director() {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(director());
+        daemon.stop();
+        let weak = Rc::downgrade(&daemon);
+        drop(daemon);
+        assert!(weak.upgrade().is_none());
+    });
+}

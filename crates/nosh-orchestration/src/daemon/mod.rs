@@ -1,6 +1,7 @@
 //! The NOSH daemon, as `NoshDaemon` in `apps/noshd/src/daemon.ts`: the host registry and
 //! per-Project stores, Projects and their contracts, chat, typed submissions and terminal turns,
-//! delegation, `nosh_run`, Artifacts, Jobs, backups, recovery, and activity.
+//! delegation, `nosh_run`, Artifacts, Jobs, backups, recovery, activity, and the research
+//! supervisors.
 //!
 //! The daemon lives on one thread inside a `LocalSet`, as the TypeScript daemon lives on one event
 //! loop: code between two awaits is atomic, so read-modify-write sequences need no locks. `Send`
@@ -23,6 +24,10 @@ pub use intake::{contract_successor_template, intake_prompt};
 
 use crate::runtime::{OrchestrationRuntime, RuntimeHost};
 use crate::single_instance::SingleInstanceLock;
+use crate::supervisors::autoresearch::AutoresearchSupervisor;
+use crate::supervisors::direction::DirectionSupervisor;
+use crate::supervisors::mission::MissionSupervisor;
+use crate::supervisors::{Dependencies, SupervisorRuntime};
 use crate::{Agents, Error, Result, rejected};
 use nosh_agent::pi::{Inspection, ModelSelection};
 use nosh_agent::policy::{ModelRef, Role, SessionOptions};
@@ -45,7 +50,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 pub struct DaemonOptions {
     pub data_directory: PathBuf,
@@ -223,8 +228,11 @@ pub struct NoshDaemon {
     bridge: Bridge,
     pub agents: Rc<dyn Agents>,
     pub jobs: JobSupervisor,
-    pub research: Research,
+    pub research: Rc<Research>,
     pub runtime: Rc<Runtime>,
+    pub missions: Rc<MissionSupervisor<ResearchHost>>,
+    pub directions: Rc<DirectionSupervisor<ResearchHost>>,
+    pub experiments: Rc<AutoresearchSupervisor<ResearchHost>>,
 }
 
 /// Supervisors start Jobs through the daemon, so scope IDs are checked and the launch is durable.
@@ -234,6 +242,26 @@ impl crate::research_spawner::JobRunner for NoshDaemon {
     }
     fn get(&self, job_id: &str) -> Result<JobRecord> {
         Ok(self.jobs.get(job_id)?)
+    }
+}
+
+/// The daemon as its own supervisors' Job runner: held weakly, since the daemon owns them.
+struct DaemonJobs(Weak<NoshDaemon>);
+
+impl crate::research_spawner::JobRunner for DaemonJobs {
+    fn start(&self, spec: &JobSpec) -> Result<JobRecord> {
+        self.daemon()?.start_job(spec)
+    }
+    fn get(&self, job_id: &str) -> Result<JobRecord> {
+        Ok(self.daemon()?.jobs.get(job_id)?)
+    }
+}
+
+impl DaemonJobs {
+    fn daemon(&self) -> Result<Rc<NoshDaemon>> {
+        self.0
+            .upgrade()
+            .ok_or_else(|| Error::Rejected("NOSH daemon is stopped".into()))
     }
 }
 
@@ -368,8 +396,8 @@ pub fn mission_job_matches(job: &JobRecord, project_id: &str, mission_id: &str) 
 }
 
 impl NoshDaemon {
-    /// Opens the host registry and wires the runtime, research control, and Job supervisor.
-    /// Needs a `LocalSet`: the daemon drains `inbox` on a local task.
+    /// Opens the host registry and wires the runtime, research control, Job supervisor, and the
+    /// research supervisors. Needs a `LocalSet`: the daemon drains `inbox` on a local task.
     pub fn new(
         options: DaemonOptions,
         agents: Rc<dyn Agents>,
@@ -387,7 +415,7 @@ impl NoshDaemon {
             inspection: RefCell::new(None),
         });
         agents.set_default_model(options.default_model.clone());
-        let research = ResearchControl::new(ResearchHost(Rc::clone(&core)));
+        let research = Rc::new(ResearchControl::new(ResearchHost(Rc::clone(&core))));
         let runtime = OrchestrationRuntime::new(
             DaemonRuntimeHost {
                 core: Rc::clone(&core),
@@ -404,19 +432,35 @@ impl NoshDaemon {
                 changes.run(move |daemon| daemon.on_job_change(&job));
             },
         )?;
-        let daemon = Rc::new(NoshDaemon {
-            options,
-            core,
-            lock,
-            gate: RefCell::new(StructuredSubmissionGate::default()),
-            started: Cell::new(false),
-            delegation_runs: RefCell::new(HashSet::new()),
-            terminal_turns: terminal::TurnLocks::default(),
-            bridge,
-            agents,
-            jobs,
-            research,
-            runtime,
+        let daemon = Rc::new_cyclic(|daemon: &Weak<NoshDaemon>| {
+            let (projects, emit) = (Rc::clone(&core), Rc::clone(&core));
+            let deps = Dependencies {
+                research: Rc::clone(&research),
+                agents: Rc::clone(&agents),
+                projects: Rc::new(move || projects.projects()),
+                package_path: options.package_path.clone(),
+                schema_dir: options.schema_dir.clone(),
+                emit: Rc::new(move |draft: &Value| emit.append_draft(draft).map(|_| ())),
+                runtime: Some(Rc::new(Rc::clone(&runtime)) as Rc<dyn SupervisorRuntime>),
+                job_runner: Some(Rc::new(DaemonJobs(daemon.clone()))),
+            };
+            NoshDaemon {
+                missions: MissionSupervisor::new(deps.clone()),
+                directions: DirectionSupervisor::new(deps.clone()),
+                experiments: AutoresearchSupervisor::new(deps),
+                options,
+                core,
+                lock,
+                gate: RefCell::new(StructuredSubmissionGate::default()),
+                started: Cell::new(false),
+                delegation_runs: RefCell::new(HashSet::new()),
+                terminal_turns: terminal::TurnLocks::default(),
+                bridge,
+                agents,
+                jobs,
+                research,
+                runtime,
+            }
         });
         inbox.attach(&daemon);
         Ok(daemon)
@@ -526,10 +570,17 @@ impl NoshDaemon {
         self.lock.release();
     }
 
-    /// The supervisors (Mission, Direction, Autoresearch) arrive with P6c.
-    fn start_supervisors(&self) {}
+    fn start_supervisors(&self) {
+        self.missions.start();
+        self.directions.start();
+        self.experiments.start();
+    }
 
-    fn stop_supervisors(&self) {}
+    fn stop_supervisors(&self) {
+        self.missions.stop();
+        self.directions.stop();
+        self.experiments.stop();
+    }
 
     /// Constant-time comparison with the bootstrap token.
     pub fn authenticate(&self, token: Option<&str>) -> bool {
