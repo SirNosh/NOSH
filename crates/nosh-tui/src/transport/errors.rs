@@ -6,12 +6,10 @@
 //! `JSON.parse` texts come from `crate::js::js_json_parse`, which also yields
 //! `Unexpected end of JSON input` for an empty 2xx body.
 
-// Remove when implemented: the todo!() body below leaves its parameter unused.
-#![allow(unused_variables)]
-
 use std::fmt;
 
-use crate::js::JsValue;
+use crate::js::{JsValue, js_collapse_ws, js_json_parse, js_trim, length, number_string, slice_to};
+use crate::view_model::{record, safe_text_str};
 
 /// A transport failure; the field is the exact JS `error.message` (TA-1). The controller shows it
 /// through `safe_text`.
@@ -80,5 +78,69 @@ pub const STREAM_DETACHED_CODE: u16 = 1000;
 /// items; plain messages are compacted to 320 units; anything else is
 /// [`DAEMON_REQUEST_FAILED`] (transport §5.10, branch table included).
 pub fn request_error(error: Option<&JsValue>) -> String {
-    todo!()
+    // "Zod errors arrive as JSON inside error.message. Show fields, not JSON syntax."
+    let reparsed = match error {
+        Some(JsValue::String(text)) if length(text) <= 256_000 => js_json_parse(text).ok(),
+        _ => None,
+    };
+    let parsed = reparsed.as_ref().or(error);
+    let issues = match parsed {
+        Some(JsValue::Array(items)) => Some(items.as_slice()),
+        _ => record(parsed).get("issues").and_then(JsValue::as_array),
+    };
+    if let Some(issues) = issues.filter(|issues| {
+        !issues.is_empty() && issues.iter().all(|issue| message_of(issue).is_some())
+    }) {
+        let messages: Vec<String> = issues
+            .iter()
+            .take(3)
+            .map(|issue| {
+                let path = match record(Some(issue)).get("path") {
+                    Some(JsValue::Array(parts)) => parts
+                        .iter()
+                        .filter_map(|part| match part {
+                            JsValue::String(text) => Some(text.clone()),
+                            JsValue::Number(number) => Some(number_string(*number)),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join("."),
+                    _ => String::new(),
+                };
+                let label = if path.is_empty() { "request" } else { &path };
+                let message = message_of(issue).unwrap_or_default();
+                format!("{}: {}", compact(label, 64), compact(message, 96))
+            })
+            .collect();
+        let more = if issues.len() > 3 {
+            format!(" (+{} more)", issues.len() - 3)
+        } else {
+            String::new()
+        };
+        return compact(&messages.join("; "), 300) + &more;
+    }
+    let message = match error {
+        Some(JsValue::String(text)) => Some(text.as_str()),
+        _ => record(error).get("message").and_then(JsValue::as_str),
+    };
+    message
+        .map(|message| compact(message, 320))
+        .filter(|message| !message.is_empty())
+        .unwrap_or_else(|| DAEMON_REQUEST_FAILED.into())
+}
+
+fn message_of(issue: &JsValue) -> Option<&str> {
+    record(Some(issue)).get("message").and_then(JsValue::as_str)
+}
+
+/// `compact(value, limit)`: sanitized, whitespace runs collapsed, trimmed, cut to `limit` UTF-16
+/// units with `…`.
+fn compact(value: &str, limit: usize) -> String {
+    let collapsed = js_collapse_ws(&safe_text_str(value));
+    let clean = js_trim(&collapsed);
+    if length(clean) > limit {
+        slice_to(clean, limit - 1) + "…"
+    } else {
+        clean.to_owned()
+    }
 }

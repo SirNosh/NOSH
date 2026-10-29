@@ -54,6 +54,17 @@ pub fn local<F: Future>(body: F) -> F::Output {
     tokio::task::LocalSet::new().block_on(&runtime, body)
 }
 
+/// As [`local`] with timers; `paused` starts the clock paused, for `vi.useFakeTimers()` tests that
+/// move it with `tokio::time::advance`.
+pub fn local_timed<F: Future>(paused: bool, body: F) -> F::Output {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .start_paused(paused)
+        .build()
+        .expect("runtime");
+    tokio::task::LocalSet::new().block_on(&runtime, body)
+}
+
 /// `await new Promise(resolve => setTimeout(resolve, 0))`: lets every detached task run until it
 /// waits on something unresolved.
 pub async fn settle() {
