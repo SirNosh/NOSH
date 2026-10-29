@@ -8,7 +8,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-nosh-wire = { version = "0.0.0", path = "../nosh-wire" }
+nosh-wire = { version = "0.2.0", path = "../nosh-wire" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 time = { version = "0.3.55", features = ["parsing"] }

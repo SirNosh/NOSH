@@ -1087,12 +1087,7 @@ async fn rust_tui(base: &str, project_id: &str, repository: &Path) {
     let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 40)).unwrap();
     terminal.draw(|frame| workspace.draw(frame)).unwrap();
     let frame = nosh_tui::render::frame_text(terminal.backend().buffer());
-    for needle in [
-        "NOSH / STATUS",
-        "TUI Mission",
-        "● connected",
-        "ctrl+b hide",
-    ] {
+    for needle in ["NOSH / STATUS", "TUI Mission", "● connected", "ctrl+b hide"] {
         assert!(
             frame.contains(needle),
             "the drawn session lacks {needle}:\n{frame}"

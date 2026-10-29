@@ -49,6 +49,10 @@ jobs:
       - name: Clippy
         working-directory: rust
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # The runtime package's bin/nosh.mjs stub (P8).
+      - name: Stub tests
+        working-directory: rust
+        run: node --test packaging/nosh.test.mjs
       # The PiAdapter tests drive the real sidecar, which needs its own pinned Pi install.
       - name: Install the Pi sidecar
         working-directory: rust/sidecar/pi-host

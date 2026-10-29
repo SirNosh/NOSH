@@ -1,0 +1,148 @@
+name: Rust runtime prerelease
+
+# Runs the Rust gate, then builds, packs and rehearses nosh-runtime-<version>.tgz, the asset the nosh-harness launcher installs, as the
+# TypeScript release.yml does for its runtime. Only a rust-v<x.y.z> tag push publishes it, and only as a GitHub
+# prerelease: the launcher reads releases/latest, which never names a prerelease, so `nosh update` never installs it.
+on:
+  push:
+    tags: ["rust-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The full Rust gate, rust.yml's job inlined (no workflow_call): a tag can name a commit whose rust.yml run a later
+  # push cancelled.
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      NOSH_TS_ROOT: ${{ github.workspace }}/ts
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: rust }
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/optimize-harness-and-project-intake
+          path: ts
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.28.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version-file: ts/.nvmrc, cache: pnpm, cache-dependency-path: ts/pnpm-lock.yaml }
+      - name: Build the TypeScript reference
+        working-directory: ts
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: rust }
+      - name: Format
+        working-directory: rust
+        run: cargo fmt --all --check
+      - name: Clippy
+        working-directory: rust
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Stub tests
+        working-directory: rust
+        run: node --test packaging/nosh.test.mjs
+      - name: Install the Pi sidecar
+        working-directory: rust/sidecar/pi-host
+        run: npm ci
+      - name: Test (wire, store, sys, research)
+        working-directory: rust
+        run: cargo test --locked -p nosh-wire -p nosh-store -p nosh-sys -p nosh-research
+      - name: Test (agent)
+        working-directory: rust
+        run: cargo test --locked -p nosh-agent
+      - name: Test (orchestration)
+        working-directory: rust
+        run: cargo test --locked -p nosh-orchestration
+      - name: Test (everything else)
+        working-directory: rust
+        run: cargo test --workspace --locked --exclude nosh-wire --exclude nosh-store --exclude nosh-sys --exclude nosh-research --exclude nosh-agent --exclude nosh-orchestration
+      - name: Vendored schemas match TypeScript
+        working-directory: rust
+        run: node scripts/sync-schemas.mjs --check
+      - name: No unported strict TypeScript changes
+        working-directory: rust
+        run: node scripts/drift.mjs --check
+
+  package:
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: rust, fetch-depth: 0 }
+      - name: Tag is on rust-port and matches the runtime version
+        if: github.event_name == 'push'
+        working-directory: rust
+        shell: pwsh
+        run: |
+          git fetch origin rust-port
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/rust-port
+          if ($LASTEXITCODE -ne 0) { throw "$env:GITHUB_REF_NAME is not on rust-port" }
+          $version = ((cargo metadata --format-version 1 --no-deps --locked | ConvertFrom-Json).packages | Where-Object name -eq "nosh").version
+          if ("$env:GITHUB_REF_NAME" -ne "rust-v$version") { throw "Tag $env:GITHUB_REF_NAME does not match the runtime version $version" }
+      # The engines minimum, as the TypeScript release tests with .nvmrc (22.19.0). The rehearsal's npm installs
+      # reuse this cache: it keeps npm's cache directory when it replaces LOCALAPPDATA.
+      - uses: actions/setup-node@v4
+        with: { node-version: "22.19.0", cache: npm, cache-dependency-path: rust/sidecar/pi-host/package-lock.json }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: rust }
+      # The notices read homepages from the sidecar's installed packages.
+      - name: Install the Pi sidecar
+        working-directory: rust/sidecar/pi-host
+        run: npm ci
+      - name: Package nosh-runtime
+        working-directory: rust
+        env:
+          # The shipped nosh.exe links the C runtime statically (the script sets the same; tests keep the default).
+          RUSTFLAGS: -C target-feature=+crt-static
+        run: node scripts/package-runtime.mjs
+      - name: Rehearse the install
+        working-directory: rust
+        run: node scripts/rehearse-runtime.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nosh-runtime
+          if-no-files-found: error
+          path: |
+            rust/release/npm/nosh-runtime-*.tgz
+            rust/release/npm/nosh-runtime-*.tgz.sha256
+
+  prerelease:
+    needs: package
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: nosh-runtime, path: release }
+      - uses: actions/attest-build-provenance@v2
+        with: { subject-path: release/nosh-runtime-*.tgz }
+      - uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          make_latest: "false"
+          name: NOSH Rust runtime ${{ github.ref_name }} (prerelease)
+          body: |
+            Prerelease of the Rust port (branch rust-port). `nosh update` installs only the latest full release, so it never installs this one.
+          fail_on_unmatched_files: true
+          files: |
+            release/nosh-runtime-*.tgz
+            release/nosh-runtime-*.tgz.sha256
+      - name: The launcher still sees a full release as latest
+        shell: pwsh
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          $latest = gh api repos/${{ github.repository }}/releases/latest --jq .tag_name
+          if ($latest -like "rust-v*") { throw "GitHub reports $latest as the latest release; nosh update would install it. Mark it a prerelease now." }

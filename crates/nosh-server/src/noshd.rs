@@ -38,7 +38,11 @@ impl Installation {
     /// The nearest directory at or above the running executable's that holds the Pi sidecar: the
     /// release layout, or the source tree for a `target/<profile>/nosh` build.
     pub fn find() -> Result<Self, String> {
-        let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+        Self::find_from(&std::env::current_exe().map_err(|error| error.to_string())?)
+    }
+
+    /// [`Installation::find`] from a given executable path.
+    pub fn find_from(executable: &Path) -> Result<Self, String> {
         executable
             .ancestors()
             .skip(1)
@@ -258,6 +262,33 @@ mod tests {
         assert_eq!(args["--port"], "5");
         assert_eq!(args["--data-dir"], "C:\\a");
         assert_eq!(args["--flag"], "");
+    }
+
+    #[test]
+    fn finds_the_installation_above_the_executable() {
+        let root = tempfile::tempdir().unwrap();
+        let package = root.path().join("pkg");
+        let executable = package.join("bin").join("nosh.exe");
+        let host_script = package.join("sidecar").join("pi-host").join("host.mjs");
+        for file in [&executable, &host_script] {
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, "").unwrap();
+        }
+        let installation = Installation::find_from(&executable).unwrap();
+        assert_eq!(installation.package_path, package.join("pi-package"));
+        assert_eq!(installation.host_script, host_script);
+        assert_eq!(
+            installation.schema_dir,
+            package.join("conformance").join("schemas").join("json")
+        );
+        std::fs::remove_file(&host_script).unwrap();
+        assert_eq!(
+            Installation::find_from(&executable).err().unwrap(),
+            format!(
+                "No NOSH installation (sidecar/pi-host/host.mjs) found above {}",
+                executable.display()
+            )
+        );
     }
 
     #[test]

@@ -43,6 +43,20 @@ node scripts/sync-schemas.mjs --check
 node scripts/drift.mjs --check
 ```
 
+## Releases
+
+The `nosh-harness` launcher installs `nosh-runtime-<x.y.z>.tgz` from a GitHub release. The Rust runtime ships in that format, Windows x64 only: `nosh.exe` behind the JS stub `packaging/nosh.mjs`, with Pi as an npm dependency of the package.
+
+```
+node --test packaging/nosh.test.mjs   # the bin/nosh.mjs stub
+node scripts/package-runtime.mjs      # release build (static C runtime) -> release/npm/nosh-runtime-<version>.tgz and .sha256
+node scripts/rehearse-runtime.mjs     # installs that tgz in throwaway state: R0 with npm, A through the launcher, B from TypeScript 0.1.30
+```
+
+- `package-runtime.mjs` needs the sidecar's `npm ci` first; the notices read its installed packages.
+- `rehearse-runtime.mjs` needs the npm registry and GitHub. It runs the published `nosh-harness@1.0.0`, or the launcher in `--launcher <dir>` (e.g. `$NOSH_TS_ROOT/apps/launcher`).
+- **Prereleases:** set `[workspace.package] version` in `Cargo.toml` (`0.2.x`, above every TypeScript `0.1.x`), run any `cargo` command so `Cargo.lock` follows, and commit both on `rust-port`. Pushing the tag `rust-v<x.y.z>` runs `.github/workflows/rust-release.yml`: the Rust gate, the package, the rehearsal, then a GitHub prerelease, which `nosh update` never installs. Tagging and publishing need the owner's explicit approval.
+
 ## Status
 
 | Phase | Scope | State |
@@ -56,4 +70,4 @@ node scripts/drift.mjs --check
 | P6 | `nosh-orchestration` and `nosh-server`: supervisors, HTTP, WebSocket | done — P6a done (the typed orchestration runtime: threads, Episodes, joins, skills, programs, hooks, interventions), P6b done (the daemon core: projects, chat, jobs, terminal turns, task commands and artifacts, delegation, recovery, and the bridge from Pi sidecar threads to the daemon thread), P6c done (the Mission, Direction, and Autoresearch supervisors with the research spawner, director briefs, and task templates, started and stopped by the daemon), P6d done (the HTTP and WebSocket API and `nosh daemon`; `crates/nosh/tests/api_conformance.rs` runs one API scenario against both daemons, hands a Project between them in both directions, and drives the TypeScript TUI's controller against the Rust daemon) |
 | P7 | `nosh` CLI | — |
 | T  | `nosh-tui` (ratatui) | — |
-| P8 | Packaging into the existing `nosh-runtime` release format | — |
+| P8 | Packaging into the existing `nosh-runtime` release format | done (rehearsal phases A and B run once P7 lands) |

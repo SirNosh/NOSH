@@ -11,13 +11,13 @@ publish.workspace = true
 base64 = "0.23.1"
 crossterm = { version = "0.29", default-features = false, features = ["events", "windows"] }
 getrandom = "0.4.3"
-nosh-agent = { version = "0.0.0", path = "../nosh-agent" }
-nosh-research = { version = "0.0.0", path = "../nosh-research" }
-nosh-server = { version = "0.0.0", path = "../nosh-server" }
-nosh-store = { version = "0.0.0", path = "../nosh-store" }
-nosh-sys = { version = "0.0.0", path = "../nosh-sys" }
-nosh-tui = { version = "0.0.0", path = "../nosh-tui" }
-nosh-wire = { version = "0.0.0", path = "../nosh-wire" }
+nosh-agent = { version = "0.2.0", path = "../nosh-agent" }
+nosh-research = { version = "0.2.0", path = "../nosh-research" }
+nosh-server = { version = "0.2.0", path = "../nosh-server" }
+nosh-store = { version = "0.2.0", path = "../nosh-store" }
+nosh-sys = { version = "0.2.0", path = "../nosh-sys" }
+nosh-tui = { version = "0.2.0", path = "../nosh-tui" }
+nosh-wire = { version = "0.2.0", path = "../nosh-wire" }
 regex = "1.13.1"
 reqwest = { version = "0.13.5", default-features = false }
 serde_json = "1.0.154"
