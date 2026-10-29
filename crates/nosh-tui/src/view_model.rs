@@ -19,7 +19,7 @@ use regex::Regex;
 use crate::js::{
     JsObject, JsValue, is_safe_integer, js_collapse_ws, js_json_parse, js_lowercase, js_number,
     js_trim, json_stringify_pretty, length, number_string, pad_end, slice_from_end, slice_to,
-    string, truthy,
+    string, strip_vt_controls, truthy,
 };
 
 /// `text()`'s default `limit`.
@@ -165,14 +165,6 @@ pub struct MapLine {
     pub heading: Option<bool>,
 }
 
-/// Node's `stripVTControlCharacters` pattern, translated for the `regex` crate (viewmodel §2.4).
-static ANSI: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"[\x1B\x{9B}][\[\]()#;?]*(?:(?:(?:(?:;[-a-zA-Z0-9/#&.:=?%@~_]+)*|[a-zA-Z0-9]+(?:;[-a-zA-Z0-9/#&.:=?%@~_]*)*)?(?:\x07|\x1B\\|\x{9C}))|(?:(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PR-TZcf-nq-uy=><~]))",
-    )
-    .expect("valid ANSI pattern")
-});
-
 /// C0 controls except TAB and LF, DEL, C1 controls, bidi embeddings/overrides and isolates.
 static CONTROLS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"[\x00-\x08\x0B-\x1F\x7F-\x{9F}\x{202A}-\x{202E}\x{2066}-\x{2069}]")
@@ -195,7 +187,7 @@ pub fn safe_text_str(value: &str) -> String {
     } else {
         value.to_owned()
     };
-    let stripped = ANSI.replace_all(&head, "");
+    let stripped = strip_vt_controls(&head);
     let cleaned = CONTROLS.replace_all(&stripped, "");
     if length(&cleaned) > 16_000 {
         slice_to(&cleaned, 16_000)

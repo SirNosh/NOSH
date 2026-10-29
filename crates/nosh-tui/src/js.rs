@@ -16,11 +16,14 @@
 //! (transport §11.9 item 5): the daemon's research map nests two levels per experiment generation,
 //! so serde_json's recursion limit is off and parsing and stringifying grow the stack on demand.
 
+use std::borrow::Cow;
 use std::fmt;
 use std::io;
 use std::path::{Component, Path, PathBuf};
+use std::sync::LazyLock;
 
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
+use regex::Regex;
 use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, SerializeSeq, Serializer};
 
@@ -692,6 +695,19 @@ const URI_COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
 /// `encodeURIComponent(text)`: every other character as its UTF-8 bytes in uppercase `%XX`.
 pub fn encode_uri_component(text: &str) -> String {
     utf8_percent_encode(text, URI_COMPONENT).to_string()
+}
+
+/// Node's `stripVTControlCharacters` pattern, translated for the `regex` crate (viewmodel §2.4).
+static ANSI: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"[\x1B\x{9B}][\[\]()#;?]*(?:(?:(?:(?:;[-a-zA-Z0-9/#&.:=?%@~_]+)*|[a-zA-Z0-9]+(?:;[-a-zA-Z0-9/#&.:=?%@~_]*)*)?(?:\x07|\x1B\\|\x{9C}))|(?:(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PR-TZcf-nq-uy=><~]))",
+    )
+    .expect("valid ANSI pattern")
+});
+
+/// `stripVTControlCharacters(text)`: ANSI escape sequences removed (`safeText`, and pasted text).
+pub fn strip_vt_controls(text: &str) -> Cow<'_, str> {
+    ANSI.replace_all(text, "")
 }
 
 /// `text.toLowerCase()`: the full Unicode default case mapping (final sigma included), which
