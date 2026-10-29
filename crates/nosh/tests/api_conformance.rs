@@ -1038,6 +1038,23 @@ async fn rust_tui(base: &str, project_id: &str, repository: &Path) {
         json!(job_id),
         "the Job did not start"
     );
+    let activity = serde_json::Value::from(client.request("/activity", None, None).await.unwrap());
+    let running = format!("job {job_id}:");
+    assert!(
+        activity["active"]
+            .as_array()
+            .is_some_and(|entries| entries.iter().any(|entry| {
+                entry["projectId"] == project_id
+                    && entry["active"].as_array().is_some_and(|states| {
+                        states.iter().any(|state| {
+                            state
+                                .as_str()
+                                .is_some_and(|state| state.starts_with(&running))
+                        })
+                    })
+            })),
+        "the running Job is missing from /activity: {activity}"
+    );
     let job = format!("/job {job_id}");
     for (command, view) in [
         ("/projects", "projects"),
