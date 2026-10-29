@@ -152,6 +152,65 @@ pub fn parse_number(text: &str) -> f64 {
     trimmed.parse().unwrap_or(f64::NAN)
 }
 
+/// JavaScript's `String.prototype.trim` whitespace and line terminators.
+pub fn is_js_whitespace(character: char) -> bool {
+    matches!(
+        character,
+        '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ' | '\u{A0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200A}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202F}'
+                | '\u{205F}'
+                | '\u{3000}'
+                | '\u{FEFF}'
+    )
+}
+
+/// `Number(text)` for a string: JavaScript's `StringToNumber`.
+pub fn js_number(text: &str) -> f64 {
+    let text = text.trim_matches(is_js_whitespace);
+    if text.is_empty() {
+        return 0.0;
+    }
+    let radix = match text.get(..2) {
+        Some("0x" | "0X") => 16,
+        Some("0o" | "0O") => 8,
+        Some("0b" | "0B") => 2,
+        _ => 10,
+    };
+    if radix != 10 {
+        let digits = &text[2..];
+        if digits.is_empty() {
+            return f64::NAN;
+        }
+        return digits
+            .chars()
+            .try_fold(0.0, |value: f64, digit| {
+                digit
+                    .to_digit(radix)
+                    .map(|digit| value * f64::from(radix) + f64::from(digit))
+            })
+            .unwrap_or(f64::NAN);
+    }
+    let unsigned = text.strip_prefix(['+', '-']).unwrap_or(text);
+    if unsigned == "Infinity" {
+        return if text.starts_with('-') {
+            f64::NEG_INFINITY
+        } else {
+            f64::INFINITY
+        };
+    }
+    static DECIMAL: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$").expect("pattern compiles")
+    });
+    if DECIMAL.is_match(text) {
+        text.parse().unwrap_or(f64::NAN)
+    } else {
+        f64::NAN
+    }
+}
+
 /// `value.toFixed(digits)` (digits ≤ 20): the exact decimal expansion rounded half away from
 /// zero, as ECMAScript picks "the larger n" on a tie.
 pub fn to_fixed(value: f64, digits: usize) -> String {
@@ -259,6 +318,30 @@ mod tests {
             json!({}),
         ] {
             assert!(truthy(Some(&value)), "{value}");
+        }
+    }
+
+    #[test]
+    fn numbers_read_as_javascript_reads_them() {
+        for (text, expected) in [
+            ("", 0.0),
+            ("  12  ", 12.0),
+            ("0x10", 16.0),
+            ("0b101", 5.0),
+            ("0o17", 15.0),
+            ("1e3", 1000.0),
+            ("-2.5", -2.5),
+            (".5", 0.5),
+            ("5.", 5.0),
+            ("+7", 7.0),
+            ("-Infinity", f64::NEG_INFINITY),
+        ] {
+            assert_eq!(js_number(text), expected, "{text:?}");
+        }
+        for text in [
+            "abc", "1x", "-0x10", "0x", "inf", "NaN", "1e", "1_000", "infinity",
+        ] {
+            assert!(js_number(text).is_nan(), "{text:?}");
         }
     }
 

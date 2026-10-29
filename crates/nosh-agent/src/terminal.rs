@@ -109,20 +109,7 @@ impl TerminalOutput {
     }
 }
 
-/// JavaScript's `String.prototype.trim` whitespace and line terminators.
-pub fn is_js_whitespace(character: char) -> bool {
-    matches!(
-        character,
-        '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ' | '\u{A0}' | '\u{1680}' | '\u{2000}'
-            ..='\u{200A}'
-                | '\u{2028}'
-                | '\u{2029}'
-                | '\u{202F}'
-                | '\u{205F}'
-                | '\u{3000}'
-                | '\u{FEFF}'
-    )
-}
+pub use nosh_wire::js::is_js_whitespace;
 
 static TOKENS: LazyLock<regex::Regex> = LazyLock::new(|| {
     // JavaScript's `\s` and line-terminator-free `.`, spelled out.

@@ -44,6 +44,14 @@ pub struct PiConfig {
     pub schema_dir: PathBuf,
 }
 
+/// The Node that runs the sidecar: `NOSH_NODE` (set by the release's launcher stub to the Node
+/// running it) when set and non-empty, else `node` on PATH.
+pub fn node_executable() -> PathBuf {
+    std::env::var_os("NOSH_NODE")
+        .filter(|node| !node.is_empty())
+        .map_or_else(|| "node".into(), PathBuf::from)
+}
+
 /// Records an event draft.
 pub type Emit = Arc<dyn Fn(Value) + Send + Sync>;
 

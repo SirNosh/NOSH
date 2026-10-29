@@ -6,12 +6,12 @@ use crate::LocalApiServer;
 use http_body_util::BodyExt;
 use hyper::Method;
 use hyper::body::Incoming;
-use nosh_agent::terminal::is_js_whitespace;
 use nosh_orchestration::daemon::NoshDaemon;
 use nosh_research::research_control::{
     AutoresearchInput, BaselineInput, DirectionInput, MissionInput,
 };
 use nosh_sys::jobs::{JobSpec, Stream};
+use nosh_wire::js::{is_js_whitespace, js_number};
 use serde_json::{Map, Value, json};
 use std::fmt::Display;
 use std::rc::Rc;
@@ -155,50 +155,6 @@ fn is_object(value: Option<&Value>) -> bool {
 
 fn is_array(value: Option<&Value>) -> bool {
     value.is_some_and(Value::is_array)
-}
-
-/// `Number(text)` for a string: JavaScript's `StringToNumber`.
-pub(crate) fn js_number(text: &str) -> f64 {
-    let text = text.trim_matches(is_js_whitespace);
-    if text.is_empty() {
-        return 0.0;
-    }
-    let radix = match text.get(..2) {
-        Some("0x" | "0X") => 16,
-        Some("0o" | "0O") => 8,
-        Some("0b" | "0B") => 2,
-        _ => 10,
-    };
-    if radix != 10 {
-        let digits = &text[2..];
-        if digits.is_empty() {
-            return f64::NAN;
-        }
-        return digits
-            .chars()
-            .try_fold(0.0, |value: f64, digit| {
-                digit
-                    .to_digit(radix)
-                    .map(|digit| value * f64::from(radix) + f64::from(digit))
-            })
-            .unwrap_or(f64::NAN);
-    }
-    let unsigned = text.strip_prefix(['+', '-']).unwrap_or(text);
-    if unsigned == "Infinity" {
-        return if text.starts_with('-') {
-            f64::NEG_INFINITY
-        } else {
-            f64::INFINITY
-        };
-    }
-    static DECIMAL: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-        regex::Regex::new(r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$").expect("pattern compiles")
-    });
-    if DECIMAL.is_match(text) {
-        text.parse().unwrap_or(f64::NAN)
-    } else {
-        f64::NAN
-    }
 }
 
 /// `Number.isSafeInteger`.
@@ -1370,27 +1326,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn numbers_read_as_javascript_reads_them() {
-        for (text, expected) in [
-            ("", 0.0),
-            ("  12  ", 12.0),
-            ("0x10", 16.0),
-            ("0b101", 5.0),
-            ("0o17", 15.0),
-            ("1e3", 1000.0),
-            ("-2.5", -2.5),
-            (".5", 0.5),
-            ("5.", 5.0),
-            ("+7", 7.0),
-            ("-Infinity", f64::NEG_INFINITY),
-        ] {
-            assert_eq!(js_number(text), expected, "{text:?}");
-        }
-        for text in [
-            "abc", "1x", "-0x10", "0x", "inf", "NaN", "1e", "1_000", "infinity",
-        ] {
-            assert!(js_number(text).is_nan(), "{text:?}");
-        }
+    fn recognizes_safe_integers() {
         assert!(is_safe_integer(9_007_199_254_740_991.0));
         assert!(!is_safe_integer(9_007_199_254_740_992.0));
         assert!(!is_safe_integer(1.5));

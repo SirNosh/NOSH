@@ -36,6 +36,21 @@ fn ts_main() -> PathBuf {
     ts_root().join("apps/noshd/dist/main.js")
 }
 
+/// Whether the TypeScript build `file` is present. CI always builds it, so there a missing build
+/// fails instead of silently skipping the comparison.
+fn ts_built(file: &Path) -> bool {
+    let built = file.is_file();
+    assert!(
+        built || std::env::var_os("CI").is_none(),
+        "CI builds the TypeScript reference, but {} is missing",
+        file.display()
+    );
+    if !built {
+        eprintln!("TypeScript build missing at {}; skipped", file.display());
+    }
+    built
+}
+
 /// A daemon process on a free loopback port, with its stdout log.
 struct Daemon {
     child: Child,
@@ -653,11 +668,7 @@ fn rust_and_typescript_daemons_answer_the_api_alike() {
         .map(|(label, _)| label)
         .collect();
     assert!(failures.is_empty(), "server errors: {failures:?}");
-    if !ts_main().is_file() {
-        eprintln!(
-            "TypeScript daemon not built at {}; checked the Rust daemon only",
-            ts_main().display()
-        );
+    if !ts_built(&ts_main()) {
         return;
     }
     let ts_dir = tempfile::tempdir().unwrap();
@@ -835,11 +846,7 @@ async fn stop(mut daemon: Daemon) {
 /// same way.
 #[test]
 fn each_daemon_continues_a_project_the_other_created() {
-    if !ts_main().is_file() {
-        eprintln!(
-            "TypeScript daemon not built at {}; skipped",
-            ts_main().display()
-        );
+    if !ts_built(&ts_main()) {
         return;
     }
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -895,11 +902,7 @@ fn each_daemon_continues_a_project_the_other_created() {
 /// `/activity` and `/tail`.
 #[test]
 fn the_typescript_tui_drives_the_rust_daemon() {
-    if !ts_root().join("apps/tui/dist/controller.js").is_file() {
-        eprintln!(
-            "TypeScript TUI not built under {}; skipped",
-            ts_root().display()
-        );
+    if !ts_built(&ts_root().join("apps/tui/dist/controller.js")) {
         return;
     }
     let scratch = tempfile::tempdir().unwrap();

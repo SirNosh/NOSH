@@ -5,10 +5,10 @@
 //! record bodies.
 
 use crate::LocalApiServer;
-use crate::routes::js_number;
 use base64::Engine;
 use nosh_agent::pi::{PiAdapter, PiConfig};
 use nosh_orchestration::daemon::{DaemonOptions, NoshDaemon, bridge, parse_model_selection};
+use nosh_wire::js::js_number;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -178,7 +178,7 @@ async fn run(args: &[String], job_wrapper: Vec<OsString>) -> Result<(), String> 
     let (connected, inbox) = bridge();
     let adapter = PiAdapter::spawn(
         PiConfig {
-            node: "node".into(),
+            node: nosh_agent::pi::node_executable(),
             host_script: installation.host_script.clone(),
             env: Vec::new(),
             schema_dir: installation.schema_dir.clone(),
