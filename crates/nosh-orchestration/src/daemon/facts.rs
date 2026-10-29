@@ -53,7 +53,7 @@ fn pretty(value: &Value) -> String {
 }
 
 /// The Rust host the daemon's Jobs run on; TypeScript hashes its Node version instead.
-fn environment_lock_hash() -> String {
+pub(crate) fn environment_lock_hash() -> String {
     sha256(
         &json!({ "runtime": "nosh-rust", "platform": std::env::consts::OS, "arch": std::env::consts::ARCH }),
     )

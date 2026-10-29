@@ -13,6 +13,7 @@
 mod bridge;
 mod delegation;
 mod facts;
+pub(crate) use facts::environment_lock_hash;
 mod intake;
 mod submit;
 pub mod terminal;
@@ -152,7 +153,7 @@ impl Core {
 fn research_error(error: Error) -> nosh_research::Error {
     match error {
         Error::Invalid(issues) => nosh_research::Error::Invalid(issues),
-        Error::Rejected(message) => nosh_research::Error::Rejected(message),
+        Error::Rejected(message) | Error::Slip(message) => nosh_research::Error::Rejected(message),
     }
 }
 
@@ -224,6 +225,16 @@ pub struct NoshDaemon {
     pub jobs: JobSupervisor,
     pub research: Research,
     pub runtime: Rc<Runtime>,
+}
+
+/// Supervisors start Jobs through the daemon, so scope IDs are checked and the launch is durable.
+impl crate::research_spawner::JobRunner for NoshDaemon {
+    fn start(&self, spec: &JobSpec) -> Result<JobRecord> {
+        self.start_job(spec)
+    }
+    fn get(&self, job_id: &str) -> Result<JobRecord> {
+        Ok(self.jobs.get(job_id)?)
+    }
 }
 
 impl Drop for NoshDaemon {
@@ -421,6 +432,10 @@ impl NoshDaemon {
 
     pub fn package_path(&self) -> &Path {
         &self.options.package_path
+    }
+
+    pub fn schema_dir(&self) -> &Path {
+        &self.options.schema_dir
     }
 
     /// Subscribes to every stored event; returns the id `unsubscribe` takes.

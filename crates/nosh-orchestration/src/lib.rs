@@ -6,11 +6,13 @@
 //! stop) is `spawn_local`ed.
 
 pub mod daemon;
+pub mod director_brief;
 pub mod research_map;
 pub mod research_spawner;
 pub mod runtime;
 pub mod single_instance;
 pub mod task_postflight;
+pub mod task_templates;
 pub mod task_worktree;
 
 use futures_util::FutureExt;
@@ -30,6 +32,9 @@ pub enum Error {
     Invalid(Vec<Issue>),
     /// The operation failed; the message matches the TypeScript implementation's.
     Rejected(String),
+    /// A director cycle the model did not produce validly (a rejected or missing record), so a
+    /// fresh cycle can follow (`DirectorSlip`).
+    Slip(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -44,7 +49,7 @@ impl fmt::Display for Error {
                     .collect();
                 write!(f, "invalid record: {}", details.join("; "))
             }
-            Error::Rejected(message) => f.write_str(message),
+            Error::Rejected(message) | Error::Slip(message) => f.write_str(message),
         }
     }
 }

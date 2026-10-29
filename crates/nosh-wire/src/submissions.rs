@@ -2,6 +2,7 @@
 
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 const TERMINAL_SCHEMAS: [&str; 7] = [
@@ -34,7 +35,24 @@ pub fn is_task_terminal_record(record: &Value) -> bool {
 }
 
 fn uri(name: &str) -> String {
+    schema_uri(name)
+}
+
+/// `schemaUri` (common.ts): the `$schema` URI of the named record.
+pub fn schema_uri(name: &str) -> String {
     format!("https://nosh.dev/schemas/{name}/v1")
+}
+
+/// `schemaDocumentPath` (submission-tools.ts): the named schema's JSON Schema file. TypeScript
+/// resolves it inside its wire package; the Rust daemon's vendored copies live in `schema_dir`.
+pub fn schema_document_path(schema_dir: &Path, name: &str) -> PathBuf {
+    schema_dir.join(format!("{name}.v1.schema.json"))
+}
+
+/// `episodeTypeForRole` (submission-tools.ts): the Episode type a role's THREAD_STEP must
+/// produce. Roles contain underscores, but a ref allows exactly one.
+pub fn episode_type_for_role(role: &str) -> String {
+    format!("episode_{}", role.replace('_', "-"))
 }
 
 /// The record schemas (names) each typed submission tool accepts (`submissionToolSchemas`),

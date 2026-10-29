@@ -20,5 +20,8 @@ pub use events::{EVENT_SCHEMA, validate_event, validate_event_draft};
 pub use ids::{IdPrefix, create_id, is_nosh_id, random_hex};
 pub use json::{canonical_json, normalize_numbers, sha256};
 pub use registry::{Issue, schema_uris, validate_record};
-pub use submissions::{is_task_terminal_record, submission_tool_schemas};
+pub use submissions::{
+    episode_type_for_role, is_task_terminal_record, schema_document_path, schema_uri,
+    submission_tool_schemas,
+};
 pub use time::{iso_from_ms, now_utc};
