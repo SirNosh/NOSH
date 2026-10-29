@@ -11,6 +11,7 @@ pub mod research_map;
 pub mod research_spawner;
 pub mod runtime;
 pub mod single_instance;
+pub mod supervisors;
 pub mod task_postflight;
 pub mod task_templates;
 pub mod task_worktree;

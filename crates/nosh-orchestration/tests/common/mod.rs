@@ -16,6 +16,8 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+pub mod supervision;
+
 /// Vitest's `toMatchObject`: every field of `expected` is in `actual`, recursively; arrays match
 /// element-wise with equal lengths.
 pub fn assert_match(actual: &Value, expected: &Value) {
