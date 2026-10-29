@@ -1,0 +1,47 @@
+┌──────────────────────────────────────┐                                                                                     
+│                                      │                                                                                     
+│              #0 MISSION              │                                                                                     
+│    Trustworthy spam probabilities    │                                                                                     
+│        ◆ blocked · ▰▰▰▰▱▱ 4/6        │                                                                                     
+│                 v113                 │                                                                                     
+└──────────────────────────────────────┘                                                                                     
+                    │                                                                                                        
+                    ├──────────────────────────────────────┬──────────────────────────────────┬───────────────────────┐      
+                    ▼                                      ▼                                  ▼                       ▼      
+┌──────────────────────────────────────┐   ┌───────────────────────────────┐   ┌────────────────────────────┐   ┌───────────┐
+│                  #1                  │   │                               │   │                            │   │           │
+│   Research Direction 1: answer one   │   │               #5              │   │             #6             │   │   #7 JOB  │
+│               question               │   │Produce the bounded deliverable│   │Collect and cite the sources│   │node --test│
+│              ✓ accepted              │   │     ✗ failed · attempt 8/8    │   │         ✓ accepted         │   │ ▸ running │
+│          research direction          │   │  implementation · attempt 8/8 │   │         librarian          │   │   native  │
+└───────────────────┬──────────────────┘   └───────────────────────────────┘   └────────────────────────────┘   └───────────┘
+                    │                                                                                                        
+                    │                                                                                                        
+                    ▼                                                                                                        
+┌──────────────────────────────────────┐                                                                                     
+│                                      │                                                                                     
+│             #2 DIRECTION             │                                                                                     
+│Which calibrator has the 'lowest' ECE?│                                                                                     
+│           ◇ blocked · v25            │                                                                                     
+│                 v25                  │                                                                                     
+└───────────────────┬──────────────────┘                                                                                     
+                    │                                                                                                        
+                    │                                                                                                        
+                    ▼                                                                                                        
+┌──────────────────────────────────────┐                                                                                     
+│                                      │                                                                                     
+│                  #3                  │                                                                                     
+│ Evaluate bounded hypothesis families │                                                                                     
+│        ✗ failed · attempt 3/3        │                                                                                     
+│     general worker · attempt 3/3     │                                                                                     
+└───────────────────┬──────────────────┘                                                                                     
+                    │                                                                                                        
+                    │                                                                                                        
+                    ▼                                                                                                        
+┌──────────────────────────────────────┐                                                                                     
+│                                      │                                                                                     
+│           #4 AUTORESEARCH            │                                                                                     
+│   How low can calibration push ECE   │                                                                                     
+│   ⟳ completed · 0.005038 · 2 exp ▸   │                                                                                     
+│     round 2/4 · best 0.005037866     │                                                                                     
+└──────────────────────────────────────┘                                                                                     

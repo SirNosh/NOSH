@@ -4,22 +4,32 @@
 //!
 //! Specified by tui-viewmodel.md Appendix A (A.1-A.13) and §7.1; DECISIONS.md item 2 (Option A,
 //! byte-identical to the §6 goldens; the level tracker grows instead of hanging past 24 levels).
-//! Private to the crate and owned by Track B: the submodule items below are a suggested shape that
-//! Track B may change freely, as long as [`render`] keeps its signature for `map_graph`.
+//! Generated sources are trees rooted at `n0`, which is all the routing and drawing handle.
 
-// Remove when implemented: the todo!() bodies below leave items and parameters unused.
-#![allow(dead_code, unused_variables)]
-
-mod bundle;
 mod canvas;
 mod draw;
 mod grid;
 mod parse;
 mod route;
 
+/// A grid cell or a drawing (character) cell, `(x, y)`.
+type Cell = (i64, i64);
+
 /// `renderMermaidASCII(source, …).split('\n')`: the picture rows, all the same length (A.1). Input
 /// the engine would throw on cannot come from generated sources; it yields no rows instead of a
 /// panic (A.13).
 pub(crate) fn render(source: &str) -> Vec<String> {
-    todo!()
+    let Some(chart) = parse::parse(source) else {
+        return Vec::new();
+    };
+    let Some(mut grid) = grid::place(&chart) else {
+        return Vec::new();
+    };
+    let (routes, bundles) = route::route(&chart, &mut grid);
+    let mut canvas = canvas::Canvas::new(grid.canvas_size());
+    canvas.merge(&draw::boxes(&chart, &grid));
+    for layer in draw::edges(&grid, &routes, &bundles) {
+        canvas.merge(&layer);
+    }
+    canvas.rows()
 }

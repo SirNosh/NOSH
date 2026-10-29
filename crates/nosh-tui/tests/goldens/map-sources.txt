@@ -1,0 +1,51 @@
+flowchart TD
+  n0["#0 MISSION<br>Trustworthy spam<br>probabilities<br>◆ blocked · ▰▰▰▰▱▱ 4/6"]
+  n1["#1<br>Research Direction 1:<br>answer one question<br>✓ accepted"]
+  n0 --> n1
+  n2["#2 DIRECTION<br>Which calibrator has the<br>'lowest' ECE?<br>◇ blocked · v25"]
+  n1 --> n2
+  n3["#3<br>Evaluate bounded<br>hypothesis families<br>✗ failed · attempt 3/3"]
+  n2 --> n3
+  n4["#4 AUTORESEARCH<br>How low can calibration<br>push ECE<br>⟳ completed · 0.005038 · 2 exp ▸"]
+  n3 --> n4
+  n5["#5<br>Produce the bounded<br>deliverable<br>✗ failed · attempt 8/8"]
+  n0 --> n5
+  n6["#6<br>Collect and cite the<br>sources<br>✓ accepted"]
+  n0 --> n6
+  n7["#7 JOB<br>node --test<br>▸ running"]
+  n0 --> n7
+=====
+flowchart TD
+  n0["#0 MISSION<br>Trustworthy spam probabilities<br>◆ blocked · ▰▰▰▰▱▱ 4/6<br>v113"]
+  n1["#1<br>Research Direction 1: answer one<br>question<br>✓ accepted<br>research direction"]
+  n0 --> n1
+  n2["#2 DIRECTION<br>Which calibrator has the 'lowest' ECE?<br>◇ blocked · v25<br>v25"]
+  n1 --> n2
+  n3["#3<br>Evaluate bounded hypothesis families<br>✗ failed · attempt 3/3<br>general worker · attempt 3/3"]
+  n2 --> n3
+  n4["#4 AUTORESEARCH<br>How low can calibration push ECE<br>⟳ completed · 0.005038 · 2 exp ▸<br>round 2/4 · best 0.005037866"]
+  n3 --> n4
+  n5["#5<br>Produce the bounded deliverable<br>✗ failed · attempt 8/8<br>implementation · attempt 8/8"]
+  n0 --> n5
+  n6["#6<br>Collect and cite the sources<br>✓ accepted<br>librarian"]
+  n0 --> n6
+  n7["#7 JOB<br>node --test<br>▸ running<br>native"]
+  n0 --> n7
+=====
+flowchart TD
+  n0["#0 AUTORESEARCH<br>How low can calibration<br>push ECE<br>⟳ completed · 0.005038"]
+  n1["#1<br>baseline"]
+  n0 --> n1
+  n2["#2<br>Histogram binning<br>★ promoted · 0.005038"]
+  n1 --> n2
+  n3["#3<br>Platt scaling<br>✗ rejected · 0.0115"]
+  n1 --> n3
+=====
+flowchart TD
+  n0["#0 AUTORESEARCH<br>How low can calibration push ECE<br>⟳ completed · 0.005038<br>round 2/4 · best 0.005037866"]
+  n1["#1<br>baseline"]
+  n0 --> n1
+  n2["#2<br>Histogram binning<br>★ promoted · 0.005038<br>round 1 · score 0.005037866372912155 (+…"]
+  n1 --> n2
+  n3["#3<br>Platt scaling<br>✗ rejected · 0.0115<br>round 1 · score 0.0115 (-0.0065)"]
+  n1 --> n3
