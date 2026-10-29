@@ -57,17 +57,22 @@ jobs:
       - name: Install the Pi sidecar
         working-directory: rust/sidecar/pi-host
         run: npm ci
-      # Split so a failure names its layer and each step's time shows where the job's minutes go.
+      # Split so a failure names its layer and each step's time shows where the job's minutes go. Each has its own
+      # limit: a hung test then fails its step and the job still uploads the log, which a job timeout loses.
       - name: Test (wire, store, sys, research)
+        timeout-minutes: 10
         working-directory: rust
         run: cargo test --locked -p nosh-wire -p nosh-store -p nosh-sys -p nosh-research
       - name: Test (agent)
+        timeout-minutes: 10
         working-directory: rust
         run: cargo test --locked -p nosh-agent
       - name: Test (orchestration)
+        timeout-minutes: 10
         working-directory: rust
         run: cargo test --locked -p nosh-orchestration
       - name: Test (everything else)
+        timeout-minutes: 12
         working-directory: rust
         run: cargo test --workspace --locked --exclude nosh-wire --exclude nosh-store --exclude nosh-sys --exclude nosh-research --exclude nosh-agent --exclude nosh-orchestration
       - name: Vendored schemas match TypeScript
