@@ -451,13 +451,6 @@ impl Editor {
         self.follow = true;
     }
 
-    /// `insertText`: inserts at the cursor (replacing a selection), limited to the room left before
-    /// the selection is removed.
-    pub fn insert_text(&mut self, text: &str) {
-        self.text.insert(text);
-        self.follow = true;
-    }
-
     /// The visual rows of the buffer as byte ranges, at the current width.
     fn rows(&self) -> Vec<Range<usize>> {
         let mut rows = Vec::new();

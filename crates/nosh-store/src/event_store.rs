@@ -4,7 +4,7 @@
 //! stored as canonical JSON that both implementations read back and hash.
 
 use crate::database::open_database;
-use crate::{Error, Result, rejected};
+use crate::{Result, rejected};
 use nosh_wire::{
     IdPrefix, canonical_json, create_id, is_task_terminal_record, now_utc, sha256, validate_event,
     validate_event_draft,
@@ -768,13 +768,6 @@ impl From<Appended> for Value {
 impl From<ProjectionMutation> for Value {
     fn from(mutation: ProjectionMutation) -> Self {
         json!({ "event": mutation.event, "projection": mutation.projection, "records": mutation.records, "replayed": mutation.replayed })
-    }
-}
-
-impl Error {
-    /// Whether this is a wire-validation failure rather than a store rule.
-    pub fn is_invalid(&self) -> bool {
-        matches!(self, Error::Invalid(_))
     }
 }
 

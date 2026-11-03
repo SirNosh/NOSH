@@ -845,30 +845,3 @@ pub fn load_native_evaluation(path: &Path) -> Result<Value> {
     // serde_json already rejects NaN and Infinity, which JSON cannot express.
     Ok(serde_json::from_str(&std::fs::read_to_string(path)?)?)
 }
-
-/// `{ runId, metrics }` from a Weights & Biases run directory.
-pub fn load_wandb_summary(directory: &Path) -> Result<Value> {
-    let metadata = directory.join("wandb-metadata.json");
-    let run_id = if metadata.exists() {
-        serde_json::from_str::<Value>(&std::fs::read_to_string(metadata)?)?
-            .get("id")
-            .cloned()
-            .unwrap_or(Value::Null)
-    } else {
-        Value::Null
-    };
-    Ok(
-        json!({ "runId": run_id, "metrics": load_native_evaluation(&directory.join("wandb-summary.json"))? }),
-    )
-}
-
-/// `{ logDirectory, eventFiles }` for a TensorBoard log directory.
-pub fn tensorboard_reference(log_directory: &Path) -> Result<Value> {
-    let root = resolve(log_directory)?;
-    let mut files: Vec<String> = std::fs::read_dir(&root)?
-        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
-        .filter(|name| name.starts_with("events.out.tfevents"))
-        .collect();
-    files.sort();
-    Ok(json!({ "logDirectory": root.to_string_lossy(), "eventFiles": files }))
-}
