@@ -60,6 +60,7 @@ mod tests {
     #[test]
     fn the_handoff_moves_the_config_to_the_project_the_ui_ended_on() {
         let state = tempfile::tempdir().unwrap();
+        nosh_agent::network::install_crypto_provider();
         let cli = Cli {
             flags: std::collections::HashMap::new(),
             state_root: state.path().to_owned(),

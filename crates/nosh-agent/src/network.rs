@@ -6,6 +6,13 @@ use std::time::Duration;
 const MAX_BYTES: usize = 1_000_000;
 const TIMEOUT: Duration = Duration::from_secs(15);
 
+/// Installs rustls' ring provider as the process default (DECISIONS.md item 9); a no-op when one
+/// is installed. The build carries no other provider, so reqwest's `rustls-no-provider` panics on
+/// building any client, plain HTTP included, until this has run.
+pub fn install_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 /// GET one HTTPS URL whose hostname is on `allowlist`: no credentials, no custom port, no
 /// redirects, at most 1 MB, 15 s. Returns `{ url, status, contentType, body }`.
 ///
@@ -26,9 +33,7 @@ pub async fn read_allowed_url(url_text: &str, allowlist: &[String]) -> Result<Va
     if !allowlist.contains(&hostname) {
         return Err("URL hostname is not allowlisted".into());
     }
-    // The build carries only rustls' ring provider, which reqwest needs installed (the daemon never
-    // runs the TUI's install). Installing again is a no-op.
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    install_crypto_provider();
     // Node's fetch ignores proxy environment variables; so does this reader.
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())

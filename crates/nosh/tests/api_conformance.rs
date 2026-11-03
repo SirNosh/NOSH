@@ -17,6 +17,12 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
+/// A reqwest client. The build carries only rustls' ring provider, which reqwest needs installed.
+fn client() -> reqwest::Client {
+    nosh_agent::network::install_crypto_provider();
+    reqwest::Client::new()
+}
+
 const BOOTSTRAP: &str = "conformance-bootstrap-token";
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -297,7 +303,7 @@ async fn scenario(implementation: Implementation, scratch: &Path) -> Vec<(String
     std::fs::write(repository.join("docs/paper.bib"), "").unwrap();
     let daemon = Daemon::spawn(implementation, &scratch.join("data"));
     let mut run = Run {
-        client: reqwest::Client::new(),
+        client: client(),
         base: daemon.base.clone(),
         masks: Masks::new(scratch),
         steps: Vec::new(),
@@ -694,13 +700,13 @@ fn rust_and_typescript_daemons_answer_the_api_alike() {
 
 /// Reads `path` from a daemon without a session (loopback requests are trusted).
 async fn read(base: &str, path: &str) -> Value {
-    let response = reqwest::get(format!("{base}{path}")).await.unwrap();
+    let response = client().get(format!("{base}{path}")).send().await.unwrap();
     assert_eq!(response.status(), 200, "{path}");
     response.json().await.unwrap()
 }
 
 async fn write(base: &str, path: &str, body: &Value) -> Value {
-    let response = reqwest::Client::new()
+    let response = client()
         .post(format!("{base}{path}"))
         .json(body)
         .send()
@@ -814,7 +820,7 @@ async fn continue_project(base: &str, project_id: &str, round: &str) {
     .await;
     write(base, "/notifications/acknowledge", &json!({ "projectId": project_id, "idempotencyKey": format!("handover-acknowledge-{round}"), "eventIds": [page["events"][0]["eventId"]] })).await;
     let paper = read(base, &format!("/paper?projectId={project_id}")).await;
-    let response = reqwest::Client::new()
+    let response = client()
         .put(format!("{base}/paper"))
         .json(&json!({ "projectId": project_id, "markdown": format!("# Revised in {round}\n"), "bibliography": paper["bibliography"], "expected": { "markdownHash": paper["markdownHash"], "bibliographyHash": paper["bibliographyHash"], "version": paper["version"] }, "idempotencyKey": format!("handover-paper-{round}") }))
         .send()
@@ -824,7 +830,7 @@ async fn continue_project(base: &str, project_id: &str, round: &str) {
 }
 
 async fn stop(mut daemon: Daemon) {
-    let response = reqwest::Client::new()
+    let response = client()
         .post(format!("{}/shutdown", daemon.base))
         .send()
         .await

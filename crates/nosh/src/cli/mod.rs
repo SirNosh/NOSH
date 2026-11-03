@@ -101,6 +101,7 @@ impl Cli {
             .enable_all()
             .build()
             .map_err(|error| error.to_string())?;
+        nosh_agent::network::install_crypto_provider();
         // Node's fetch ignores HTTP_PROXY; reqwest would not.
         let client = reqwest::Client::builder()
             .no_proxy()

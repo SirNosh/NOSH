@@ -115,13 +115,9 @@ impl Drop for Subscription {
     }
 }
 
-/// Installs rustls' ring provider as the process default (DECISIONS.md item 9). Idempotent: when a
-/// provider is already installed it is kept. [`crate::run`] calls it before building a client, and so
-/// must every test that builds a real [`DaemonClient`]: reqwest's `rustls-no-provider` panics
-/// without an installed default.
-pub fn install_crypto_provider() {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-}
+/// [`crate::run`] calls it before building a client, and so must every test that builds a real
+/// [`DaemonClient`].
+pub use nosh_agent::network::install_crypto_provider;
 
 #[cfg(test)]
 mod tests {

@@ -163,6 +163,7 @@ impl Side {
             .build()
             .unwrap();
         runtime.block_on(async {
+            nosh_agent::network::install_crypto_provider();
             let client = reqwest::Client::builder().no_proxy().build().unwrap();
             let response = client.post(url).json(body).send().await.unwrap();
             let status = response.status();

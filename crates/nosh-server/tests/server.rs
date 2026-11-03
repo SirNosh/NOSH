@@ -25,6 +25,12 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Notify;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
+/// A reqwest client. The build carries only rustls' ring provider, which reqwest needs installed.
+fn client() -> reqwest::Client {
+    nosh_agent::network::install_crypto_provider();
+    reqwest::Client::new()
+}
+
 fn local<F: std::future::Future>(future: F) -> F::Output {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -480,7 +486,7 @@ fn auto_trusts_local_origins_while_preserving_bearer_fallback_and_event_replay()
         server.listen("127.0.0.1", 0).await.unwrap();
         let base = server.address().unwrap();
         let api = Api {
-            client: reqwest::Client::new(),
+            client: client(),
             base: base.clone(),
         };
         let get = reqwest::Method::GET;
@@ -961,7 +967,7 @@ fn streams_events_over_a_websocket_and_authorizes_sockets_by_subprotocol() {
         assert_eq!(next_sequence(&mut resumed).await, live["sequence"]);
 
         // A session token in the subprotocol stands in for the bearer header.
-        let api = reqwest::Client::new();
+        let api = client();
         let session: Value = api
             .post(format!("{base}/session"))
             .bearer_auth("socket-bootstrap-token")
@@ -1164,7 +1170,7 @@ fn answers_errors_with_typescript_statuses_and_requests_shutdown_after_respondin
         server.listen("127.0.0.1", 0).await.unwrap();
         let base = server.address().unwrap();
         let api = Api {
-            client: reqwest::Client::new(),
+            client: client(),
             base: base.clone(),
         };
         let attacker = [("origin", "http://attacker.invalid")];
