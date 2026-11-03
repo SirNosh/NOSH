@@ -26,6 +26,9 @@ pub async fn read_allowed_url(url_text: &str, allowlist: &[String]) -> Result<Va
     if !allowlist.contains(&hostname) {
         return Err("URL hostname is not allowlisted".into());
     }
+    // The build carries only rustls' ring provider, which reqwest needs installed (the daemon never
+    // runs the TUI's install). Installing again is a no-op.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     // Node's fetch ignores proxy environment variables; so does this reader.
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
