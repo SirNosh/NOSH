@@ -1059,6 +1059,8 @@ impl DialogManager {
         let frame = self.frame();
         let panel = frame.panel.intersection(*buf.area());
         let style = Style::new().fg(THEME.text).bg(THEME.panel);
+        // The panel is opaque: without the clear, workspace text shows through its blank cells.
+        ratatui::widgets::Widget::render(ratatui::widgets::Clear, panel, buf);
         buf.set_style(panel, style);
         ratatui::widgets::Widget::render(
             ratatui::widgets::Block::bordered()
