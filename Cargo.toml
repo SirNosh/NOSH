@@ -12,3 +12,9 @@ publish = false
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+
+# The shipped binary: whole-program optimization and no symbol table, for size.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
