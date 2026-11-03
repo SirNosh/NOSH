@@ -142,8 +142,4 @@ pub(crate) fn clip(value: &str, maximum: usize) -> String {
     }
 }
 
-/// `String.prototype.trim`: JavaScript whitespace and line terminators (Unicode White_Space
-/// without U+0085, plus U+FEFF).
-pub(crate) fn js_trim(value: &str) -> &str {
-    value.trim_matches(|c: char| (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}')
-}
+pub(crate) use nosh_wire::js::js_trim;

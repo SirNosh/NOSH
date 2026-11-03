@@ -745,12 +745,9 @@ fn same_draft(event: &Value, draft: &Value) -> bool {
     canonical_json(&Value::Object(picked)) == canonical_json(draft)
 }
 
-/// `!value.trim()`: JavaScript trims WhiteSpace and LineTerminator characters, which is Unicode
-/// White_Space without U+0085 and with U+FEFF.
+/// `!value.trim()`.
 fn js_trim_is_empty(value: &str) -> bool {
-    value
-        .chars()
-        .all(|c| (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}')
+    nosh_wire::js::js_trim(value).is_empty()
 }
 
 impl From<Page> for Value {

@@ -31,7 +31,6 @@ use crate::supervisors::{Dependencies, SupervisorRuntime};
 use crate::{Agents, Error, Result, rejected};
 use nosh_agent::pi::{Inspection, ModelSelection};
 use nosh_agent::policy::{ModelRef, Role, SessionOptions};
-use nosh_agent::terminal::is_js_whitespace;
 use nosh_research::agent_runtime::StructuredSubmissionGate;
 use nosh_research::project::{
     ProjectInitialization, amend_project_contract, commit_project_contract, ensure_nosh_ignore,
@@ -300,9 +299,7 @@ pub(crate) fn spawn_eager(task: impl std::future::Future<Output = ()> + 'static)
     }
 }
 
-pub(crate) fn js_trim(text: &str) -> &str {
-    text.trim_matches(is_js_whitespace)
-}
+pub(crate) use nosh_wire::js::js_trim;
 
 pub(crate) fn error_text(error: &Error, fallback: &str) -> String {
     let message = error.to_string();

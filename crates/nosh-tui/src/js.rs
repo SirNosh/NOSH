@@ -27,7 +27,7 @@ use regex::Regex;
 use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, SerializeSeq, Serializer};
 
-pub use nosh_wire::js::{is_js_whitespace, js_number, length, number_string, slice_to};
+pub use nosh_wire::js::{is_js_whitespace, js_number, js_trim, length, number_string, slice_to};
 
 /// The largest safe integer, `Number.MAX_SAFE_INTEGER` (2^53 - 1).
 pub const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
@@ -628,12 +628,6 @@ fn write_json_level(out: &mut String, value: &JsValue, pretty: bool, depth: usiz
 /// (`"`, `\`, `\b \f \n \r \t`, other C0 controls as lowercase `\u00XX`).
 fn write_json_string(out: &mut String, text: &str) {
     out.push_str(&serde_json::to_string(text).expect("a string always serializes"));
-}
-
-/// `text.trim()` with JavaScript's whitespace set (which adds U+FEFF and lacks U+0085 compared
-/// with Rust's `str::trim`).
-pub fn js_trim(text: &str) -> &str {
-    text.trim_matches(is_js_whitespace)
 }
 
 /// `text.split(/\s+/)` with JavaScript's `\s`: `" a"` gives `["", "a"]`, `"a "` gives

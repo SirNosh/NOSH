@@ -484,7 +484,4 @@ pub(crate) fn assert_unlinked_contained(root: &Path, candidate: &Path, label: &s
     Ok(())
 }
 
-/// `String.prototype.trim`.
-pub(crate) fn js_trim(value: &str) -> &str {
-    crate::episodes::js_trim(value)
-}
+use nosh_wire::js::js_trim;

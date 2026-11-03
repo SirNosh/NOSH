@@ -235,10 +235,7 @@ fn pad_start(text: &str, width: usize) -> String {
     format!("{}{text}", " ".repeat(fill))
 }
 
-/// `text.trim()`.
-fn js_trim(text: &str) -> &str {
-    text.trim_matches(nosh_wire::js::is_js_whitespace)
-}
+use nosh_wire::js::js_trim;
 
 #[cfg(test)]
 mod tests {

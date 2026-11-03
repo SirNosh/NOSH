@@ -171,6 +171,11 @@ pub fn is_js_whitespace(character: char) -> bool {
     )
 }
 
+/// `text.trim()`: Rust's `str::trim` differs (it trims U+0085 and keeps U+FEFF).
+pub fn js_trim(text: &str) -> &str {
+    text.trim_matches(is_js_whitespace)
+}
+
 /// `Number(text)` for a string: JavaScript's `StringToNumber`.
 pub fn js_number(text: &str) -> f64 {
     let text = text.trim_matches(is_js_whitespace);
