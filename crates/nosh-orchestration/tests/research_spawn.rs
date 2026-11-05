@@ -502,17 +502,35 @@ fn names_the_evaluation_program_files_and_the_result_file_and_refuses_a_scope_ma
     );
     assert_eq!(sorted(frozen.clone()), ["evaluate.mjs", "metrics.json"]);
     assert!(
-        scope_issues(&["evaluate.mjs".into(), "./metrics.json".into()], &frozen)
-            .join(" ")
-            .contains("frozen evaluation")
+        scope_issues(
+            root.path(),
+            &["evaluate.mjs".into(), "./metrics.json".into()],
+            &frozen
+        )
+        .join(" ")
+        .contains("frozen evaluation")
     );
     assert_eq!(
         scope_issues(
+            root.path(),
             &["src/calibrate.mjs".into(), "evaluate.mjs".into()],
             &frozen
         ),
         Vec::<String>::new()
     );
+    // Prose matches no path, so every edit would be refused; a real path with a space is kept.
+    std::fs::write(root.path().join("my model.py"), "").unwrap();
+    let issues = scope_issues(
+        root.path(),
+        &[
+            "train.py method implementation and configuration".into(),
+            "my model.py".into(),
+            "src/new_module.py".into(),
+        ],
+        &frozen,
+    );
+    assert_eq!(issues.len(), 1, "{issues:?}");
+    assert!(issues[0].contains("is not a repository path"));
 }
 
 // ---- Mission research spawning ----

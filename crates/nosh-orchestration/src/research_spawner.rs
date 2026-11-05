@@ -211,20 +211,36 @@ fn node_is_absolute(path: &str) -> bool {
             && matches!(bytes[2], b'/' | b'\\'))
 }
 
-/// A scope naming only frozen evaluation files leaves the search nothing it may change.
-pub fn scope_issues(scope: &[String], frozen: &[String]) -> Vec<String> {
-    if scope.is_empty()
-        || !scope
+/// A scope naming only frozen evaluation files leaves the search nothing it may change; so does an
+/// entry that is prose rather than a path, which matches no file, so every edit is refused.
+pub fn scope_issues(root: &Path, scope: &[String], frozen: &[String]) -> Vec<String> {
+    let mut issues: Vec<String> = scope
+        .iter()
+        .filter(|entry| {
+            let path = repository_path(entry);
+            let path = path.trim_end_matches('/');
+            let path = path.strip_suffix("/**").unwrap_or(path);
+            path.chars().any(char::is_whitespace) && !root.join(path).exists()
+        })
+        .map(|entry| {
+            format!(
+                "scope entry {} is not a repository path; list the files or directories a variant edits, such as src/model.py or src/",
+                serde_json::to_string(entry).unwrap_or_default()
+            )
+        })
+        .collect();
+    if !scope.is_empty()
+        && scope
             .iter()
             .all(|entry| frozen.contains(&repository_path(entry)))
     {
-        return Vec::new();
+        issues.push(format!(
+            "scope {} names only the frozen evaluation ({}), which experiments never change; name the files a variant edits instead, such as the method's source and configuration",
+            scope.join(", "),
+            frozen.join(", ")
+        ));
     }
-    vec![format!(
-        "scope {} names only the frozen evaluation ({}), which experiments never change; name the files a variant edits instead, such as the method's source and configuration",
-        scope.join(", "),
-        frozen.join(", ")
-    )]
+    issues
 }
 
 fn strings(value: &Value) -> Vec<String> {
@@ -282,7 +298,7 @@ pub fn spawn_issues(project: &Value, spawn: &Value, node_id: &str, node_type: &s
     if let Some(command) = declared_command(project, &evaluation["commandId"]) {
         let root = PathBuf::from(string(project.get("repositoryRoot")));
         let frozen = frozen_evaluation_files(&root, &strings(&command["argv"]), &path);
-        issues.extend(scope_issues(&strings(&spawn["scope"]), &frozen));
+        issues.extend(scope_issues(&root, &strings(&spawn["scope"]), &frozen));
     }
     // A guardrail threshold is a change from the measured baseline; one the baseline itself fails
     // would refuse every experiment.

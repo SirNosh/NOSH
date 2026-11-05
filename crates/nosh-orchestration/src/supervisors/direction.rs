@@ -982,6 +982,7 @@ impl<H: Host + 'static> DirectionSupervisor<H> {
             let execution = &value["evaluationContract"]["execution"];
             let problems = if truthy(Some(execution)) {
                 scope_issues(
+                    &repository_root(project),
                     &strings(&spawn["scope"]),
                     &frozen_evaluation_files(
                         &repository_root(project),
