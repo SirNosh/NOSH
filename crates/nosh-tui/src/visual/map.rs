@@ -331,6 +331,15 @@ impl ResearchMap {
                 clipped(&text(parent.node.get("title"), 200), 40)
             )
         });
+        // A blocker gets its own row, in place of the spacer, so the facts do not cut it off.
+        let detail = text(node.get("detail"), 400);
+        let (detail, blocker) = match detail.split_once("blocked: ") {
+            Some((facts, reason)) => (
+                facts.trim_end_matches(" · ").to_owned(),
+                format!("blocked: {reason}"),
+            ),
+            None => (detail.clone(), String::new()),
+        };
         let facts: Vec<String> = [
             if kind == "node" {
                 "graph node".to_owned()
@@ -339,12 +348,9 @@ impl ResearchMap {
             },
             text(node.get("state"), 40),
             DIGITS
-                .replace_all(
-                    &text(node.get("detail"), 200),
-                    |found: &regex::Captures<'_>| {
-                        number_string(nosh_wire::js::to_precision_number(js_number(&found[0]), 4))
-                    },
-                )
+                .replace_all(&detail, |found: &regex::Captures<'_>| {
+                    number_string(nosh_wire::js::to_precision_number(js_number(&found[0]), 4))
+                })
                 .into_owned(),
             text(node.get("id"), 80),
             under,
@@ -367,13 +373,20 @@ impl ResearchMap {
         };
         let bold = Style::new().fg(THEME.text).add_modifier(Modifier::BOLD);
         self.panel = vec![
-            Line::default(),
             row(vec![Span::styled(clipped(&name, cols as usize), bold)]),
             row(vec![Span::styled(
                 clipped(&facts.join(" · "), cols as usize),
                 Style::new().fg(map_tone_color(entry.tone)),
             )]),
         ];
+        if blocker.is_empty() {
+            self.panel.insert(0, Line::default());
+        } else {
+            self.panel.push(row(vec![Span::styled(
+                clipped(&blocker, cols as usize),
+                Style::new().fg(map_tone_color(MapTone::Error)),
+            )]));
+        }
         if !action.is_empty() {
             self.panel.push(row(vec![Span::styled(
                 clipped(&action, cols as usize),
