@@ -342,7 +342,11 @@ fn visit_fields(
             }
             scalar => result.push(ViewField {
                 label: name,
-                value: short_digest(text(Some(scalar), TEXT_LIMIT)),
+                value: match scalar {
+                    // Pi reports `contextPercent` as a raw float; a tenth of a percent is enough.
+                    JsValue::Number(percent) if key.ends_with("Percent") => format!("{percent:.1}"),
+                    _ => short_digest(text(Some(scalar), TEXT_LIMIT)),
+                },
             }),
         }
     }

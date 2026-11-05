@@ -156,7 +156,15 @@ fn cards(rows: &[ViewRow], fallback: &str, width: u16) -> Vec<Line<'static>> {
                 continue;
             }
             let value_width = inner.saturating_sub(label_width as u16 + 2);
-            let label = slice_to(&safe_text_str(&field.label), label_width);
+            let label = safe_text_str(&field.label);
+            // A cut nested label keeps its last segment, which tells siblings apart (both
+            // `Compute envelope / Maximum …` fields were cut to the same text).
+            let label = match label.rsplit_once(" / ") {
+                Some((_, last)) if length(&label) > label_width => {
+                    slice_to(&format!("… / {last}"), label_width)
+                }
+                _ => slice_to(&label, label_width),
+            };
             let label = format!(
                 "{label}{}",
                 " ".repeat(label_width.saturating_sub(length(&label)) + 2)
