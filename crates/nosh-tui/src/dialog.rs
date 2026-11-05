@@ -27,6 +27,7 @@ use ratatui::style::{Color, Style};
 
 use crate::controller::{Controller, Model, Project, Selection};
 use crate::editor::{EditOutcome, Input, PATH_MAX_LENGTH, SEARCH_MAX_LENGTH, TITLE_MAX_LENGTH};
+use crate::js::{JsValue, string};
 use crate::layout::{round_half_up, wrap_words};
 use crate::palette::{
     COMMANDS, CommandItem, CommandMode, DIALOG_TEXT_MAX, PaletteItem, ProjectFormValues,
@@ -34,7 +35,7 @@ use crate::palette::{
     validate_project_form,
 };
 use crate::theme::DIALOG_THEME as THEME;
-use crate::view_model::{ActivityState, PendingAction};
+use crate::view_model::{ActivityState, PendingAction, record};
 
 const HINT: &str = "↑↓ select   Enter choose   Esc close";
 const NO_MATCHES: &str = "No matches. Try another search.";
@@ -485,7 +486,22 @@ impl DialogManager {
         };
         self.select(&format!("Confirm · {title}"), choices, settings);
         let (width, height) = self.screen;
+        // The program a Direction or Autoresearch runs as its evaluation, which the field list
+        // (two levels deep) never reaches.
+        let execution = record(record(pending.body.get("evaluationContract")).get("execution"));
+        let command = match execution.get("command") {
+            Some(JsValue::Array(parts)) => Some(format!(
+                "Evaluation command: {}",
+                parts
+                    .iter()
+                    .map(|part| string(Some(part)))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )),
+            _ => None,
+        };
         let summary: Vec<String> = std::iter::once(pending.path.clone())
+            .chain(command)
             .chain(
                 pending
                     .fields
