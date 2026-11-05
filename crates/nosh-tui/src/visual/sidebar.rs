@@ -146,11 +146,17 @@ impl ResearchSidebar {
                 &title,
                 Style::new().fg(THEME.text),
             );
+            let titles: Vec<&str> = members
+                .iter()
+                .take(8)
+                .map(|row| row.title.as_str())
+                .collect();
             for (i, row) in members.iter().take(8).enumerate() {
                 items.line(
                     &format!("side-{section}-{i}"),
                     &row.title,
                     row.state.as_deref().unwrap_or(""),
+                    divergence(&titles, i),
                 );
             }
             if members.len() > 8 {
@@ -180,6 +186,26 @@ impl ResearchSidebar {
     }
 }
 
+/// Where `titles[index]` stops matching another, different title: the byte offset of the first
+/// differing character and of the word it is in, `(0, 0)` when no title shares its start.
+fn divergence(titles: &[&str], index: usize) -> (usize, usize) {
+    let title = titles[index];
+    titles
+        .iter()
+        .enumerate()
+        .filter(|&(other, text)| other != index && *text != title)
+        .map(|(_, text)| {
+            let same = title
+                .char_indices()
+                .zip(text.chars())
+                .find(|((_, a), b)| a != b)
+                .map_or(title.len().min(text.len()), |((at, _), _)| at);
+            (same, title[..same].rfind(' ').map_or(0, |space| space + 1))
+        })
+        .max()
+        .unwrap_or((0, 0))
+}
+
 /// Builds the item list.
 struct Items {
     width: u16,
@@ -203,18 +229,24 @@ impl Items {
         self.text(id, content, style.add_modifier(Modifier::BOLD));
     }
 
-    /// `line(id, title, state)`: `● title` in the state color (or `· title` muted), clipped, and the
-    /// state right-aligned in muted.
-    fn line(&mut self, id: &str, title: &str, state: &str) {
+    /// `line(id, title, state, (same, word))`: `● title` in the state color (or `· title` muted),
+    /// clipped, and the state right-aligned in muted. A title that would clip to the same text as a
+    /// sibling's shows `…` and its words from `word` on, where the two differ.
+    fn line(&mut self, id: &str, title: &str, state: &str, (same, word): (usize, usize)) {
         let width = usize::from(self.width);
         let tag = safe_text_str(state);
         let marker = if state.is_empty() { '·' } else { '●' };
-        let label = safe_text_str(&format!("{marker} {title}"));
         let room = if tag.is_empty() {
             width
         } else {
             width.saturating_sub(tag.width() + 1)
         };
+        let title = if same > 0 && 2 + title[..same].width() >= room {
+            format!("…{}", &title[word..])
+        } else {
+            title.to_owned()
+        };
+        let label = safe_text_str(&format!("{marker} {title}"));
         let mut clipped = String::new();
         for char in label.chars() {
             if (clipped.as_str().width()
