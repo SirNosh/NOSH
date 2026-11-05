@@ -407,7 +407,7 @@ function http(port, path, { json, method = "GET" } = {}) {
       const chunks = [];
       response.on("data", (chunk) => chunks.push(chunk)).on("error", reject).on("end", () => {
         const text = Buffer.concat(chunks).toString("utf8");
-        resolve({ status: response.statusCode, ok: response.statusCode >= 200 && response.statusCode < 300, json: async () => JSON.parse(text) });
+        resolve({ status: response.statusCode, ok: response.statusCode >= 200 && response.statusCode < 300, text: async () => text, json: async () => JSON.parse(text) });
       });
     });
     request.on("timeout", () => request.destroy(new Error(`${method} ${path} timed out`))).on("error", reject);
