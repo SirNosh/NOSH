@@ -274,8 +274,9 @@ impl ResearchMap {
             path.push(format!("› {}", text(drilled.get("title"), 80)));
         }
         let path = path.join("  ");
+        // Named, so the zoom is not read as progress next to `1/3`.
         let hint = format!(
-            "{label}{}{}",
+            "zoom {label}{}{}",
             if roots.len() > 1 { " · tab next" } else { "" },
             if self.opened.is_empty() {
                 ""
