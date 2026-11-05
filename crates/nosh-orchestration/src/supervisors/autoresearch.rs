@@ -1606,7 +1606,8 @@ impl<H: Host + 'static> AutoresearchSupervisor<H> {
             None => research.autoresearch_budget_use(&project_id, &autoresearch_id)?,
         };
         let answer = if let Some(best) = &best {
-            format!("Reviewed experiment {best} is the accepted frontier.")
+            // The measured result, as a Direction's closure states it, not only the experiment id.
+            super::direction::accepted_closure_answer(std::slice::from_ref(best), &results)
         } else if !unpromoted.is_empty() {
             format!(
                 "Experiments {} met the keep rule and passed experiment Review, but no round Review promoted them; there is no accepted frontier.",
