@@ -141,8 +141,14 @@ fn value(tokens: &[&str], index: &mut usize) -> Result<(), TerminalError> {
                 let key = js_json::parse(tokens.get(*index).copied().unwrap_or("undefined"))
                     .map_err(TerminalError::Syntax)?;
                 *index += 1;
-                if !keys.insert(key.as_str().unwrap_or_default().to_owned()) {
-                    return invalid("Duplicate JSON object key");
+                let key = key.as_str().unwrap_or_default();
+                if !keys.insert(key.to_owned()) {
+                    // Named, so the one correction turn can remove it: models repeat an envelope's
+                    // `schemaVersion` and, told only "duplicate key", repeated it again.
+                    return Err(TerminalError::Invalid(format!(
+                        "Duplicate JSON object key {}; write each key once per object",
+                        serde_json::to_string(key).unwrap_or_default()
+                    )));
                 }
                 let colon = tokens.get(*index).copied();
                 *index += 1;

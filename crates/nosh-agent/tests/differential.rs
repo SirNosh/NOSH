@@ -512,6 +512,25 @@ fn policy_and_text_match_typescript() {
     let mut per_kind: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
     for (op, expected) in ops.iter().zip(&expected) {
         let actual = rust(op);
+        // Deliberate divergence: Rust names the duplicated key, which must occur twice in the
+        // input (TypeScript: pi-adapter terminal-output.ts:36 says only "Duplicate JSON object key").
+        let mut expected = expected.clone();
+        let named = actual["error"].as_str().and_then(|error| {
+            error
+                .strip_prefix("Duplicate JSON object key ")?
+                .strip_suffix("; write each key once per object")
+        });
+        if expected["error"] == "Duplicate JSON object key"
+            && let Some(key) = named
+            && op["terminal"][0]
+                .as_str()
+                .is_some_and(|text| text.matches(&format!("{key}:")).count() >= 2)
+        {
+            for field in ["error", "excerpt"] {
+                expected[field] = actual["error"].clone();
+            }
+        }
+        let expected = &expected;
         if &actual == expected {
             continue;
         }
