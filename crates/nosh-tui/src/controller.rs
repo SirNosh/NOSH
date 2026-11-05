@@ -2167,7 +2167,25 @@ impl Controller {
                 if !current() {
                     return Ok(());
                 }
-                self.present("result", response_rows("result", Some(&data)), &data);
+                let mut rows = response_rows("result", Some(&data));
+                if let Some(row) = rows.first_mut() {
+                    // A reply naming no entity (`{"accepted":true}`) would be titled `result-0`.
+                    if row.id == "result-0" {
+                        row.title = format!("Done: {}", pending.path);
+                    }
+                    // A retried node runs only once its Mission resumes, a separate action.
+                    if pending.path.starts_with("/missions/")
+                        && pending.path.contains("/nodes/")
+                        && matches!(row.state.as_deref(), Some("blocked" | "paused"))
+                    {
+                        row.subtitle = Some(format!(
+                            "The node is ready; it runs when the Mission resumes: /control {} {} resume",
+                            row.id,
+                            row.version.map_or_else(String::new, number_string)
+                        ));
+                    }
+                }
+                self.present("result", rows, &data);
             }
             "/discard" => {
                 let pending = self.private.borrow_mut().pending.take();
