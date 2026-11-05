@@ -912,7 +912,7 @@ impl<H: Host> ResearchControl<H> {
             updated["activatedAt"] = json!(now);
         }
         updated["updatedAt"] = json!(now);
-        self.mutate(
+        let transitioned = self.mutate(
             project_id,
             "direction",
             direction_id,
@@ -924,7 +924,29 @@ impl<H: Host> ResearchControl<H> {
             None,
             activating,
             Some(intent),
-        )
+        )?;
+        if next == "stopped" {
+            // A run whose Direction is not active never cycles again: left running, it held
+            // `stop --if-idle` (and so `nosh update`) until the user stopped it by hand.
+            for run in self.autoresearch(project_id)? {
+                if is(run["value"].get("directionId"), direction_id)
+                    && matches!(
+                        run["state"].as_str(),
+                        Some("running" | "paused" | "blocked")
+                    )
+                {
+                    let id = string(run.get("entityId"));
+                    self.transition_autoresearch(
+                        project_id,
+                        &id,
+                        version_of(&run),
+                        "stopped",
+                        &format!("{idempotency_key}:child:{id}"),
+                    )?;
+                }
+            }
+        }
+        Ok(transitioned)
     }
 
     #[allow(clippy::too_many_arguments)]
