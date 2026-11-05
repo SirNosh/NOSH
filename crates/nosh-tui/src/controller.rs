@@ -485,6 +485,16 @@ fn read_json_object(path: &str) -> Result<JsObject, String> {
 
 const FAMILIES: [&str; 3] = ["missions", "directions", "autoresearch"];
 const STATUS_FAMILIES: [&str; 4] = ["missions", "directions", "autoresearch", "agents"];
+
+/// A family as people type it: the singular names the same family.
+fn plural(family: &str) -> &str {
+    match family {
+        "mission" => "missions",
+        "direction" => "directions",
+        family => family,
+    }
+}
+
 const PRESENTED_SECTIONS: [&str; 7] = [
     "missions",
     "directions",
@@ -2036,20 +2046,22 @@ impl Controller {
             }
             "/transition" => {
                 self.require_project()?;
-                if args.len() != 4 || !FAMILIES.contains(&args[0]) {
+                let family = plural(arg(0).unwrap_or_default());
+                if args.len() != 4 || !FAMILIES.contains(&family) {
                     return Err("Use /transition <family> <id> <inspected-version> <state>".into());
                 }
                 let mut body = JsObject::new();
                 body.set("expectedVersion", version(arg(2))?.into());
                 body.set("next", args[3].into());
                 self.stage(
-                    &format!("/{}/{}/transition", args[0], encode_uri_component(args[1])),
+                    &format!("/{family}/{}/transition", encode_uri_component(args[1])),
                     body,
                 );
             }
             "/start" => {
                 self.require_project()?;
-                if args.len() != 3 || !FAMILIES.contains(&args[0]) {
+                let family = plural(arg(0).unwrap_or_default());
+                if args.len() != 3 || !FAMILIES.contains(&family) {
                     return Err(
                         "Use /start <missions|directions|autoresearch> <id> <inspected-version>"
                             .into(),
@@ -2058,13 +2070,14 @@ impl Controller {
                 let mut body = JsObject::new();
                 body.set("expectedVersion", version(arg(2))?.into());
                 self.stage(
-                    &format!("/{}/{}/start", args[0], encode_uri_component(args[1])),
+                    &format!("/{family}/{}/start", encode_uri_component(args[1])),
                     body,
                 );
             }
             "/retry" => {
                 self.require_project()?;
-                if args.len() != 4 || !["missions", "directions"].contains(&args[0]) {
+                let family = plural(arg(0).unwrap_or_default());
+                if args.len() != 4 || !["missions", "directions"].contains(&family) {
                     return Err(
                         "Use /retry <missions|directions> <id> <inspected-version> <nodeId>".into(),
                     );
@@ -2074,8 +2087,7 @@ impl Controller {
                 body.set("next", "ready".into());
                 self.stage(
                     &format!(
-                        "/{}/{}/nodes/{}/transition",
-                        args[0],
+                        "/{family}/{}/nodes/{}/transition",
                         encode_uri_component(args[1]),
                         encode_uri_component(args[3])
                     ),
@@ -2123,18 +2135,12 @@ impl Controller {
             "/create" => {
                 self.require_project()?;
                 let given = arg(0).unwrap_or_default();
-                // The singular, as people type it, names the same family.
-                let family = match given {
-                    "mission" => "missions",
-                    "direction" => "directions",
-                    family if FAMILIES.contains(&family) => family,
-                    _ => {
-                        return Err(
-                            "Use /create <missions|directions|autoresearch> <JSON file path>"
-                                .into(),
-                        );
-                    }
-                };
+                let family = plural(given);
+                if !FAMILIES.contains(&family) {
+                    return Err(
+                        "Use /create <missions|directions|autoresearch> <JSON file path>".into(),
+                    );
+                }
                 let body = read_json_object(js_trim(&rest[given.len()..]))?;
                 if current() {
                     self.stage(&format!("/{family}"), body);
