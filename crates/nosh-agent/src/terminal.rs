@@ -124,14 +124,15 @@ static TOKENS: LazyLock<regex::Regex> = LazyLock::new(|| {
 fn assert_unique_keys(text: &str) -> Result<(), TerminalError> {
     let tokens: Vec<&str> = TOKENS.find_iter(text).map(|token| token.as_str()).collect();
     let mut index = 0;
-    value(&tokens, &mut index)?;
+    value(&tokens, &mut index, "")?;
     if index != tokens.len() {
         return invalid("Multiple JSON values are not allowed");
     }
     Ok(())
 }
 
-fn value(tokens: &[&str], index: &mut usize) -> Result<(), TerminalError> {
+/// `path`: the value's JSON pointer, which a duplicate-key error names.
+fn value(tokens: &[&str], index: &mut usize, path: &str) -> Result<(), TerminalError> {
     let token = tokens.get(*index).copied();
     *index += 1;
     match token {
@@ -143,10 +144,16 @@ fn value(tokens: &[&str], index: &mut usize) -> Result<(), TerminalError> {
                 *index += 1;
                 let key = key.as_str().unwrap_or_default();
                 if !keys.insert(key.to_owned()) {
-                    // Named, so the one correction turn can remove it: models repeat an envelope's
-                    // `schemaVersion` and, told only "duplicate key", repeated it again.
+                    // Named with its object, so the one correction turn removes just that repeat:
+                    // models repeat an envelope's `schemaVersion`; told only "duplicate key" they
+                    // repeated it again, told only the key they also dropped it from a record.
+                    let object = if path.is_empty() {
+                        "the top-level object".to_owned()
+                    } else {
+                        format!("the object at {path}")
+                    };
                     return Err(TerminalError::Invalid(format!(
-                        "Duplicate JSON object key {}; write each key once per object",
+                        "Duplicate JSON object key {} in {object}; remove only that repeat, other objects keep theirs",
                         serde_json::to_string(key).unwrap_or_default()
                     )));
                 }
@@ -155,7 +162,8 @@ fn value(tokens: &[&str], index: &mut usize) -> Result<(), TerminalError> {
                 if colon != Some(":") {
                     return invalid("Invalid JSON object");
                 }
-                value(tokens, index)?;
+                let pointer = key.replace('~', "~0").replace('/', "~1");
+                value(tokens, index, &format!("{path}/{pointer}"))?;
                 if tokens.get(*index).copied() != Some(",") {
                     break;
                 }
@@ -168,8 +176,10 @@ fn value(tokens: &[&str], index: &mut usize) -> Result<(), TerminalError> {
             }
         }
         Some("[") => {
+            let mut position = 0;
             while tokens.get(*index).copied() != Some("]") {
-                value(tokens, index)?;
+                value(tokens, index, &format!("{path}/{position}"))?;
+                position += 1;
                 if tokens.get(*index).copied() != Some(",") {
                     break;
                 }

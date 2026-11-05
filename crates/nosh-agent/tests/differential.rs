@@ -513,12 +513,15 @@ fn policy_and_text_match_typescript() {
     for (op, expected) in ops.iter().zip(&expected) {
         let actual = rust(op);
         // Deliberate divergence: Rust names the duplicated key, which must occur twice in the
-        // input (TypeScript: pi-adapter terminal-output.ts:36 says only "Duplicate JSON object key").
+        // input, and its object (TypeScript: pi-adapter terminal-output.ts:36 says only
+        // "Duplicate JSON object key").
         let mut expected = expected.clone();
         let named = actual["error"].as_str().and_then(|error| {
-            error
+            let (key, _) = error
                 .strip_prefix("Duplicate JSON object key ")?
-                .strip_suffix("; write each key once per object")
+                .strip_suffix("; remove only that repeat, other objects keep theirs")?
+                .split_once(" in the ")?;
+            Some(key)
         });
         if expected["error"] == "Duplicate JSON object key"
             && let Some(key) = named
