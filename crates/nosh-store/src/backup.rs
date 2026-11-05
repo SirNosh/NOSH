@@ -155,7 +155,10 @@ pub fn create_project_backup(
             let bundle_text = bundle.to_string_lossy().into_owned();
             let mut args = vec!["bundle", "create", bundle_text.as_str()];
             if has_refs {
-                args.push("--all");
+                // Without it Git 2.46 also bundles each linked worktree's HEAD as
+                // `worktrees/<id>/HEAD`, which is no ref and failed every backup of a Project
+                // with task worktrees.
+                args.extend(["--single-worktree", "--all"]);
             }
             if git_head.commit.is_some() {
                 args.push("HEAD");
@@ -892,49 +895,52 @@ fn hardened_environment(safe_checkout: &[(String, String)]) -> Vec<(OsString, Os
     environment
 }
 
-/// The user's global `core.autocrlf|filemode|ignorecase|symlinks`, so `git status` sees the
-/// checkout the way the user's own Git does.
+/// The user's system and global `core.autocrlf|filemode|ignorecase|symlinks` (global wins), so
+/// `git status` sees the checkout the way the user's own Git does. Git for Windows sets
+/// `core.autocrlf=true` system-wide: without it, a tracked file Git had checked out with CRLF read
+/// as modified once restore rewrote the index, and the restore rolled back.
 fn safe_global_checkout_config(repository: &Path) -> Result<Vec<(String, String)>> {
-    let mut environment = without_git_variables();
-    environment.push(("GIT_CONFIG_NOSYSTEM".into(), "1".into()));
-    environment.push(("GIT_TERMINAL_PROMPT".into(), "0".into()));
-    let result = git_with(
-        repository,
-        &[
-            "config",
-            "--global",
-            "--get-regexp",
-            r"^core\.(autocrlf|filemode|ignorecase|symlinks)$",
-        ],
-        environment,
-        None,
-    );
-    match result.status {
-        Some(1) => return Ok(Vec::new()),
-        Some(0) => {}
-        _ => return rejected("Could not read safe global Git checkout configuration"),
-    }
     let mut values: Vec<(String, String)> = Vec::new();
-    for line in result
-        .stdout
-        .split('\n')
-        .map(|line| line.strip_suffix('\r').unwrap_or(line))
-        .filter(|line| !line.is_empty())
-    {
-        let (key, value) = line
-            .split_once(char::is_whitespace)
-            .filter(|(key, _)| {
-                matches!(
-                    *key,
-                    "core.autocrlf" | "core.filemode" | "core.ignorecase" | "core.symlinks"
-                )
-            })
-            .ok_or_else(|| {
-                Error::Rejected("Global Git checkout configuration is malformed".into())
-            })?;
-        match values.iter_mut().find(|(existing, _)| existing == key) {
-            Some(entry) => entry.1 = value.to_owned(),
-            None => values.push((key.to_owned(), value.to_owned())),
+    for scope in ["--system", "--global"] {
+        let mut environment = without_git_variables();
+        environment.push(("GIT_TERMINAL_PROMPT".into(), "0".into()));
+        let result = git_with(
+            repository,
+            &[
+                "config",
+                scope,
+                "--get-regexp",
+                r"^core\.(autocrlf|filemode|ignorecase|symlinks)$",
+            ],
+            environment,
+            None,
+        );
+        match result.status {
+            Some(1) => continue,
+            Some(0) => {}
+            _ => return rejected("Could not read safe global Git checkout configuration"),
+        }
+        for line in result
+            .stdout
+            .split('\n')
+            .map(|line| line.strip_suffix('\r').unwrap_or(line))
+            .filter(|line| !line.is_empty())
+        {
+            let (key, value) = line
+                .split_once(char::is_whitespace)
+                .filter(|(key, _)| {
+                    matches!(
+                        *key,
+                        "core.autocrlf" | "core.filemode" | "core.ignorecase" | "core.symlinks"
+                    )
+                })
+                .ok_or_else(|| {
+                    Error::Rejected("Global Git checkout configuration is malformed".into())
+                })?;
+            match values.iter_mut().find(|(existing, _)| existing == key) {
+                Some(entry) => entry.1 = value.to_owned(),
+                None => values.push((key.to_owned(), value.to_owned())),
+            }
         }
     }
     Ok(values)
