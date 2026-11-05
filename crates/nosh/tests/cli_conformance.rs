@@ -5,7 +5,8 @@
 //! directory, IDs, times and ports are masked.
 //!
 //! Deliberate differences are checked on the Rust side and left out of the comparison: the first two
-//! `update` lines (DECISIONS 14) and TypeScript's Bun rows in `setup` and `doctor` (DECISIONS 13).
+//! `update` lines (DECISIONS 14), TypeScript's Bun rows in `setup` and `doctor` (DECISIONS 13), and
+//! the first change Rust names when it refuses a backup of a dirty repository.
 //! `setup` runs on a config already written for the test's port, which it never overwrites. The
 //! daemon log is compared only before a daemon has written it. A running Job is the active work
 //! behind `stop --if-idle`'s exit 2. No model account is connected, and Pi stays offline
@@ -316,6 +317,22 @@ impl Sides {
         rust
     }
 
+    /// `same_each` for a backup refused on a freshly opened Project, once Rust's `(first: …)`, the
+    /// first change it names, is dropped (TypeScript: packages/persistence/src/backup.ts).
+    fn same_but_first_change(&mut self, args: impl Fn(&Side) -> Vec<String>) -> Outcome {
+        let [rust, typescript] = &mut self.0;
+        let run = |side: &mut Side| {
+            let args = args(side);
+            side.run(&args.iter().map(String::as_str).collect::<Vec<_>>())
+        };
+        let (mut rust, typescript) = (run(rust), run(typescript));
+        let first = " (first: .nosh/contracts/project.v1.json)";
+        assert!(rust.err.contains(first), "{rust:?}");
+        rust.err = rust.err.replace(first, "");
+        assert_eq!(rust, typescript, "Rust (left) and TypeScript differ");
+        rust
+    }
+
     /// `same` with each side's own arguments (its own paths and IDs).
     fn same_each(&mut self, args: impl Fn(&Side) -> Vec<String>) -> Outcome {
         let [rust, typescript] = &mut self.0;
@@ -473,7 +490,7 @@ fn cli_commands_agree_with_typescript() {
     let backup = |side: &Side| vec!["backup".to_owned(), side.ids[0].clone()];
     sides.same(&["project", "list"]);
     sides.same(&["mission", "list"]);
-    sides.same_each(backup);
+    sides.same_but_first_change(backup);
 
     // With a daemon, which setup starts. No model account is connected, so setup is not finished,
     // and it never reaches the default model: `--model` is not saved. Setup keeps the config and
@@ -545,7 +562,7 @@ fn cli_commands_agree_with_typescript() {
         assert_eq!(restore.code, Some(1), "backup restore {backup_id}");
     }
     // The opened repository has NOSH's files uncommitted until now.
-    sides.same_each(backup);
+    sides.same_but_first_change(backup);
     sides.each(|side| commit_all(&side.repo()));
     let written = sides.same_each(backup);
     assert!(
