@@ -10,6 +10,7 @@
 //   --launcher  a directory holding lib.mjs and nosh.mjs (e.g. $NOSH_TS_ROOT/apps/launcher); default nosh-harness@1.0.0 from npm
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { request as httpRequest } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -396,8 +397,22 @@ function npm(npmArgs, cwd) {
   return result.stdout;
 }
 
-function http(port, path, { json, ...init } = {}) {
-  return fetch(`http://127.0.0.1:${port}${path}`, { ...init, ...(json && { headers: { "content-type": "application/json" }, body: JSON.stringify(json) }), signal: AbortSignal.timeout(10_000) });
+// One connection per request. The launcher stops and starts noshd through spawnSync, which blocks this event loop, so
+// fetch's pooled keep-alive socket to the old daemon outlives it and the next request on it reads ECONNRESET.
+function http(port, path, { json, method = "GET" } = {}) {
+  const body = json && JSON.stringify(json);
+  return new Promise((resolve, reject) => {
+    const headers = body ? { "content-type": "application/json", "content-length": Buffer.byteLength(body) } : {};
+    const request = httpRequest({ host: "127.0.0.1", port, path, method, headers, agent: false, timeout: 10_000 }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk)).on("error", reject).on("end", () => {
+        const text = Buffer.concat(chunks).toString("utf8");
+        resolve({ status: response.statusCode, ok: response.statusCode >= 200 && response.statusCode < 300, json: async () => JSON.parse(text) });
+      });
+    });
+    request.on("timeout", () => request.destroy(new Error(`${method} ${path} timed out`))).on("error", reject);
+    request.end(body);
+  });
 }
 
 async function healthy(port) {
