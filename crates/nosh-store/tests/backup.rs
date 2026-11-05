@@ -114,9 +114,10 @@ fn refuses_tracked_dirt_and_then_untracked_files() {
     let error = create_project_backup(&w.data, &w.project)
         .unwrap_err()
         .to_string();
+    // Rust also names the first change (TypeScript: packages/persistence/src/backup.ts says only this).
     assert_eq!(
         error,
-        "Project repository must be exactly clean, including untracked files"
+        "Project repository must be exactly clean, including untracked files (first: tracked.txt)"
     );
     git(&w.repo, &["checkout", "--", "tracked.txt"]);
     std::fs::write(w.repo.join("untracked.txt"), "untracked\n").unwrap();

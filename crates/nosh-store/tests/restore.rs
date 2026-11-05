@@ -271,9 +271,10 @@ fn refuses_before_changing_anything() {
         "Refusing restore while noshd is running; stop the daemon first"
     );
     std::fs::write(w.repo.join("dirty.txt"), "dirty\n").unwrap();
+    // Rust also names the first change (TypeScript: packages/persistence/src/backup.ts says only this).
     assert_eq!(
         error(PROJECT, true),
-        "Project repository must be exactly clean, including untracked files"
+        "Project repository must be exactly clean, including untracked files (first: dirty.txt)"
     );
     std::fs::remove_file(w.repo.join("dirty.txt")).unwrap();
     std::fs::write(path.join("manifest.json"), "{}\n").unwrap();

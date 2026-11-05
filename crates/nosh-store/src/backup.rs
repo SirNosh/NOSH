@@ -1028,7 +1028,11 @@ pub(crate) fn assert_git_clean(
         }) {
             continue;
         }
-        return rejected("Project repository must be exactly clean, including untracked files");
+        // The first change, so a person can see what to commit or remove.
+        return rejected(format!(
+            "Project repository must be exactly clean, including untracked files (first: {})",
+            entry.get(3..).unwrap_or(entry)
+        ));
     }
     Ok(())
 }
