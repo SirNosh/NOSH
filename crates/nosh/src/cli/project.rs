@@ -205,11 +205,13 @@ impl Cli {
     /// `jobList(config)`: every Job the daemon knows, with no offline fallback.
     pub(super) fn job_list(&self, config: &Config) -> Result<(), String> {
         let reply = self.api(config, Method::GET, "/jobs", None)?;
-        let jobs = reply
+        let mut jobs = reply
             .get("jobs")
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
+        // Oldest first, so the latest Job is the last line (the daemon lists them by id).
+        jobs.sort_by_key(|job| js::string(job.get("startedAt")));
         if jobs.is_empty() {
             out("No jobs\n");
         }
