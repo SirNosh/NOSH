@@ -231,7 +231,7 @@ impl Items {
 
     /// `line(id, title, state, (same, word))`: `● title` in the state color (or `· title` muted),
     /// clipped, and the state right-aligned in muted. A title that would clip to the same text as a
-    /// sibling's shows `…` and its words from `word` on, where the two differ.
+    /// sibling's shows its start, `…`, and its words from `word` on, where the two differ.
     fn line(&mut self, id: &str, title: &str, state: &str, (same, word): (usize, usize)) {
         let width = usize::from(self.width);
         let tag = safe_text_str(state);
@@ -242,7 +242,18 @@ impl Items {
             width.saturating_sub(tag.width() + 1)
         };
         let title = if same > 0 && 2 + title[..same].width() >= room {
-            format!("…{}", &title[word..])
+            // As much of the start as fits beside the differing words (marker, space, `…`).
+            let tail = &title[word..];
+            let mut head = String::new();
+            for char in title.chars() {
+                let next = head.as_str().width()
+                    + unicode_width::UnicodeWidthChar::width(char).unwrap_or(0);
+                if next + tail.width() + 3 > room {
+                    break;
+                }
+                head.push(char);
+            }
+            format!("{}…{tail}", head.trim_end())
         } else {
             title.to_owned()
         };
