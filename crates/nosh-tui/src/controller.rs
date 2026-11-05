@@ -1264,7 +1264,15 @@ impl Controller {
                 });
                 continue;
             }
-            entries.push(draft.clone());
+            let mut draft = draft.clone();
+            // A worker's terminal envelope is protocol output, summarized once the turn completes.
+            if draft.kind == EntryKind::Assistant && js_trim(&draft.text).starts_with('{') {
+                draft.text = format!(
+                    "Writing a structured result ({} characters)…",
+                    length(&draft.text)
+                );
+            }
+            entries.push(draft);
         }
         bound_entries(&entries)
     }
