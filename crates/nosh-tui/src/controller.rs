@@ -2114,10 +2114,20 @@ impl Controller {
             }
             "/create" => {
                 self.require_project()?;
-                let family = arg(0)
-                    .filter(|family| FAMILIES.contains(family))
-                    .ok_or("Use /create <missions|directions|autoresearch> <JSON file path>")?;
-                let body = read_json_object(js_trim(&rest[family.len()..]))?;
+                let given = arg(0).unwrap_or_default();
+                // The singular, as people type it, names the same family.
+                let family = match given {
+                    "mission" => "missions",
+                    "direction" => "directions",
+                    family if FAMILIES.contains(&family) => family,
+                    _ => {
+                        return Err(
+                            "Use /create <missions|directions|autoresearch> <JSON file path>"
+                                .into(),
+                        );
+                    }
+                };
+                let body = read_json_object(js_trim(&rest[given.len()..]))?;
                 if current() {
                     self.stage(&format!("/{family}"), body);
                 }
