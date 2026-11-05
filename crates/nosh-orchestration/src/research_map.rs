@@ -69,6 +69,24 @@ fn nodes_of(entry: &Value) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+/// `Invalid terminal record: [{"pointer":"/x","message":"…"}]` as `Invalid terminal record: /x …`.
+fn issues(error: &str) -> String {
+    let parsed = error.split_once(": [").and_then(|(head, list)| {
+        Some((
+            head,
+            serde_json::from_str::<Vec<Value>>(&format!("[{list}")).ok()?,
+        ))
+    });
+    let Some((head, items)) = parsed else {
+        return error.to_owned();
+    };
+    let issues: Vec<String> = items
+        .iter()
+        .map(|item| format!("{} {}", text(item, "pointer"), text(item, "message")))
+        .collect();
+    format!("{head}: {}", issues.join("; "))
+}
+
 /// `blocked: <why>` for a blocked entry: the latest failure message or budget exhaustion scoped to
 /// it since it last ran, so clients show the reason (it was only in `nosh logs`).
 fn blocker(events: &[Value], kind: &str, entry: &Value) -> String {
@@ -110,7 +128,7 @@ fn blocker(events: &[Value], kind: &str, entry: &Value) -> String {
                         .and_then(|value| {
                             value["error"]
                                 .as_str()
-                                .map(|error| format!("{head}: {error}"))
+                                .map(|error| format!("{head}: {}", issues(error)))
                         })
                         .unwrap_or_else(|| message.to_owned()),
                     None => message.to_owned(),
