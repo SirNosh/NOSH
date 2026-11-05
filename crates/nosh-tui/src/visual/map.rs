@@ -14,7 +14,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use regex::Regex;
 
-use crate::js::{JsValue, length};
+use crate::js::{JsValue, js_number, length, number_string};
 use crate::map_graph::{
     GraphBox, GraphDetail, GraphDirection, GraphLayout, box_at, layout_graph, move_selection,
     shrink_graph, suggested_command,
@@ -35,9 +35,10 @@ pub const ZOOMS: [(&str, GraphDetail, usize); 5] = [
     ("12%", GraphDetail::Normal, 8),
 ];
 
-/// `/(\d\.\d{5})\d+/g` of the facts line.
+/// A long decimal in the facts line, shown to 4 significant figures as the boxes show it (the TS
+/// `/(\d\.\d{5})\d+/g` cut it instead, so the two disagreed in the last digit).
 static DIGITS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"([0-9]\.[0-9]{5})[0-9]+").expect("valid digits pattern"));
+    LazyLock::new(|| Regex::new(r"[0-9]+\.[0-9]{5,}").expect("valid digits pattern"));
 
 /// A mouse drag in progress, in canvas cells, with the view origin it started from.
 #[derive(Clone, Copy, Debug)]
@@ -338,7 +339,12 @@ impl ResearchMap {
             },
             text(node.get("state"), 40),
             DIGITS
-                .replace_all(&text(node.get("detail"), 200), "$1")
+                .replace_all(
+                    &text(node.get("detail"), 200),
+                    |found: &regex::Captures<'_>| {
+                        number_string(nosh_wire::js::to_precision_number(js_number(&found[0]), 4))
+                    },
+                )
                 .into_owned(),
             text(node.get("id"), 80),
             under,
