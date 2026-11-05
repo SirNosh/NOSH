@@ -342,7 +342,9 @@ impl<'a> Builder<'a> {
         placed
     }
 
-    fn node_tree(&self, scope_id: &str, nodes: &[Value]) -> Vec<Value> {
+    /// `ended`: the Mission or Direction itself is finished, so a node it left mid-work shows as
+    /// stopped rather than working (its stored state is never transitioned).
+    fn node_tree(&self, scope_id: &str, nodes: &[Value], ended: bool) -> Vec<Value> {
         nodes
             .iter()
             .take(MAX_CHILDREN)
@@ -355,7 +357,7 @@ impl<'a> Builder<'a> {
                     .get("attempt")
                     .and_then(Value::as_f64)
                     .unwrap_or(f64::NAN);
-                let state = text(node, "state");
+                let mut state = text(node, "state");
                 let attempts = if attempt > 1.0 || state == "failed" || state == "blocked" {
                     format!(
                         "attempt {}/{}",
@@ -366,6 +368,11 @@ impl<'a> Builder<'a> {
                     String::new()
                 };
                 let detail = joined(&[text(node, "type").replace('_', " "), attempts]);
+                if ended
+                    && ["leased", "working", "postflight", "reviewing"].contains(&state.as_str())
+                {
+                    state = format!("stopped (was {state})");
+                }
                 let mut tree = leaf(
                     "node",
                     &text(node, "id"),
@@ -510,7 +517,7 @@ impl<'a> Builder<'a> {
     fn direction_node(&self, direction: &Value) -> Value {
         let id = text(direction, "entityId");
         let nodes = nodes_of(direction);
-        let mut children = self.node_tree(&id, &nodes);
+        let mut children = self.node_tree(&id, &nodes, ended(direction));
         // Autoresearch with no (resolvable) spawning node keeps the flat placement under its
         // Direction.
         let executions: Vec<(bool, &Value)> = self
@@ -562,6 +569,12 @@ fn mission_report(input: &ResearchMapInput<'_>, mission: &Value) -> Option<Value
         .map(|criterion| json!({ "statement": criterion["statement"], "status": criterion["status"] }))
         .collect();
     Some(json!({ "criteria": criteria, "budget": packet["budgetReconciliation"] }))
+}
+
+/// A Mission or Direction no longer running its graph.
+fn ended(entry: &Value) -> bool {
+    ["stopped", "completed", "failed", "closed", "rejected"]
+        .contains(&text(entry, "state").as_str())
 }
 
 /// A Mission or Direction with its node progress and projection version.
@@ -654,7 +667,7 @@ pub fn build_research_map(input: &ResearchMapInput<'_>) -> Value {
     for mission in input.missions {
         let id = text(mission, "entityId");
         let nodes = nodes_of(mission);
-        let mut children = builder.node_tree(&id, &nodes);
+        let mut children = builder.node_tree(&id, &nodes, ended(mission));
         // Directions opened under the Mission without a spawning node, and Mission-scoped
         // children whose node is gone.
         let owned: Vec<(bool, &Value)> = spawnable
