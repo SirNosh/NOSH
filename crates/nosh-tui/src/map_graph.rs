@@ -26,7 +26,7 @@ use regex::Regex;
 
 use crate::js::{
     JsObject, JsValue, js_collapse_ws, js_number, js_trim, last_index_of_char, length,
-    number_string, slice_range, slice_to, to_number, truthy,
+    number_string, slice_from_end, slice_range, slice_to, to_number, truthy,
 };
 use crate::mermaid_ascii;
 use crate::view_model::{
@@ -235,6 +235,7 @@ fn number(root: &JsObject, detail: GraphDetail) -> (Vec<Entry<'_>>, String) {
         entries: Vec::new(),
         source: vec!["flowchart TD".to_owned()],
         detail,
+        titles: HashMap::new(),
     };
     builder.visit(root, None, None);
     (builder.entries, builder.source.join("\n"))
@@ -244,6 +245,8 @@ struct Builder<'a> {
     entries: Vec<Entry<'a>>,
     source: Vec<String>,
     detail: GraphDetail,
+    /// Each box title shown so far, with the whole title it was cut from.
+    titles: HashMap<String, String>,
 }
 
 impl<'a> Builder<'a> {
@@ -290,7 +293,19 @@ impl<'a> Builder<'a> {
         let parts: Vec<String> = parts.into_iter().filter(|part| !part.is_empty()).collect();
         // Never empty: the glyph survives `cell`.
         let status = cell_str(&parts.join(" · "), if opens { width + 8 } else { width });
-        let mut title = title(&cell(node.get("title"), 400), width, lines);
+        let whole = cell(node.get("title"), 400);
+        // A near-identical question cuts to the same box text; the later box then ends with its own
+        // tail, where the two differ.
+        let tail = format!(
+            "{}<br>…{}",
+            title(&whole, width, lines - 1),
+            js_trim(&slice_from_end(&whole, width - 1))
+        );
+        let mut title = title(&whole, width, lines);
+        if self.titles.get(&title).is_some_and(|first| *first != whole) {
+            title = tail;
+        }
+        self.titles.entry(title.clone()).or_insert(whole);
         if title.is_empty() {
             title = cell(node.get("id"), LABEL);
         }
