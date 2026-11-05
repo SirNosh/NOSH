@@ -142,11 +142,19 @@ impl Cli {
             },
         ));
         let model = config.get("defaultModel");
+        // With no NOSH default, sessions use Pi's own default (as `nosh model` says), which needs
+        // only a connected account.
         checks.push(check(
             "Default model",
-            js::truthy(model),
+            js::truthy(model) || !accounts.is_empty(),
             &match model {
-                None | Some(Value::Null) => "none; run nosh model set <provider/id:level>".into(),
+                None | Some(Value::Null) if accounts.is_empty() => {
+                    "none; run nosh model set <provider/id:level>".into()
+                }
+                None | Some(Value::Null) => {
+                    "none; Pi's global default applies (choose one with nosh model set <provider/id:level>)"
+                        .into()
+                }
                 model => js::string(model),
             },
         ));
