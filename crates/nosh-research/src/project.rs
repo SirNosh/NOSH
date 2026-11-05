@@ -268,6 +268,19 @@ pub fn initialize_research_project(
         .filter(|t| !t.is_empty())
         .map_or(base_name, str::to_owned);
     initialize_paper_workspace(&root, &working_title)?;
+    let database_path = resolve(input.data_directory)?
+        .join("projects")
+        .join(&project_id)
+        .join("nosh.sqlite");
+    // Reopening an initialized Project keeps its files: rewriting them put the active contract back
+    // to the v1 placeholder and left the repository dirty.
+    if read_project_contract(&root).is_ok() {
+        return Ok(InitializedProject {
+            project_id,
+            repository_root: root,
+            database_path,
+        });
+    }
     let contract = validate_record(
         PROJECT_CONTRACT,
         &json!({ "$schema": PROJECT_CONTRACT, "schemaVersion": 1, "templateVersion": "1.0.0", "projectId": project_id, "contractVersion": 1, "workingTitle": working_title, "domainTags": [],
@@ -278,10 +291,6 @@ pub fn initialize_research_project(
             "policies": { "network": "network_user.approved", "privacy": "privacy_local.first", "publication": "publication_user.approved", "protectedPaths": [".git", ".nosh"] },
             "canonicalDefaultBranch": branch, "createdBy": "user", "createdAt": now, "approvedAt": null }),
     )?;
-    let database_path = resolve(input.data_directory)?
-        .join("projects")
-        .join(&project_id)
-        .join("nosh.sqlite");
     write_atomic(&nosh.join("contracts").join("project.v1.json"), &contract)?;
     let project_root = validate_record(
         PROJECT_ROOT,
