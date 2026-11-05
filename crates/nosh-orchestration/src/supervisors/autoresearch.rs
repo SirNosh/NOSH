@@ -194,6 +194,11 @@ impl<H: Host + 'static> AutoresearchSupervisor<H> {
             .deps
             .research
             .autoresearch_execution(&project_id, autoresearch_id)?;
+        // `tick` awaits each run in turn, so a run it listed as running may have finished during an
+        // earlier run's cycle; advancing it re-applied its completion and logged a false error.
+        if current["state"] != "running" {
+            return Ok(());
+        }
         let value = &current["value"];
         if let Some(runtime) = &self.deps.runtime
             && runtime.has_active_fork(
