@@ -69,6 +69,71 @@ fn nodes_of(entry: &Value) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+/// `blocked: <why>` for a blocked entry: the latest failure message or budget exhaustion scoped to
+/// it since it last ran, so clients show the reason (it was only in `nosh logs`).
+fn blocker(events: &[Value], kind: &str, entry: &Value) -> String {
+    if text(entry, "state") != "blocked" {
+        return String::new();
+    }
+    let id = text(entry, "entityId");
+    let (key, inner, ran): (&str, &[&str], &str) = match kind {
+        "mission" => (
+            "missionId",
+            &["directionId", "autoresearchId"],
+            "mission.running",
+        ),
+        "direction" => ("directionId", &["autoresearchId"], "direction.active"),
+        _ => ("autoresearchId", &[], "autoresearch.running"),
+    };
+    let reason = events
+        .iter()
+        .rev()
+        .filter(|event| {
+            event
+                .pointer(&format!("/scope/{key}"))
+                .and_then(Value::as_str)
+                == Some(id.as_str())
+                && inner
+                    .iter()
+                    .all(|inner| !truthy(event.pointer(&format!("/scope/{inner}"))))
+        })
+        .take_while(|event| event["type"] != ran)
+        .find_map(|event| {
+            let event_type = text(event, "type");
+            let payload = &event["payload"];
+            if event_type.ends_with("_error") || event_type.ends_with("_failed") {
+                let message = payload["message"].as_str()?;
+                // "Terminal output rejected: {…}" carries the reason in its JSON `error`.
+                Some(match message.split_once(": {") {
+                    Some((head, rest)) => serde_json::from_str::<Value>(&format!("{{{rest}"))
+                        .ok()
+                        .and_then(|value| {
+                            value["error"]
+                                .as_str()
+                                .map(|error| format!("{head}: {error}"))
+                        })
+                        .unwrap_or_else(|| message.to_owned()),
+                    None => message.to_owned(),
+                })
+            } else if event_type == "autoresearch.budget_exhausted" {
+                let exhausted: Vec<String> = payload["exhausted"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|item| string(Some(item)).replace('_', " "))
+                    .collect();
+                Some(format!("budget exhausted ({})", exhausted.join(", ")))
+            } else if payload["disposition"] == "attempt_budget_exhausted" {
+                Some("a graph node used all its attempts".into())
+            } else {
+                None
+            }
+        });
+    reason.map_or_else(String::new, |reason| {
+        format!("blocked: {}", nosh_wire::js::slice_to(&reason, 160))
+    })
+}
+
 fn worker_node(agent: &Value) -> Value {
     let model = if truthy(agent.get("modelId")) {
         let thinking = if truthy(agent.get("thinkingLevel")) {
@@ -416,6 +481,7 @@ impl<'a> Builder<'a> {
             baseline
                 .map(|baseline| format!("baseline {}", number_string(baseline)))
                 .unwrap_or_default(),
+            blocker(self.input.events, "autoresearch", execution),
         ]);
         children.extend(self.jobs_where(|job| {
             job.get("autoresearchId").and_then(Value::as_str) == Some(id.as_str())
@@ -464,8 +530,38 @@ impl<'a> Builder<'a> {
             job.get("directionId").and_then(Value::as_str) == Some(id.as_str())
                 && !truthy(job.get("autoresearchId"))
         }));
-        graph_root("direction", direction, "question", &nodes, children)
+        let mut root = graph_root("direction", direction, "question", &nodes, children);
+        root["detail"] = json!(joined(&[
+            text(&root, "detail"),
+            blocker(self.input.events, "direction", direction)
+        ]));
+        root
     }
+}
+
+/// A completed Mission's final report from its completion packet: each success criterion with its
+/// status, and the budget it used. `None` before completion.
+fn mission_report(input: &ResearchMapInput<'_>, mission: &Value) -> Option<Value> {
+    if text(mission, "state") != "completed" {
+        return None;
+    }
+    let id = text(mission, "entityId");
+    let packet = input
+        .submitted
+        .iter()
+        .rev()
+        .map(|(_, record)| record)
+        .find(|record| {
+            record["$schema"] == "https://nosh.dev/schemas/mission-completion-packet/v1"
+                && record["missionId"] == id.as_str()
+        })?;
+    let criteria: Vec<Value> = packet["criteria"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|criterion| json!({ "statement": criterion["statement"], "status": criterion["status"] }))
+        .collect();
+    Some(json!({ "criteria": criteria, "budget": packet["budgetReconciliation"] }))
 }
 
 /// A Mission or Direction with its node progress and projection version.
@@ -579,7 +675,22 @@ pub fn build_research_map(input: &ResearchMapInput<'_>) -> Value {
                 && !truthy(job.get("directionId"))
                 && !truthy(job.get("autoresearchId"))
         }));
-        roots.push(graph_root("mission", mission, "title", &nodes, children));
+        let mut root = graph_root("mission", mission, "title", &nodes, children);
+        let report = mission_report(input, mission);
+        let passed = report.as_ref().map_or_else(String::new, |report| {
+            let criteria = report["criteria"].as_array().map_or(&[][..], Vec::as_slice);
+            let pass = criteria.iter().filter(|c| c["status"] == "pass").count();
+            format!("{pass}/{} criteria passed", criteria.len())
+        });
+        root["detail"] = json!(joined(&[
+            text(&root, "detail"),
+            passed,
+            blocker(input.events, "mission", mission)
+        ]));
+        if let Some(report) = report {
+            root["report"] = report;
+        }
+        roots.push(root);
     }
     for direction in input.directions {
         if !builder

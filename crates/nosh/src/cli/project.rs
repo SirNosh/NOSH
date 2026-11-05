@@ -162,6 +162,43 @@ impl Cli {
             show(&["mission", "value", "graphVersion"]),
             show(&["mission", "value", "updatedAt"])
         ));
+        // Why it is blocked, or what it concluded: the research map derives both.
+        let map = self.api(
+            config,
+            Method::GET,
+            &format!("/research-map?projectId={}", encode_uri_component(&project)),
+            None,
+        );
+        let root = map.ok().and_then(|map| {
+            map["roots"]
+                .as_array()?
+                .iter()
+                .find(|root| root["id"] == mission_id)
+                .cloned()
+        });
+        if let Some(root) = root {
+            if let Some((_, reason)) = js::string(root.get("detail")).split_once("blocked: ") {
+                out(&format!("blocked: {reason}\n"));
+            }
+            let report = &root["report"];
+            if let Some(criteria) = report["criteria"].as_array() {
+                out("criteria:\n");
+                for criterion in criteria {
+                    out(&format!(
+                        "  {}\t{}\n",
+                        js::string(criterion.get("status")),
+                        js::string(criterion.get("statement"))
+                    ));
+                }
+                let budget = |key: &str| js::string(report["budget"].get(key));
+                out(&format!(
+                    "budget: {} model tokens, {} s wall clock, {} GPU s\n",
+                    budget("modelTokens"),
+                    budget("wallClockSeconds"),
+                    budget("gpuSeconds")
+                ));
+            }
+        }
         Ok(())
     }
 
