@@ -358,13 +358,16 @@ const SCOPE_FIELDS: [&str; 6] = [
     "jobId",
 ];
 
-fn issues_json(issues: &[nosh_wire::Issue]) -> String {
+/// Each pointer names its place in the terminal output (`/records/0/schemaVersion`), so a
+/// correction fixes that record rather than the envelope, which shares some field names.
+/// Rust-only: daemon.ts gives them relative to the record.
+fn issues_json(index: usize, issues: &[nosh_wire::Issue]) -> String {
     let items: Vec<String> = issues
         .iter()
         .map(|issue| {
             format!(
                 "{{\"pointer\":{},\"code\":{},\"message\":{}}}",
-                json!(issue.pointer),
+                json!(format!("/records/{index}{}", issue.pointer)),
                 json!(issue.code),
                 json!(issue.message)
             )
@@ -420,7 +423,7 @@ impl JournalHost for Rc<NoshDaemon> {
         }
         let session = serde_json::to_value(&agent).unwrap_or(Value::Null);
         let (mut terminals, mut episodes) = (0, 0);
-        for record in records {
+        for (index, record) in records.iter().enumerate() {
             let schema = string(record.get("$schema"));
             let tool = TERMINAL_SCHEMA_TOOLS
                 .iter()
@@ -431,7 +434,10 @@ impl JournalHost for Rc<NoshDaemon> {
                 return rejected("Terminal schema is outside the host tool contract");
             }
             let parsed = nosh_wire::validate_record(&schema, record).map_err(|issues| {
-                Error::Rejected(format!("Invalid terminal record: {}", issues_json(&issues)))
+                Error::Rejected(format!(
+                    "Invalid terminal record: {}",
+                    issues_json(index, &issues)
+                ))
             })?;
             if let Some((_, message)) = super::submit::submission_scope_error(
                 record,
