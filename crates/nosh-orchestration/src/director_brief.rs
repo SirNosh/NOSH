@@ -607,9 +607,30 @@ pub fn direction_brief<H: Host>(
     if evidence.is_empty() {
         sections.push("- none yet".to_owned());
     } else {
+        // Each line names the Autoresearch and hypothesis it came from: this list spans every
+        // Autoresearch under the contract, and a bare statement was read as this Direction's own
+        // result. Rust-only: apps/noshd/src/director-brief.ts lists the statement alone.
+        let tested: Vec<Value> = research.records(&project_id, Some("experiment-manifest"))?;
         sections.extend(last_n(&evidence, MAX_ITEMS).iter().map(|record| {
+            let source = record["sourceRefs"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|reference| reference["refType"] == "source_experiment")
+                .and_then(|reference| {
+                    tested
+                        .iter()
+                        .rfind(|manifest| manifest["experimentId"] == reference["refId"])
+                });
+            let origin = source.map_or(String::new(), |manifest| {
+                format!(
+                    " (from {}, which tested: {})",
+                    string(manifest.get("autoresearchId")),
+                    clip(&manifest["hypothesis"], 160)
+                )
+            });
             format!(
-                "- {} {}: {}",
+                "- {} {}: {}{origin}",
                 string(record.get("evidenceId")),
                 string(record.get("polarity")),
                 clip(&record["statement"], 160)
