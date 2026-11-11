@@ -74,6 +74,7 @@ struct Subscription<S, D> {
     transient: RefCell<VecDeque<String>>,
     transient_bytes: Cell<usize>,
     wake: Notify,
+    stopping: Notify,
     listener: Cell<Option<u64>>,
 }
 
@@ -87,21 +88,16 @@ impl<S: EventSocket + 'static, D: EventSource + 'static> Subscription<S, D> {
         self.wake.notify_one();
     }
 
-    /// Closes with `code`, and drops the connection if the closing handshake has not finished a
-    /// second later.
+    /// Closes with `code`; `watch` drops the connection if the closing handshake has not finished
+    /// a second later. Spawns nothing: `deliver` calls this from the fan-out, which the Pi
+    /// adapter's own tasks run outside the daemon's `LocalSet`.
     fn stop(&self, code: u16, reason: &str) {
         if self.stopped.replace(true) {
             return;
         }
         self.release();
         self.socket.close(code, reason);
-        let socket = Rc::clone(&self.socket);
-        tokio::task::spawn_local(async move {
-            tokio::select! {
-                () = tokio::time::sleep(Duration::from_secs(1)) => socket.terminate(),
-                _ = socket.closed() => {}
-            }
-        });
+        self.stopping.notify_one();
     }
 
     /// A stored event reached the daemon's fan-out.
@@ -173,12 +169,20 @@ impl<S: EventSocket + 'static, D: EventSource + 'static> Subscription<S, D> {
     }
 
     async fn watch(self: Rc<Self>) {
-        match self.socket.closed().await {
-            Ok(()) => {
-                self.stopped.set(true);
-                self.release();
+        tokio::select! {
+            closed = self.socket.closed() => match closed {
+                Ok(()) => {
+                    self.stopped.set(true);
+                    self.release();
+                }
+                Err(_) => self.stop(1011, "Socket failed; reconnect from last received cursor"),
+            },
+            () = self.stopping.notified() => {
+                let closing = tokio::time::timeout(Duration::from_secs(1), self.socket.closed());
+                if closing.await.is_err() {
+                    self.socket.terminate();
+                }
             }
-            Err(_) => self.stop(1011, "Socket failed; reconnect from last received cursor"),
         }
     }
 }
@@ -200,6 +204,7 @@ pub fn subscribe<S: EventSocket + 'static, D: EventSource + 'static>(
         transient: RefCell::new(VecDeque::new()),
         transient_bytes: Cell::new(0),
         wake: Notify::new(),
+        stopping: Notify::new(),
         listener: Cell::new(None),
     });
     let weak: Weak<Subscription<S, D>> = Rc::downgrade(&subscription);

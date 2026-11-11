@@ -226,25 +226,33 @@ fn streams_ordered_durable_pages_and_resumes_strictly_after_the_received_cursor(
 
 #[test]
 fn closes_overflowing_transient_queues_explicitly_and_removes_the_listener() {
-    local(async {
-        let source = FakeSource::with_history(0);
-        let socket = FakeSocket::new(Sends::Hold, None);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let set = tokio::task::LocalSet::new();
+    let source = FakeSource::with_history(0);
+    let socket = FakeSocket::new(Sends::Hold, None);
+    set.block_on(&runtime, async {
         subscribe(Rc::clone(&socket), Rc::clone(&source), "prj_test", 0);
-        for _ in 0..305 {
-            source.emit(
-                &json!({ "scope": { "projectId": "prj_test" }, "sequence": null, "payload": "x" }),
-            );
-        }
-        assert_eq!(socket.code.get(), 1013);
-        assert!(socket.reason.borrow().contains("last received cursor"));
-        assert_eq!(source.listener_count(), 0);
+    });
+    // Published outside the `LocalSet`, as the Pi adapter's tasks publish agent events.
+    for _ in 0..305 {
+        source.emit(
+            &json!({ "scope": { "projectId": "prj_test" }, "sequence": null, "payload": "x" }),
+        );
+    }
+    assert_eq!(socket.code.get(), 1013);
+    assert!(socket.reason.borrow().contains("last received cursor"));
+    assert_eq!(source.listener_count(), 0);
+    set.block_on(&runtime, async {
         // The closing handshake never completes, so the connection is dropped a second later.
         tokio::time::timeout(Duration::from_secs(3), socket.closed())
             .await
             .unwrap()
             .unwrap();
-        assert!(socket.terminated.get());
     });
+    assert!(socket.terminated.get());
 }
 
 #[test]

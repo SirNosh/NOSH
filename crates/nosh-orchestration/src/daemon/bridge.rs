@@ -2,7 +2,8 @@
 //! callbacks and the Job supervisor's watcher threads are `Send`; daemon state is `Rc`. A callback
 //! runs at once when it arrives on the daemon's own thread (an event emitted from the adapter's
 //! tasks, which share the daemon's runtime, keeps the order TypeScript's synchronous `appendDraft`
-//! gives it), and is otherwise posted to the daemon's mailbox.
+//! gives it), and is otherwise posted to the daemon's mailbox. Such an adapter task is outside the
+//! daemon's `LocalSet`, so nothing a callback runs at once may `spawn_local`.
 
 use super::NoshDaemon;
 use futures_util::future::LocalBoxFuture;
