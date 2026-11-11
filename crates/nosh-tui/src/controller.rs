@@ -461,8 +461,13 @@ fn fs_error(error: &io::Error, path: &str, write: bool) -> String {
             "EISDIR: illegal operation on a directory, read".into()
         };
     }
+    // libuv reports Windows' invalid-name errors (ERROR_INVALID_NAME, ERROR_BAD_PATHNAME: a path
+    // holding `"`, `|` or `<`, as inline JSON given for a file path does) as ENOENT too.
+    let invalid_name = cfg!(windows) && matches!(error.raw_os_error(), Some(123 | 161));
     match error.kind() {
-        io::ErrorKind::NotFound => format!("ENOENT: no such file or directory, open '{shown}'"),
+        kind if kind == io::ErrorKind::NotFound || invalid_name => {
+            format!("ENOENT: no such file or directory, open '{shown}'")
+        }
         io::ErrorKind::PermissionDenied if cfg!(windows) => {
             format!("EPERM: operation not permitted, open '{shown}'")
         }
