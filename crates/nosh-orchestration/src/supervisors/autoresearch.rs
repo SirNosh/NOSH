@@ -2442,7 +2442,9 @@ fn proposal_brief(input: &Brief<'_>) -> String {
     } else {
         lines.extend(scope_snapshot(&root, input.parent_commit, &scope, 8, 6_000));
     }
-    lines.push("You cannot read files or run commands; the daemon implements the change in an isolated worktree, runs the frozen evaluation as a Job, and reviews the result. Choose a change inside every bound above that is likely to improve the primary metric without violating a guardrail, and that differs from every prior proposal.".to_owned());
+    // Rust-only: the inert-change sentence (apps/noshd/src/autoresearch-supervisor.ts ends at
+    // "every prior proposal"). Proposers kept choosing changes the configuration cancels.
+    lines.push("You cannot read files or run commands; the daemon implements the change in an isolated worktree, runs the frozen evaluation as a Job, and reviews the result. Choose a change inside every bound above that is likely to improve the primary metric without violating a guardrail, and that differs from every prior proposal. It must be able to change what the evaluation measures under the settings the evaluation runs with: a change those settings make inert scores exactly like its parent and wastes an experiment.".to_owned());
     lines.push(format!("Your final answer must be exactly this JSON envelope: the {} (schema: {}) and your episode-draft. Copy it, keep every key, bracket, and non-EDIT value, and replace each \"EDIT: ...\" string; guardrailRisks and unresolvedQuestions are lists of plain strings; leave the episode's recommendedNextActions empty (the director plans next actions).", schema_uri("experiment-proposal"), schema_document_path(input.schema_dir, "experiment-proposal").display()));
     lines.push(terminal_envelope(&template, "general_worker"));
     lines.join("\n")
