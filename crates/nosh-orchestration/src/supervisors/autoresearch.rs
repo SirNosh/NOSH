@@ -1527,7 +1527,13 @@ impl<H: Host + 'static> AutoresearchSupervisor<H> {
                 target_id: autoresearch_id.clone(),
                 target_version: version(execution),
                 criterion_id: format!("criterion_{}", from(&autoresearch_id, 3)),
-                statement: question.clone(),
+                // Rust-only: autoresearch-supervisor.ts states the bare decision question, which a
+                // reviewer read as the hypothesis itself and so failed a correct negative closure.
+                // This is the fidelity wording direction-supervisor.ts gives its closure Review.
+                statement: format!(
+                    "Closure fidelity for the decision question \"{}\": the terminal reason, frontier, and answer follow from the recorded results under the frozen contract and its guardrails. An honestly inconclusive or refuted answer passes; an overstated, understated, or unsupported one fails.",
+                    slice_to(&question, 600)
+                ),
                 artifacts: vec![synthesis_id.clone()],
                 evidence: evidence_ids.clone(),
             },
