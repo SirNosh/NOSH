@@ -109,6 +109,9 @@ fn envelope(records: Value) -> String {
         .unwrap()
 }
 
+/// A key repeated with an identical value, which Rust accepts and TypeScript rejects.
+const IDENTICAL_REPEAT: &str = r#""schemaVersion":1,"schemaVersion":1"#;
+
 fn terminal_cases() -> Vec<(String, Value)> {
     let failure =
         json!({ "$schema": "https://nosh.dev/schemas/task-failure/v1", "schemaVersion": 1 });
@@ -134,8 +137,9 @@ fn terminal_cases() -> Vec<(String, Value)> {
         format!("{text}{text}"),
         text.replace(
             r#""schemaVersion":1"#,
-            r#""schemaVersion":1,"schemaVersion":1"#,
+            r#""schemaVersion":1,"schemaVersion":2"#,
         ),
+        text.replace(r#""schemaVersion":1"#, IDENTICAL_REPEAT),
         text.replace("task-failure", "runtime-instruction"),
         format!("{}{text}", " ".repeat(131_072)),
         text.clone(),
@@ -506,12 +510,29 @@ fn policy_and_text_match_typescript() {
         ops.push(json!({ "value": name }));
     }
     ops.extend(workspace_ops(temp.path()));
-    let expected = run_typescript(&ops);
-    assert_eq!(expected.len(), ops.len());
+    let results = run_typescript(&ops);
+    assert_eq!(results.len(), ops.len());
     let mut mismatches = Vec::new();
     let mut per_kind: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
-    for (op, expected) in ops.iter().zip(&expected) {
+    for (op, expected) in ops.iter().zip(&results) {
         let actual = rust(op);
+        // Deliberate divergence: a key repeated with an identical value is accepted, so Rust
+        // answers as TypeScript does for the same text without the repeat (pi-adapter
+        // terminal-output.ts:36 rejects every repeated key).
+        let expected = match op["terminal"][0]
+            .as_str()
+            .filter(|text| text.contains(IDENTICAL_REPEAT))
+        {
+            Some(text) => {
+                let clean = json!({ "terminal": [text.replace(IDENTICAL_REPEAT, r#""schemaVersion":1"#), op["terminal"][1]] });
+                let position = ops
+                    .iter()
+                    .position(|other| *other == clean)
+                    .expect("the op without the repeat");
+                &results[position]
+            }
+            None => expected,
+        };
         // Deliberate divergence: Rust names the duplicated key, which must occur twice in the
         // input, and its object (TypeScript: pi-adapter terminal-output.ts:36 says only
         // "Duplicate JSON object key").

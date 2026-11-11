@@ -120,7 +120,8 @@ static TOKENS: LazyLock<regex::Regex> = LazyLock::new(|| {
     .expect("token pattern compiles")
 });
 
-/// Reject duplicate keys rather than accepting `JSON.parse`'s last-key-wins ambiguity.
+/// Reject a repeated key whose value differs, rather than accepting `JSON.parse`'s last-key-wins
+/// ambiguity.
 fn assert_unique_keys(text: &str) -> Result<(), TerminalError> {
     let tokens: Vec<&str> = TOKENS.find_iter(text).map(|token| token.as_str()).collect();
     let mut index = 0;
@@ -137,33 +138,44 @@ fn value(tokens: &[&str], index: &mut usize, path: &str) -> Result<(), TerminalE
     *index += 1;
     match token {
         Some("{") => {
-            let mut keys = std::collections::HashSet::new();
+            // Each key's value as its token span.
+            let mut keys: std::collections::HashMap<String, std::ops::Range<usize>> =
+                std::collections::HashMap::new();
             while tokens.get(*index).copied() != Some("}") {
                 let key = js_json::parse(tokens.get(*index).copied().unwrap_or("undefined"))
                     .map_err(TerminalError::Syntax)?;
                 *index += 1;
                 let key = key.as_str().unwrap_or_default();
-                if !keys.insert(key.to_owned()) {
-                    // Named with its object, so the one correction turn removes just that repeat:
-                    // models repeat an envelope's `schemaVersion`; told only "duplicate key" they
-                    // repeated it again, told only the key they also dropped it from a record.
-                    let object = if path.is_empty() {
-                        "the top-level object".to_owned()
-                    } else {
-                        format!("the object at {path}")
-                    };
-                    return Err(TerminalError::Invalid(format!(
-                        "Duplicate JSON object key {} in {object}; remove only that repeat, other objects keep theirs",
-                        serde_json::to_string(key).unwrap_or_default()
-                    )));
-                }
                 let colon = tokens.get(*index).copied();
                 *index += 1;
                 if colon != Some(":") {
                     return invalid("Invalid JSON object");
                 }
                 let pointer = key.replace('~', "~0").replace('/', "~1");
+                let start = *index;
                 value(tokens, index, &format!("{path}/{pointer}"))?;
+                match keys.get(key) {
+                    None => {
+                        keys.insert(key.to_owned(), start..*index);
+                    }
+                    // A repeat with exactly the first value's tokens is no ambiguity. Models
+                    // repeat an envelope's `schemaVersion`, and told of it they also dropped the
+                    // records' own, which no wording of the error prevented. Rust-only:
+                    // pi-adapter terminal-output.ts rejects every repeated key.
+                    Some(first) if tokens[first.clone()] == tokens[start..*index] => {}
+                    Some(_) => {
+                        // Named with its object, so the one correction removes just that repeat.
+                        let object = if path.is_empty() {
+                            "the top-level object".to_owned()
+                        } else {
+                            format!("the object at {path}")
+                        };
+                        return Err(TerminalError::Invalid(format!(
+                            "Duplicate JSON object key {} in {object}; remove only that repeat, other objects keep theirs",
+                            serde_json::to_string(key).unwrap_or_default()
+                        )));
+                    }
+                }
                 if tokens.get(*index).copied() != Some(",") {
                     break;
                 }
