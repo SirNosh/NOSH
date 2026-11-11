@@ -963,8 +963,10 @@ fn implements_first_minimum_count_and_deadline_joins_without_returning_a_stale_e
         let minimum = rt.execute(&base(project_id, json!({ "operation": "THREAD_AWAIT", "threadIds": both, "policy": "minimum_count", "minimumCount": 1, "deadline": null }))).await.unwrap();
         assert_eq!(minimum["episodeIds"], json!([ready_episode]));
         slow_run.await.unwrap();
-        let second_slow_run = rt.execute(&step(project_id, &slow["threadId"], "new slow result"));
+        // Taken before the step starts, so a stall between the two cannot let the step finish
+        // before its deadline.
         let deadline = nosh_wire::iso_from_ms(time_ms() + 10.0).unwrap();
+        let second_slow_run = rt.execute(&step(project_id, &slow["threadId"], "new slow result"));
         let timed = rt.execute(&base(project_id, json!({ "operation": "THREAD_AWAIT", "threadIds": [slow["threadId"]], "policy": "deadline", "minimumCount": null, "deadline": deadline }))).await.unwrap();
         assert_eq!(timed["episodeIds"], json!([]));
         second_slow_run.await.unwrap();
@@ -988,6 +990,27 @@ fn a_deadline_join_ignores_a_step_that_finished_after_its_deadline_when_both_com
         // Both timers come due in one jump.
         tokio::time::advance(Duration::from_millis(100)).await;
         assert_eq!(timed.await.unwrap()["episodeIds"], json!([]));
+        slow_run.await.unwrap();
+    });
+}
+
+/// Rust-only: a deadline join that starts after its deadline (as when its own journal write
+/// stalls past it) returns nothing, though a step's timer came due meanwhile and the driver would
+/// fire it before the join's new timer.
+#[test]
+fn a_deadline_join_that_starts_after_its_deadline_ignores_a_step_that_came_due_meanwhile() {
+    local(async {
+        let fixture = setup();
+        let (rt, project_id) = (&fixture.runtime, fixture.project_id.as_str());
+        let slow = open(project_id, "slow", Overrides::default());
+        rt.execute(&slow).await.unwrap();
+        fixture.sessions.delay.set(50);
+        let deadline = nosh_wire::iso_from_ms(time_ms() + 10.0).unwrap();
+        let slow_run = rt.execute(&step(project_id, &slow["threadId"], "slow result"));
+        // The stall: the step's timer is overdue, and the driver has not run since.
+        std::thread::sleep(Duration::from_millis(70));
+        let timed = rt.execute(&base(project_id, json!({ "operation": "THREAD_AWAIT", "threadIds": [slow["threadId"]], "policy": "deadline", "minimumCount": null, "deadline": deadline }))).await.unwrap();
+        assert_eq!(timed["episodeIds"], json!([]));
         slow_run.await.unwrap();
     });
 }

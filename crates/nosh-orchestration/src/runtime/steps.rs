@@ -469,6 +469,12 @@ impl<H: RuntimeHost + 'static> OrchestrationRuntime<H> {
                         // earlier timer first (`tokio::time::timeout` polls its future first).
                         match all.as_mut().now_or_never() {
                             Some(settled) => settled,
+                            // Already past: a step whose timer came due during a stall (as in
+                            // this instruction's own journal write) finished after the deadline,
+                            // yet the driver would fire its overdue timer before a new one.
+                            // Rust-only: `awaitThreads` in packages/orchestration-runtime races
+                            // the timers, so there the overdue step wins.
+                            None if wait == 0.0 => Vec::new(),
                             None => tokio::select! {
                                 biased;
                                 () = tokio::time::sleep(Duration::from_millis(wait as u64)) => Vec::new(),
