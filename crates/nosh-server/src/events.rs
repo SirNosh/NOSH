@@ -21,8 +21,9 @@ const MAXIMUM_TRANSIENT: usize = 300;
 
 /// The subscriber's connection, as the pump uses a `ws` WebSocket.
 pub trait EventSocket {
-    /// Sends one text message; resolves once it is written (`send`'s callback).
-    fn send(&self, message: String) -> LocalBoxFuture<'_, Result<(), String>>;
+    /// Sends text messages in order; resolves once all are written (`send`'s callback). Rust-only:
+    /// several at once, so a burst costs one write instead of one per message.
+    fn send(&self, messages: Vec<String>) -> LocalBoxFuture<'_, Result<(), String>>;
     /// Starts the closing handshake.
     fn close(&self, code: u16, reason: &str);
     /// Drops the connection without a handshake.
@@ -120,7 +121,7 @@ impl<S: EventSocket + 'static, D: EventSource + 'static> Subscription<S, D> {
         self.wake.notify_one();
     }
 
-    /// Sends durable events in cursor order, then queued transient ones, one at a time.
+    /// Sends durable events in cursor order, then queued transient ones, one send in flight.
     async fn pump(self: Rc<Self>) {
         loop {
             if self.stopped.get() || !self.socket.is_open() {
@@ -130,25 +131,29 @@ impl<S: EventSocket + 'static, D: EventSource + 'static> Subscription<S, D> {
                 self.stop(1011, "Replay failed; reconnect from last received cursor");
                 return;
             };
-            let message = if let Some(event) = &event {
-                stringify(event)
+            // Rust-only: one send takes every queued transient event, not the first. The Pi adapter
+            // publishes a whole pipe read of text deltas at once, while single sends were written
+            // about 64 per scheduler pass (tokio defers the socket's driver task once its
+            // cooperative budget is spent), so a provider's burst overflowed the queue of a client
+            // that kept up. The 300-event cap now counts what queued behind the send in flight, so
+            // up to twice that is held; the byte cap still counts both.
+            let messages = if let Some(event) = &event {
+                vec![stringify(event)]
             } else {
-                let queued = self.transient.borrow_mut().pop_front();
-                let Some(message) = queued else {
+                let queued: Vec<String> = self.transient.borrow_mut().drain(..).collect();
+                if queued.is_empty() {
                     self.wake.notified().await;
                     continue;
-                };
-                self.transient_bytes
-                    .set(self.transient_bytes.get().saturating_sub(message.len()));
-                message
+                }
+                self.transient_bytes.set(0);
+                queued
             };
-            if message.len() + self.socket.buffered_amount() + self.transient_bytes.get()
-                > MAXIMUM_BYTES
-            {
+            let length: usize = messages.iter().map(String::len).sum();
+            if length + self.socket.buffered_amount() + self.transient_bytes.get() > MAXIMUM_BYTES {
                 self.stop(1013, SLOW_CONSUMER);
                 return;
             }
-            match tokio::time::timeout(Duration::from_secs(5), self.socket.send(message)).await {
+            match tokio::time::timeout(Duration::from_secs(5), self.socket.send(messages)).await {
                 Err(_) => {
                     self.stop(1013, SLOW_CONSUMER);
                     return;

@@ -157,17 +157,19 @@ impl FakeSocket {
 }
 
 impl EventSocket for FakeSocket {
-    fn send(&self, message: String) -> LocalBoxFuture<'_, Result<(), String>> {
+    fn send(&self, messages: Vec<String>) -> LocalBoxFuture<'_, Result<(), String>> {
         match self.sends {
             Sends::Hold => return std::future::pending().boxed_local(),
             Sends::Fail => return async { Err("write EPIPE".to_owned()) }.boxed_local(),
             Sends::Deliver => {}
         }
-        let event: Value = serde_json::from_str(&message).unwrap();
-        let last = self.close_after.is_some() && event["sequence"].as_i64() == self.close_after;
-        self.received.borrow_mut().push(event);
-        if last {
-            self.finish();
+        for message in messages {
+            let event: Value = serde_json::from_str(&message).unwrap();
+            let last = self.close_after.is_some() && event["sequence"].as_i64() == self.close_after;
+            self.received.borrow_mut().push(event);
+            if last {
+                self.finish();
+            }
         }
         async { Ok(()) }.boxed_local()
     }
@@ -253,6 +255,76 @@ fn closes_overflowing_transient_queues_explicitly_and_removes_the_listener() {
             .unwrap();
     });
     assert!(socket.terminated.get());
+}
+
+/// Rust-only: the Pi adapter's stdout reader publishes a whole pipe read of text deltas at once,
+/// from outside the `LocalSet`, and reads the next on the blocking pool (tokio's Windows child
+/// stdio). A client that keeps up receives such a burst instead of being dropped as slow.
+#[test]
+fn delivers_bursts_of_pi_text_deltas_to_a_client_that_keeps_up() {
+    local(async {
+        let directory = tempfile::tempdir().unwrap();
+        let repository = directory.path().join("repository");
+        std::fs::create_dir_all(&repository).unwrap();
+        let project_id = create_id(IdPrefix::Prj);
+        let daemon = daemon(&directory.path().join("data"), "burst-bootstrap-token");
+        daemon
+            .register_project(
+                &project_id,
+                &repository,
+                &directory
+                    .path()
+                    .join("data/projects")
+                    .join(&project_id)
+                    .join("nosh.sqlite"),
+            )
+            .unwrap();
+        let scope = json!({ "projectId": project_id, "missionId": null, "directionId": null, "autoresearchId": null, "experimentId": null, "runId": null, "jobId": null, "agentId": create_id(IdPrefix::Agt) });
+        daemon
+            .append_draft(&json!({ "$schema": EVENT_SCHEMA, "schemaVersion": 1, "retention": "persistent", "type": "test.live", "source": "test", "scope": scope, "correlationId": null, "causationId": null, "payload": {} }))
+            .unwrap();
+        let server = LocalApiServer::new(Rc::clone(&daemon));
+        server.listen("127.0.0.1", 0).await.unwrap();
+        let address = server
+            .address()
+            .unwrap()
+            .trim_start_matches("http://")
+            .to_owned();
+        let request = format!("ws://{address}/events?projectId={project_id}&after=0")
+            .into_client_request()
+            .unwrap();
+        let stream = tokio::net::TcpStream::connect(&address).await.unwrap();
+        let (mut socket, _) = tokio_tungstenite::client_async(request, stream)
+            .await
+            .unwrap();
+        // The replayed event shows the subscription is listening.
+        next_sequence(&mut socket).await;
+        let emit = daemon.bridge().emitter();
+        let delta = json!({ "$schema": EVENT_SCHEMA, "schemaVersion": 1, "retention": "ephemeral", "type": "agent.text_delta", "source": "pi", "scope": scope, "correlationId": null, "causationId": null, "payload": { "delta": "1 2 3 " } });
+        tokio::spawn(async move {
+            for _ in 0..40 {
+                for _ in 0..75 {
+                    emit(delta.clone());
+                }
+                tokio::task::spawn_blocking(|| ()).await.unwrap();
+            }
+        });
+        for received in 0..3000 {
+            let message = tokio::time::timeout(Duration::from_secs(5), socket.next())
+                .await
+                .unwrap();
+            assert!(
+                matches!(
+                    message,
+                    Some(Ok(tokio_tungstenite::tungstenite::Message::Text(_)))
+                ),
+                "after {received} deltas: {message:?}"
+            );
+        }
+        drop(socket);
+        server.close().await.unwrap();
+        daemon.stop();
+    });
 }
 
 #[test]

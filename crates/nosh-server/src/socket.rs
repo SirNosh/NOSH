@@ -22,7 +22,7 @@ type Stream = WebSocketStream<TokioIo<Upgraded>>;
 type Outcome = Option<Result<(), String>>;
 
 enum Command {
-    Send(String, oneshot::Sender<Result<(), String>>),
+    Send(Vec<String>, oneshot::Sender<Result<(), String>>),
     Close(Option<(u16, String)>),
 }
 
@@ -67,10 +67,10 @@ impl WebSocketClient {
 }
 
 impl EventSocket for WebSocketClient {
-    fn send(&self, message: String) -> LocalBoxFuture<'_, Result<(), String>> {
+    fn send(&self, messages: Vec<String>) -> LocalBoxFuture<'_, Result<(), String>> {
         let (done, result) = oneshot::channel();
-        let length = message.len();
-        let queued = self.open.get() && self.commands.send(Command::Send(message, done)).is_ok();
+        let length: usize = messages.iter().map(String::len).sum();
+        let queued = self.open.get() && self.commands.send(Command::Send(messages, done)).is_ok();
         if queued {
             self.buffered.set(self.buffered.get() + length);
         }
@@ -140,10 +140,14 @@ impl Driver {
                 () = give_up => return Ok(()),
                 command = commands.recv() => match command {
                     None => return Ok(()),
-                    Some(Command::Send(message, done)) => {
-                        let length = message.len();
+                    Some(Command::Send(messages, done)) => {
+                        let length: usize = messages.iter().map(String::len).sum();
+                        // Buffered by tungstenite and flushed once.
+                        let mut frames = futures_util::stream::iter(
+                            messages.into_iter().map(|message| Ok(Message::text(message))),
+                        );
                         let sent = tokio::select! {
-                            sent = stream.send(Message::text(message)) => sent.map_err(|error| error.to_string()),
+                            sent = stream.send_all(&mut frames) => sent.map_err(|error| error.to_string()),
                             () = self.kill.notified() => return Ok(()),
                         };
                         self.buffered.set(self.buffered.get().saturating_sub(length));
