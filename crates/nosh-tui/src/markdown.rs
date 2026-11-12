@@ -9,18 +9,18 @@
 //!
 //! Prose keeps its source text: each top-level run of prose blocks is parsed again on its own and
 //! every event paints a style over, or conceals, a byte range of that source. Ranges are painted
-//! outer before inner, so the innermost scope wins. Any bracketed prose is a shortcut link (the
-//! broken-link callback accepts every reference), as tree-sitter's inline grammar has it.
+//! outer before inner, so the innermost scope wins.
 //! Deviations, all where CommonMark and tree-sitter-markdown disagree or the native side is not
 //! visible: text blocks drop their trailing blank lines and blocks are always one blank row apart
 //! (the same picture as §6.1's 0-or-1 rule); `~~` delimiters are hidden; the link `]` replacement
-//! does not swallow a following space; code blocks are word-wrapped plain text.
+//! does not swallow a following space; code blocks are word-wrapped plain text. Rust-only:
+//! bracketed text without a link definition keeps its brackets, as CommonMark has it, where
+//! tree-sitter's inline grammar made any `[text]` a shortcut link and hid the brackets of
+//! citations like `[1]` and lists like `[a, b]`.
 
 use std::ops::Range;
 
-use pulldown_cmark::{
-    BrokenLink, CodeBlockKind, CowStr, Event, LinkType, Options, Parser, Tag, TagEnd,
-};
+use pulldown_cmark::{CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
@@ -33,10 +33,9 @@ fn options() -> Options {
     Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS
 }
 
-/// A parser over `source` that resolves every broken reference, with source offsets.
+/// A parser over `source`, with source offsets.
 fn parse(source: &str) -> impl Iterator<Item = (Event<'_>, Range<usize>)> {
-    let accept = |_: BrokenLink| Some((CowStr::Borrowed(""), CowStr::Borrowed("")));
-    Parser::new_with_broken_link_callback(source, options(), Some(accept)).into_offset_iter()
+    Parser::new_ext(source, options()).into_offset_iter()
 }
 
 /// One top-level block of §6.1.
@@ -581,7 +580,7 @@ mod tests {
             text(&lines),
             [
                 "Title",
-                "Some bold and it code, label (https://x) and shortcut.",
+                "Some bold and it code, label (https://x) and [shortcut].",
                 "- item <",
                 "",
                 "let x;",
