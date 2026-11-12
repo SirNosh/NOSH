@@ -22,8 +22,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::js::{
     JsObject, JsValue, date_now, encode_uri_component, is_safe_integer, js_json_parse, js_number,
-    js_split_ws, js_trim, length, number_string, path_resolve, read_text_lossy, strict_equal,
-    string, truthy,
+    js_split_ws, js_trim, length, number_string, path_resolve, read_text_lossy, slice_to,
+    strict_equal, string, truthy,
 };
 use crate::transport::{DaemonApi, StreamState, Subscription};
 use crate::view_model::{
@@ -1476,7 +1476,17 @@ impl Controller {
                 ("agent.text_delta", Some(JsValue::String(delta))) => {
                     let key = format!("draft:{project_id}:{agent_id}");
                     let prior = private.draft(&key).map_or("", |prior| prior.text.as_str());
-                    let body = safe_text_str(&format!("{prior}{delta}"));
+                    // Rust-only: `safeText(prior + delta)` cleaned the whole draft again for every
+                    // delta, too slow for a provider's burst of them. The draft is already clean
+                    // and cleaning works per character or escape sequence, so cleaning the delta
+                    // alone gives the same text (for any delta under 240000 UTF-16 units).
+                    let body = format!("{prior}{}", safe_text_str(delta));
+                    // UTF-8 bytes bound UTF-16 units: only a longer body can need the cut.
+                    let body = if body.len() > 16_000 {
+                        slice_to(&body, 16_000)
+                    } else {
+                        body
+                    };
                     let entry = draft(
                         EntryKind::Assistant,
                         key.clone(),
