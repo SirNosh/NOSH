@@ -433,11 +433,15 @@ fn cli_commands_agree_with_typescript() {
         &["frob", "--x=1"],
         &["logout", "nosuch"],
         &["login"],
-        &["open"],
         &["tui"],
     ] {
         sides.same(args);
     }
+    // Rust-only: without a terminal, `nosh open` names itself where TypeScript says `nosh tui`.
+    let [rust, typescript] = &mut sides.0;
+    let (open, mut expected) = (rust.run(&["open"]), typescript.run(&["open"]));
+    expected.err = expected.err.replace("nosh tui", "nosh open");
+    assert_eq!(open, expected);
     assert_eq!(sides.same(&["stop", "--if-idle"]).code, Some(3));
     assert_eq!(sides.same(&["--if-idle", "stop"]).code, Some(3));
     let listed = sides.same(&["login", "--list"]);

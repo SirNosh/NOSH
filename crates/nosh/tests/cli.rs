@@ -373,7 +373,7 @@ fn routes_words_and_flags_as_typescript_does() {
     let open = nosh(state.path(), &["open"]);
     assert_eq!(
         open.err,
-        "nosh: nosh tui requires an interactive terminal; use nosh help for scripting commands\n"
+        "nosh: nosh open requires an interactive terminal; use nosh help for scripting commands\n"
     );
     let login = nosh(state.path(), &["login"]);
     assert_eq!(

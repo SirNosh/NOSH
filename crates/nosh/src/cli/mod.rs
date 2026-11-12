@@ -161,7 +161,7 @@ impl Cli {
                 self.status(&config);
                 Ok(())
             }
-            (Some("open" | "tui"), _, _) => self.open_terminal(&config),
+            (Some(command @ ("open" | "tui")), _, _) => self.open_terminal(&config, command),
             (Some("doctor"), _, _) => self.doctor(&config),
             (Some("logs"), _, _) => self.logs(&config),
             (Some("project"), Some("list"), _) => self.project_list(&config),

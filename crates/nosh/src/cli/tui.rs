@@ -9,13 +9,13 @@ use std::path::Path;
 
 impl Cli {
     /// `openTerminal(config)`: the daemon, then the terminal UI. A UI failure prints its own
-    /// message, without the `nosh: ` prefix, and exits 1.
-    pub(super) fn open_terminal(&self, config: &Config) -> Result<(), String> {
+    /// message, without the `nosh: ` prefix, and exits 1. Rust-only: the no-terminal error names
+    /// the command given (`openTerminal` says `nosh tui` for `nosh open` too).
+    pub(super) fn open_terminal(&self, config: &Config, command: &str) -> Result<(), String> {
         if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-            return Err(
-                "nosh tui requires an interactive terminal; use nosh help for scripting commands"
-                    .into(),
-            );
+            return Err(format!(
+                "nosh {command} requires an interactive terminal; use nosh help for scripting commands"
+            ));
         }
         self.start(config)?;
         let handoff = self.state_root.join("tui-session.json");
