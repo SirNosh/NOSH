@@ -21,8 +21,8 @@ use std::time::Duration;
 use crossterm::cursor::{SetCursorStyle, Show};
 use crossterm::event::{
     DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture, Event,
-    EventStream, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
-    PushKeyboardEnhancementFlags,
+    EventStream, KeyCode, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags,
+    PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
@@ -50,6 +50,13 @@ pub(crate) const RESIZE_DEBOUNCE_MS: u64 = 100;
 pub(crate) const MAX_FPS: u64 = 30;
 /// `runTui`'s error when stdin or stdout is not a terminal.
 pub(crate) const NEEDS_TERMINAL: &str = "NOSH TUI needs an interactive terminal";
+/// How soon the next key event must follow for a paste to start: a console delivers one about a
+/// character a millisecond, and a human's key press and release are 50 ms or more apart.
+const PASTE_GAP: Duration = Duration::from_millis(10);
+/// The longest pause within a paste once one has started (7 ms seen within 18 KB on a busy host).
+const PASTE_PAUSE: Duration = Duration::from_millis(50);
+/// Bounds one read-ahead (a paste is a press and a release per character).
+const PASTE_EVENTS_MAXIMUM: usize = 100_000;
 
 /// `runTui(config)`: TTY check, client, `controller.initialize()`, terminal setup, the event loop
 /// until quit, then teardown and one handoff write (workspace §1.5).
@@ -135,7 +142,13 @@ async fn event_loop(controller: &Rc<Controller>) -> Result<(), String> {
                     deadline = Some(Instant::now() + Duration::from_millis(RESIZE_DEBOUNCE_MS));
                 }
                 Some(Ok(event)) => {
-                    workspace.handle_event(&event);
+                    for event in read_ahead(event) {
+                        if let Event::Resize(..) = event {
+                            deadline = Some(Instant::now() + Duration::from_millis(RESIZE_DEBOUNCE_MS));
+                        } else {
+                            workspace.handle_event(&event);
+                        }
+                    }
                     // Lets a command spawned by this input run to its first await, so its busy
                     // state is in the next frame (TS runs that prefix synchronously).
                     tokio::task::yield_now().await;
@@ -179,6 +192,87 @@ async fn event_loop(controller: &Rc<Controller>) -> Result<(), String> {
     controller.unsubscribe(listener);
     workspace.dispose();
     result
+}
+
+/// `event` and the input queued right behind it. crossterm reads no bracketed paste from a Windows
+/// console: ConPTY strips the markers Windows Terminal sends and delivers the text as key presses
+/// (a press and a release per character, CR LF as Enter then Ctrl+Enter). There the presses of one
+/// paste are read together and made an [`Event::Paste`]; elsewhere the terminal sends that event.
+fn read_ahead(event: Event) -> Vec<Event> {
+    if !cfg!(windows) || key_text(&event).is_none() {
+        return vec![event];
+    }
+    let mut events = vec![event];
+    // No `EventStream` task is waiting now (it just returned this event), so these reads do not
+    // contend with it. Three events this close are a paste, which may pause between chunks. A
+    // paste is keys only: anything else (a mouse move) ends the read-ahead, so a stream of them
+    // cannot hold off the next frame.
+    while events.len() < PASTE_EVENTS_MAXIMUM
+        && crossterm::event::poll(if events.len() < 3 {
+            PASTE_GAP
+        } else {
+            PASTE_PAUSE
+        })
+        .unwrap_or(false)
+        && let Ok(next) = crossterm::event::read()
+    {
+        let key = matches!(next, Event::Key(_));
+        events.push(next);
+        if !key {
+            break;
+        }
+    }
+    coalesce_paste(events)
+}
+
+/// The text a key press types into a paste: characters (AltGr is Ctrl+Alt), Enter as CR (an LF
+/// arrives as Ctrl+Enter; the composer's paste makes both a newline) and Tab.
+fn key_text(event: &Event) -> Option<char> {
+    let Event::Key(key) = event else {
+        return None;
+    };
+    let control = key.modifiers.contains(KeyModifiers::CONTROL);
+    let alt = key.modifiers.contains(KeyModifiers::ALT);
+    match key.code {
+        _ if key.kind == KeyEventKind::Release => None,
+        KeyCode::Char(character) if control == alt => Some(character),
+        KeyCode::Enter if !alt => Some(if control { '\n' } else { '\r' }),
+        KeyCode::Tab if key.modifiers.is_empty() => Some('\t'),
+        _ => None,
+    }
+}
+
+/// Runs of two or more text keys become one paste, so its Enters are newlines, the last one too:
+/// pasted text is never sent unread (a draft and its Enter queued behind a slow frame need one
+/// more Enter). Key releases are dropped (the workspace ignores them).
+fn coalesce_paste(events: Vec<Event>) -> Vec<Event> {
+    fn flush(run: &mut Vec<Event>, text: &mut String, out: &mut Vec<Event>) {
+        if run.len() < 2 {
+            out.append(run);
+        } else {
+            out.push(Event::Paste(std::mem::take(text)));
+            run.clear();
+        }
+        text.clear();
+    }
+    let (mut out, mut run, mut text) = (Vec::new(), Vec::new(), String::new());
+    for event in events {
+        if matches!(&event, Event::Key(key) if key.kind == KeyEventKind::Release) {
+            continue;
+        }
+        match key_text(&event) {
+            Some(character) => {
+                text.push(character);
+                run.push(event);
+            }
+            None => {
+                flush(&mut run, &mut text, &mut out);
+                out.push(event);
+            }
+        }
+    }
+    flush(&mut run, &mut text, &mut out);
+    out
 }
 
 /// SIGINT and SIGTERM (Ctrl+C and Ctrl+Break on Windows) close the TUI; Ctrl+C in raw mode is a
@@ -274,4 +368,53 @@ pub(crate) fn write_handoff(path: &Path, project_id: &str) {
     handoff.set("currentProjectId", project_id.into());
     // Best effort: the next open falls back to the configured project.
     let _ = std::fs::write(path, json_stringify(&JsValue::Object(handoff)));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::KeyEvent;
+
+    fn key(code: KeyCode, modifiers: KeyModifiers, kind: KeyEventKind) -> Event {
+        Event::Key(KeyEvent::new_with_kind(code, modifiers, kind))
+    }
+
+    /// ConPTY's keys for a paste (CR LF is Enter then Ctrl+Enter) become its text, a trailing
+    /// Enter included; other keys and lone keys stay keys.
+    #[test]
+    fn coalesces_queued_text_keys_into_a_paste() {
+        let press = |code| key(code, KeyModifiers::NONE, KeyEventKind::Press);
+        let typed = |text: &str| -> Vec<Event> {
+            text.chars()
+                .flat_map(|character| {
+                    let (code, modifiers) = match character {
+                        '\r' => (KeyCode::Enter, KeyModifiers::NONE),
+                        '\n' => (KeyCode::Enter, KeyModifiers::CONTROL),
+                        _ => (KeyCode::Char(character), KeyModifiers::NONE),
+                    };
+                    [
+                        key(code, modifiers, KeyEventKind::Press),
+                        key(code, modifiers, KeyEventKind::Release),
+                    ]
+                })
+                .collect()
+        };
+        assert_eq!(
+            coalesce_paste(typed("/paths\r\ncafé 漢字")),
+            [Event::Paste("/paths\r\ncafé 漢字".into())]
+        );
+        assert_eq!(coalesce_paste(typed("hi\r")), [Event::Paste("hi\r".into())]);
+        assert_eq!(coalesce_paste(typed("\r")), [press(KeyCode::Enter)]);
+        let mut events = typed("ab");
+        events.push(press(KeyCode::Left));
+        events.extend(typed("c"));
+        assert_eq!(
+            coalesce_paste(events),
+            [
+                Event::Paste("ab".into()),
+                press(KeyCode::Left),
+                press(KeyCode::Char('c'))
+            ]
+        );
+    }
 }
