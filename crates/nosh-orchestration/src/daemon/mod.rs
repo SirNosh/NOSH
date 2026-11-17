@@ -1802,6 +1802,7 @@ impl NoshDaemon {
             .iter()
             .map(|intent| json!({ "intentId": intent["intentId"], "operationType": intent["operationType"] }))
             .collect();
+        self.close_interrupted_chat_turn(&project_id, &store)?;
         self.append_draft(&event_draft(
             "recovery.report",
             "noshd",
@@ -1809,6 +1810,59 @@ impl NoshDaemon {
             Value::Null,
             Value::Null,
             json!({ "reconciledPaperOperations": papers, "recoveredDomainEffects": domain_effects["recovered"], "failedDomainEffects": domain_effects["failed"], "recoveredDelegations": recovered, "rejectedDelegations": rejected_count, "reconciledJobLaunches": jobs, "resumingRuntimeInstructions": runtime.len(), "resumingPrograms": programs.len(), "unresolvedIntents": unresolved }),
+        ))?;
+        Ok(())
+    }
+
+    /// No Pi session outlives the daemon, so a chat turn the last one left open would read as
+    /// working forever: it is recorded as failed. A live session (a re-registration) is left alone.
+    fn close_interrupted_chat_turn(&self, project_id: &str, store: &EventStore) -> Result<()> {
+        let agent_id = deterministic_chat_agent_id(project_id);
+        if self
+            .agents
+            .inspect()
+            .iter()
+            .any(|agent| agent.agent_id == agent_id)
+        {
+            return Ok(());
+        }
+        let events = store.replay(project_id, 0)?;
+        let last = events.iter().rev().find(|event| {
+            let kind = event["type"].as_str().unwrap_or_default();
+            let owner = if kind == "chat.user_message" {
+                "/payload/agentId"
+            } else {
+                "/scope/agentId"
+            };
+            event.pointer(owner).and_then(Value::as_str) == Some(agent_id.as_str())
+                && matches!(
+                    kind,
+                    "chat.user_message"
+                        | "agent.started"
+                        | "agent.turn_started"
+                        | "agent.retrying"
+                        | "agent.tool_started"
+                        | "agent.completed"
+                        | "agent.failed"
+                )
+        });
+        let Some(last) = last.filter(|last| {
+            !matches!(
+                last["type"].as_str(),
+                Some("agent.completed" | "agent.failed")
+            )
+        }) else {
+            return Ok(());
+        };
+        let mut scope = project_scope(project_id);
+        scope["agentId"] = json!(agent_id);
+        self.append_draft(&event_draft(
+            "agent.failed",
+            "noshd",
+            scope,
+            Value::Null,
+            last["eventId"].clone(),
+            json!({ "message": "NOSH stopped during this turn, so it did not finish. Send the message again to retry." }),
         ))?;
         Ok(())
     }
