@@ -442,9 +442,14 @@ impl Inner {
     }
 
     fn get(&self, job_id: &str) -> Result<JobRecord> {
-        Ok(serde_json::from_str(&std::fs::read_to_string(
-            self.record_path(job_id),
-        )?)?)
+        let text = match std::fs::read_to_string(self.record_path(job_id)) {
+            // Not the OS error ("cannot find the path"), which says nothing of the id.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return rejected(format!("Unknown job {job_id}"));
+            }
+            text => text?,
+        };
+        Ok(serde_json::from_str(&text)?)
     }
 
     fn list(&self) -> Result<Vec<JobRecord>> {
