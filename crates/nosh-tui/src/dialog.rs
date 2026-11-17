@@ -1255,10 +1255,14 @@ impl DialogManager {
                 let counter = current.map_or(String::new(), |_| {
                     format!("{}/{}", state.index + 1, state.filtered.len())
                 });
+                // Until a row is picked, Enter runs a typed slash line that no command begins.
+                let typed = state
+                    .typed_slash()
+                    .map(|typed| format!("↑↓ select   Enter run {typed}   Esc close"));
                 let hint = if locked {
                     "Working…  Esc dismiss"
                 } else {
-                    &state.hint
+                    typed.as_deref().unwrap_or(&state.hint)
                 };
                 rows.text(
                     &dialog_text(&format!("{hint}  {counter}"), row_width),
