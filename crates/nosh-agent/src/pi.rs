@@ -159,7 +159,9 @@ impl AuthSignal {
 }
 
 pub struct PiAdapter {
-    rpc: Arc<Rpc>,
+    /// The sidecar; one that has exited is replaced by the next call that needs it.
+    rpc: Mutex<Arc<Rpc>>,
+    config: PiConfig,
     shared: Arc<Shared>,
 }
 
@@ -214,7 +216,20 @@ impl PiAdapter {
             auth_prompts: Mutex::new(HashMap::new()),
         });
         let rpc = Rpc::spawn(&config, Arc::downgrade(&shared))?;
-        Ok(Self { rpc, shared })
+        Ok(Self {
+            rpc: Mutex::new(rpc),
+            config,
+            shared,
+        })
+    }
+
+    /// The running sidecar, started again if the last one exited (its sessions ended with it).
+    fn rpc(&self) -> Result<Arc<Rpc>, String> {
+        let mut rpc = lock(&self.rpc);
+        if lock(&rpc.exited).is_some() {
+            *rpc = Rpc::spawn(&self.config, Arc::downgrade(&self.shared))?;
+        }
+        Ok(Arc::clone(&rpc))
     }
 
     pub fn default_model(&self) -> Option<ModelSelection> {
@@ -227,14 +242,14 @@ impl PiAdapter {
 
     /// `AvailableModel[]`: the models Pi can use with the connected accounts.
     pub async fn available_models(&self) -> Result<Value, String> {
-        self.rpc.call("availableModels", json!({})).await
+        self.rpc()?.call("availableModels", json!({})).await
     }
 
     pub async fn validate_model_selection(&self, selection: Option<&Value>) -> Result<(), String> {
         let Some(selection) = selection else {
             return Ok(());
         };
-        self.rpc
+        self.rpc()?
             .call(
                 "resolveModel",
                 json!({ "selection": checked_selection(selection)? }),
@@ -300,8 +315,8 @@ impl PiAdapter {
                 .map(|tool| json!({ "name": tool.name, "label": tool.label, "description": tool.description, "parameters": typebox_json(&tool.parameters) }))
                 .collect()
         });
-        let started = self
-            .rpc
+        let rpc = self.rpc()?;
+        let started = rpc
             .call(
                 "start",
                 json!({
@@ -342,7 +357,7 @@ impl PiAdapter {
             context_percent: None,
         };
         // An async result that lands mid-run is steered in before the model's next call; otherwise it waits for the wake loop.
-        let (rpc, agent_id) = (Arc::downgrade(&self.rpc), options.agent_id.clone());
+        let (rpc, agent_id) = (Arc::downgrade(&rpc), options.agent_id.clone());
         async_calls.set_deliver(move |text| {
             let (rpc, agent_id) = (rpc.clone(), agent_id.clone());
             Box::pin(async move {
@@ -484,7 +499,7 @@ impl PiAdapter {
     ) -> Result<PromptOutcome, String> {
         let active = if correction {
             Some(
-                self.rpc
+                self.rpc()?
                     .call(
                         "setActiveTools",
                         json!({ "agentId": agent_id, "names": [] }),
@@ -516,7 +531,7 @@ impl PiAdapter {
         // The restored tools reach inspect() now, not at the session's next event.
         if let Some(names) = active {
             let restored = self
-                .rpc
+                .rpc()?
                 .call(
                     "setActiveTools",
                     json!({ "agentId": agent_id, "names": names }),
@@ -547,7 +562,7 @@ impl PiAdapter {
         text: &str,
     ) -> Result<Option<Value>, String> {
         let reply = self
-            .rpc
+            .rpc()?
             .call("prompt", json!({ "agentId": agent_id, "text": text }))
             .await?;
         if let Ok(state) = parse(&reply["state"]) {
@@ -560,7 +575,7 @@ impl PiAdapter {
     /// that ended first.
     async fn next_wake(&self, managed: &Managed, agent_id: &str) -> Result<Option<String>, String> {
         let stranded = self
-            .rpc
+            .rpc()?
             .call("clearQueue", json!({ "agentId": agent_id }))
             .await?;
         let texts: Vec<String> = ["steering", "followUp"]
@@ -583,7 +598,7 @@ impl PiAdapter {
 
     pub async fn steer(&self, agent_id: &str, message: &str) -> Result<(), String> {
         self.required(agent_id)?;
-        self.rpc
+        self.rpc()?
             .call("steer", json!({ "agentId": agent_id, "text": message }))
             .await
             .map(drop)
@@ -598,7 +613,7 @@ impl PiAdapter {
         if scoped {
             return Err("Scoped terminal turns cannot queue Pi follow-ups; issue a separate host instruction".into());
         }
-        self.rpc
+        self.rpc()?
             .call("followUp", json!({ "agentId": agent_id, "text": message }))
             .await
             .map(drop)
@@ -613,7 +628,7 @@ impl PiAdapter {
         let running = lock(&managed.inspection).status == "running";
         let state: SessionState = parse(
             &self
-                .rpc
+                .rpc()?
                 .call(
                     "setThinkingLevel",
                     json!({ "agentId": agent_id, "level": level, "running": running }),
@@ -630,7 +645,6 @@ impl PiAdapter {
         let managed = self.required(agent_id)?;
         lock(&managed.inspection).status = "compacting".into();
         let result = self
-            .rpc
             .call(
                 "compact",
                 json!({ "agentId": agent_id, "instructions": instructions }),
@@ -646,7 +660,7 @@ impl PiAdapter {
         managed.cancelled.store(true, Ordering::SeqCst);
         managed.async_calls.cancel();
         lock(&managed.inspection).status = "aborting".into();
-        let result = self.rpc.call("abort", json!({ "agentId": agent_id })).await;
+        let result = self.call("abort", json!({ "agentId": agent_id })).await;
         {
             let mut inspection = lock(&managed.inspection);
             inspection.status = "idle".into();
@@ -661,11 +675,8 @@ impl PiAdapter {
         let Some(managed) = lock(&self.shared.sessions).remove(agent_id) else {
             return;
         };
-        managed.cancelled.store(true, Ordering::SeqCst);
-        managed.async_calls.cancel();
-        lock(&self.shared.model_usage).remove(agent_id);
-        self.rpc
-            .send_request("stop", json!({ "agentId": agent_id }));
+        self.shared.end(agent_id, &managed);
+        lock(&self.rpc).send_request("stop", json!({ "agentId": agent_id }));
     }
 
     pub fn inspect(&self) -> Vec<Inspection> {
@@ -692,7 +703,7 @@ impl PiAdapter {
 
     /// `AuthProvider[]`: Pi's providers with their sign-in options and whether one is connected.
     pub async fn auth_providers(&self) -> Result<Value, String> {
-        self.rpc.call("authProviders", json!({})).await
+        self.rpc()?.call("authProviders", json!({})).await
     }
 
     /// Runs the provider's own sign-in flow (`type` is `oauth` or `api_key`).
@@ -704,7 +715,6 @@ impl PiAdapter {
     ) -> Result<(), String> {
         *lock(&self.shared.login) = Some(interaction);
         let result = self
-            .rpc
             .call(
                 "login",
                 json!({ "providerId": provider_id, "type": auth_type }),
@@ -719,16 +729,16 @@ impl PiAdapter {
     }
 
     pub async fn logout(&self, provider_id: &str) -> Result<(), String> {
-        self.rpc
+        self.rpc()?
             .call("logout", json!({ "providerId": provider_id }))
             .await
             .map(drop)
     }
 
-    /// Calls a sidecar method directly (its `test.*` hooks).
+    /// Calls a sidecar method directly (also its `test.*` hooks).
     #[doc(hidden)]
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
-        self.rpc.call(method, params).await
+        self.rpc()?.call(method, params).await
     }
 
     fn managed(&self, agent_id: &str) -> Option<Arc<Managed>> {
@@ -872,6 +882,13 @@ impl AgentHost for ToolHost {
 }
 
 impl Shared {
+    /// Ends a session: a prompt waiting on async results stops, and its later events are dropped.
+    fn end(&self, agent_id: &str, managed: &Managed) {
+        managed.cancelled.store(true, Ordering::SeqCst);
+        managed.async_calls.cancel();
+        lock(&self.model_usage).remove(agent_id);
+    }
+
     /// One sidecar event, as `onEvent` and `mapPiEvent`; events of a stopped session are dropped.
     fn on_event(&self, params: &Value) {
         let agent_id = params["agentId"].as_str().unwrap_or_default();
@@ -1062,7 +1079,8 @@ struct Rpc {
 
 impl Rpc {
     fn spawn(config: &PiConfig, shared: Weak<Shared>) -> Result<Arc<Self>, String> {
-        let mut command = tokio::process::Command::new(&config.node);
+        // Hidden: Node is a console program, and a daemon without a console would give it a window.
+        let mut command = tokio::process::Command::from(nosh_sys::process::hidden(&config.node));
         command
             .arg(&config.host_script)
             .envs(config.env.iter().map(|(key, value)| (key, value)))
@@ -1124,6 +1142,14 @@ impl Rpc {
             if let Some(rpc) = weak.upgrade() {
                 // Let the stderr reader catch up so the reason is reported.
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                // The sessions died with the sidecar; ended before `exited` is set, so none that a
+                // respawned sidecar starts is lost, and a caller that sees none starts a fresh one.
+                if let Some(shared) = shared.upgrade() {
+                    let ended: Vec<_> = lock(&shared.sessions).drain().collect();
+                    for (agent_id, managed) in ended {
+                        shared.end(&agent_id, &managed);
+                    }
+                }
                 let reason = lock(&last_error).clone();
                 rpc.fail_all(if reason.is_empty() {
                     "Pi host exited".to_owned()
