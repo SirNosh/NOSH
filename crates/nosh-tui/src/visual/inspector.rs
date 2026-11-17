@@ -18,7 +18,7 @@ pub const MAX_CARD_FIELDS: usize = 8;
 /// The retained inspector model.
 #[derive(Debug, Default)]
 pub struct Inspector {
-    previous: Option<(Vec<ViewRow>, String)>,
+    previous: Option<(Vec<ViewRow>, String, bool)>,
     cache: Option<(u16, Vec<Line<'static>>)>,
 }
 
@@ -43,16 +43,19 @@ impl Inspector {
     }
 
     /// `update(rows, fallback)`: returns false when the signature is unchanged (dialogs-visual §5.7
-    /// step 1).
-    pub fn update(&mut self, rows: &[ViewRow], fallback: &str) -> bool {
+    /// step 1). `detail` is the one-entity view (`/job`, `/tail`): its cards show every field, as
+    /// no further view could (TS kept 8 and pointed back to `/job`).
+    pub fn update(&mut self, rows: &[ViewRow], fallback: &str, detail: bool) -> bool {
         if self
             .previous
             .as_ref()
-            .is_some_and(|(previous, text)| previous == rows && text == fallback)
+            .is_some_and(|(previous, text, shown)| {
+                previous == rows && text == fallback && *shown == detail
+            })
         {
             return false;
         }
-        self.previous = Some((rows.to_vec(), fallback.to_owned()));
+        self.previous = Some((rows.to_vec(), fallback.to_owned(), detail));
         self.cache = None;
         true
     }
@@ -64,14 +67,14 @@ impl Inspector {
             .as_ref()
             .is_none_or(|(cached, _)| *cached != width)
         {
-            let (rows, fallback) = self.previous.clone().unwrap_or_default();
-            self.cache = Some((width, cards(&rows, &fallback, width)));
+            let (rows, fallback, detail) = self.previous.clone().unwrap_or_default();
+            self.cache = Some((width, cards(&rows, &fallback, detail, width)));
         }
         self.cache.as_ref().expect("filled above").1.clone()
     }
 }
 
-fn cards(rows: &[ViewRow], fallback: &str, width: u16) -> Vec<Line<'static>> {
+fn cards(rows: &[ViewRow], fallback: &str, detail: bool, width: u16) -> Vec<Line<'static>> {
     let muted = Style::new().fg(THEME.muted);
     let text = Style::new().fg(THEME.text);
     if rows.is_empty() {
@@ -143,7 +146,12 @@ fn cards(rows: &[ViewRow], fallback: &str, width: u16) -> Vec<Line<'static>> {
                 output || (field.value != row.title && field.value != subtitle && field.value != id)
             })
             .collect();
-        let shown = &fields[..fields.len().min(if output { 1 } else { MAX_CARD_FIELDS })];
+        let limit = match (output, detail) {
+            (true, _) => 1,
+            (false, true) => fields.len(),
+            (false, false) => MAX_CARD_FIELDS,
+        };
+        let shown = &fields[..fields.len().min(limit)];
         let label_width = shown
             .iter()
             .map(|field| length(&field.label) + 1)

@@ -289,6 +289,9 @@ impl Text {
                     ('j', true, false, false) => Applied::Newline,
                     ('-', true, false, false) => Applied::Edited(self.restore(false)),
                     ('.', true, false, false) => Applied::Edited(self.restore(true)),
+                    // Also Ctrl+Z (Ctrl+Shift+Z redoes) and Ctrl+Y: Windows Terminal keeps Ctrl+-.
+                    ('z', true, false, false) => Applied::Edited(self.restore(shift)),
+                    ('y', true, false, false) => Applied::Edited(self.restore(true)),
                     ('z', false, false, true) => Applied::Edited(self.restore(shift)),
                     ('a', false, false, true) => {
                         self.anchor = Some(0);

@@ -27,7 +27,7 @@ use ratatui::style::{Color, Style};
 
 use crate::controller::{Controller, Model, Project, Selection};
 use crate::editor::{EditOutcome, Input, PATH_MAX_LENGTH, SEARCH_MAX_LENGTH, TITLE_MAX_LENGTH};
-use crate::js::{JsValue, string};
+use crate::js::{JsValue, is_js_whitespace, string};
 use crate::layout::{round_half_up, wrap_words};
 use crate::palette::{
     COMMANDS, CommandItem, CommandMode, DIALOG_TEXT_MAX, PaletteItem, ProjectFormValues,
@@ -47,14 +47,22 @@ const CHANGED: &str =
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DialogEffect {
     /// Run `command` through the workspace's `submit(command, true)`, then call
-    /// [`DialogManager::action_finished`] with `generation` and the outcome.
-    Submit { generation: u64, command: String },
+    /// [`DialogManager::action_finished`] with `generation` and the outcome. `history`: a command
+    /// chosen by name (palette or slash menu), which Up recalls; a picker's or form's is not.
+    Submit {
+        generation: u64,
+        command: String,
+        history: bool,
+    },
     /// Run `controller.load_projects()`, then call [`DialogManager::projects_loaded`].
     LoadProjects { generation: u64 },
     /// Run `controller.load_models()`, then call [`DialogManager::models_loaded`].
     LoadModels { generation: u64 },
     /// Set the composer (a compose command, or `""` before a slash choice runs).
     SetComposer(String),
+    /// Set the composer to this typed slash command and submit it as typed: the slash search
+    /// matched no command it begins (an unknown one then reports its error).
+    SubmitComposer(String),
     /// Detach (the palette's "Quit NOSH").
     Quit,
     /// The dialog closed (`onClose`): the workspace refocuses the composer and recomputes
@@ -169,6 +177,39 @@ struct SelectState {
     detail_override: Option<String>,
     /// The detail is drawn in the error color for the life of the failure dialog.
     detail_error: bool,
+    /// The slash-command search, whose typed text stands unless a command begins with it.
+    slash: bool,
+    /// A row was picked by arrow, Tab, wheel or mouse since the search text last changed.
+    navigated: bool,
+}
+
+impl SelectState {
+    /// The slash search's text as a command line, when Enter should submit what was typed: not
+    /// empty, no row picked by hand, and not the start of the highlighted command's name.
+    fn typed_slash(&self) -> Option<String> {
+        let query = self.search.value();
+        if !self.slash || self.navigated || query.is_empty() {
+            return None;
+        }
+        let highlighted = usize::try_from(self.index)
+            .ok()
+            .and_then(|index| self.filtered.get(index));
+        let begins = highlighted.is_some_and(|&choice| match &self.choices[choice].action {
+            Action::Command { command, .. } => command
+                .command
+                .trim()
+                .strip_prefix('/')
+                .and_then(|name| name.get(..query.len()))
+                .is_some_and(|head| head.eq_ignore_ascii_case(query)),
+            _ => false,
+        });
+        (!begins).then(|| format!("/{query}"))
+    }
+
+    /// Arguments follow the command name: the line continues in the composer.
+    fn has_arguments(&self) -> bool {
+        self.slash && self.search.value().chars().any(is_js_whitespace)
+    }
 }
 
 struct FormState {
@@ -277,6 +318,8 @@ impl DialogManager {
             summary: Vec::new(),
             detail_override: None,
             detail_error: false,
+            slash: false,
+            navigated: false,
         }));
     }
 
@@ -338,6 +381,9 @@ impl DialogManager {
             ..Settings::default()
         };
         self.select("Slash commands", choices, settings);
+        if let Some(state) = self.select_state() {
+            state.slash = true;
+        }
     }
 
     /// `load(title, request, ready)`: a locked `Loading…` dialog until the workspace reports back.
@@ -380,10 +426,10 @@ impl DialogManager {
             .thinking_levels
             .iter()
             .map(|level| Choice {
+                // No category: every row is the same model, which the title and description name.
                 item: PaletteItem {
                     id: level.clone(),
                     title: level.clone(),
-                    category: model.provider.clone(),
                     description: Some(format!("{}/{} · {level}", model.provider, model.id)),
                     ..PaletteItem::default()
                 },
@@ -555,12 +601,14 @@ impl DialogManager {
             return;
         }
         let generation = self.generation;
+        let history = matches!(action, Action::Command { .. });
         self.locked = true;
         self.repaint();
         match self.perform(action) {
             Ok(Some(command)) => self.effects.push(DialogEffect::Submit {
                 generation,
                 command,
+                history,
             }),
             Ok(None) => self.action_finished(generation, Ok(())),
             Err(error) => self.failed(&error, generation),
@@ -717,6 +765,15 @@ impl DialogManager {
             return false;
         }
         if key.code == KeyCode::Esc {
+            // The typed slash text stays in the composer (dismissed), not just its `/`.
+            if let Some(DialogState::Select(state)) = &self.state
+                && state.slash
+                && !self.locked
+                && !state.search.value().is_empty()
+            {
+                let typed = format!("/{}", state.search.value());
+                self.effects.push(DialogEffect::SetComposer(typed));
+            }
             self.close();
             return true;
         }
@@ -741,14 +798,20 @@ impl DialogManager {
                         _ => 1,
                     };
                     state.index = move_selection(state.index, delta, state.filtered.len() as i64);
+                    state.navigated = true;
                     self.repaint();
                 }
-                KeyCode::Enter => self.choose(),
+                KeyCode::Enter => match state.typed_slash() {
+                    Some(typed) => {
+                        self.effects.push(DialogEffect::SubmitComposer(typed));
+                        self.close();
+                    }
+                    None => self.choose(),
+                },
                 _ if !state.searchable || shortcut => {}
                 _ => {
                     if state.search.handle_key(key) == EditOutcome::Changed {
-                        state.filtered = filter_palette(&state.choices, state.search.value());
-                        state.index = if state.filtered.is_empty() { -1 } else { 0 };
+                        self.search_changed();
                     }
                 }
             },
@@ -787,6 +850,22 @@ impl DialogManager {
         true
     }
 
+    /// The search text changed: refilter from the best match, or hand a slash command line that
+    /// gained arguments to the composer.
+    fn search_changed(&mut self) {
+        let Some(state) = self.select_state() else {
+            return;
+        };
+        if state.has_arguments() {
+            let typed = format!("/{}", state.search.value());
+            self.effects.push(DialogEffect::SetComposer(typed));
+            return self.close();
+        }
+        state.filtered = filter_palette(&state.choices, state.search.value());
+        state.index = if state.filtered.is_empty() { -1 } else { 0 };
+        state.navigated = false;
+    }
+
     /// Bracketed paste into the focused input; true when a dialog is open.
     pub fn handle_paste(&mut self, text: &str) -> bool {
         let locked = self.locked;
@@ -794,8 +873,7 @@ impl DialogManager {
             Some(DialogState::Select(state)) => {
                 state.search.paste(text);
                 if state.searchable && !locked {
-                    state.filtered = filter_palette(&state.choices, state.search.value());
-                    state.index = if state.filtered.is_empty() { -1 } else { 0 };
+                    self.search_changed();
                 }
             }
             Some(DialogState::Form(state)) if state.focus < 2 => {
@@ -829,6 +907,7 @@ impl DialogManager {
                     && let Some(state) = self.select_state()
                 {
                     state.index = row;
+                    state.navigated = true;
                     state.detail_override = None;
                 }
             }
@@ -838,6 +917,23 @@ impl DialogManager {
                     && !self.locked
                 {
                     self.choose();
+                }
+            }
+            // The wheel moves the selection a row per notch, stopping at either end.
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
+                let delta = if event.kind == MouseEventKind::ScrollUp {
+                    -1
+                } else {
+                    1
+                };
+                if !self.locked
+                    && let Some(state) = self.select_state()
+                    && !state.filtered.is_empty()
+                {
+                    let last = state.filtered.len() as i64 - 1;
+                    state.index = (state.index.max(0) + delta).clamp(0, last);
+                    state.navigated = true;
+                    state.detail_override = None;
                 }
             }
             _ => {}
@@ -1444,7 +1540,8 @@ mod tests {
             manager.take_effects(),
             [DialogEffect::Submit {
                 generation,
-                command: "/status".into()
+                command: "/status".into(),
+                history: true,
             }]
         );
         assert!(manager.is_locked());

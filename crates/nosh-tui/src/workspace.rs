@@ -50,6 +50,8 @@ use crate::visual::{AttentionItem, Inspector, ResearchMap, ResearchSidebar, Tran
 
 /// The double-Esc window: a second Esc within it clears the draft.
 pub const ESCAPE_WINDOW_MS: f64 = 1500.0;
+/// Rows one wheel notch scrolls the conversation and the sidebar.
+const WHEEL_ROWS: i64 = 3;
 /// The spinner interval while `busy || activity.working`.
 pub const SPINNER_INTERVAL_MS: u64 = 180;
 /// The spinner frames, indexed by `floor(now_ms / 180) % 3`.
@@ -109,11 +111,11 @@ pub fn empty_view(view: &str) -> Option<&'static str> {
 }
 
 /// Who called `submit`: the composer (`propagateError = false`) with the draft it had, or a dialog
-/// (`propagateError = true`) with its generation.
+/// (`propagateError = true`) with its generation and whether Up should recall the command.
 #[derive(Debug)]
 pub enum Origin {
     Composer { draft: String },
-    Dialog(u64),
+    Dialog { generation: u64, history: bool },
 }
 
 /// The result of async work the workspace spawned.
@@ -224,6 +226,7 @@ struct Snapshot {
     /// The selected project's repository root; `None` when no registered project is selected.
     project: Option<String>,
     error: String,
+    notice: String,
     busy: bool,
     selection: Option<Selection>,
     no_model: bool,
@@ -246,6 +249,8 @@ pub struct Workspace {
     previous_project: String,
     show_sidebar: bool,
     escape_armed_at: f64,
+    /// When a Ctrl+C with a draft asked for a second one to detach.
+    quit_armed_at: f64,
     history: Vec<String>,
     history_index: usize,
     history_draft: String,
@@ -285,6 +290,7 @@ impl Workspace {
             previous_project: String::new(),
             show_sidebar: true,
             escape_armed_at: 0.0,
+            quit_armed_at: 0.0,
             history: Vec::new(),
             history_index: 0,
             history_draft: String::new(),
@@ -336,7 +342,9 @@ impl Workspace {
                     {
                         self.set_composer("");
                     }
-                    if self.history.last() != Some(&value) {
+                    // A picker's or form's generated command is not one to recall.
+                    let recall = !matches!(origin, Origin::Dialog { history: false, .. });
+                    if recall && self.history.last() != Some(&value) {
                         self.history.push(value);
                     }
                     if self.history.len() > HISTORY_LIMIT {
@@ -349,7 +357,7 @@ impl Workspace {
                     }
                 }
                 // A composer failure keeps the draft; `controller.error` is shown in the status.
-                if let Origin::Dialog(generation) = origin {
+                if let Origin::Dialog { generation, .. } = origin {
                     self.dialogs.action_finished(generation, result);
                 }
             }
@@ -467,7 +475,8 @@ impl Workspace {
                     DialogEffect::Submit {
                         generation,
                         command,
-                    } => self.submit(&command, Some(generation)),
+                        history,
+                    } => self.submit(&command, Some((generation, history))),
                     DialogEffect::LoadProjects { generation } => {
                         let controller = self.controller.clone();
                         self.spawn(async move {
@@ -487,6 +496,10 @@ impl Workspace {
                         });
                     }
                     DialogEffect::SetComposer(value) => self.set_composer(&value),
+                    DialogEffect::SubmitComposer(value) => {
+                        self.set_composer(&value);
+                        self.submit(&value, None);
+                    }
                     DialogEffect::Quit => self.quit = true,
                     DialogEffect::Closed => {
                         self.slash_dismissed = self.composer.value().starts_with('/');
@@ -497,9 +510,10 @@ impl Workspace {
         }
     }
 
-    /// `submit(value, propagateError)` (workspace §6.7); `generation` is set for dialog submissions,
-    /// whose outcome goes back through `action_finished`.
-    fn submit(&mut self, value: &str, generation: Option<u64>) {
+    /// `submit(value, propagateError)` (workspace §6.7); `dialog` is set for dialog submissions,
+    /// whose outcome goes back through `action_finished`: their generation and history flag.
+    fn submit(&mut self, value: &str, dialog: Option<(u64, bool)>) {
+        let generation = dialog.map(|(generation, _)| generation);
         let finish = |dialogs: &mut DialogManager, result| {
             if let Some(generation) = generation {
                 dialogs.action_finished(generation, result);
@@ -540,8 +554,11 @@ impl Workspace {
                 return self.dialogs.open_projects();
             }
         }
-        let origin = match generation {
-            Some(generation) => Origin::Dialog(generation),
+        let origin = match dialog {
+            Some((generation, history)) => Origin::Dialog {
+                generation,
+                history,
+            },
             None => Origin::Composer {
                 draft: self.composer.value(),
             },
@@ -567,7 +584,11 @@ impl Workspace {
         if value.is_empty() {
             self.slash_dismissed = false;
         }
-        self.controller.state_mut().error.clear();
+        {
+            let mut state = self.controller.state_mut();
+            state.error.clear();
+            state.notice.clear();
+        }
         if !self.slash_dismissed
             && let Some(query) = slash_query(&value)
         {
@@ -582,7 +603,13 @@ impl Workspace {
             control && matches!(key.code, KeyCode::Char(c) if c.eq_ignore_ascii_case(&letter))
         };
         if ctrl('c') {
-            self.quit = true;
+            // Detaching drops the draft: with one, the first Ctrl+C only asks for a second.
+            let now = (self.now_ms)();
+            if self.composer.value().is_empty() || now - self.quit_armed_at < ESCAPE_WINDOW_MS {
+                self.quit = true;
+            } else {
+                self.quit_armed_at = now;
+            }
             return;
         }
         if self.dialogs.handle_key(key) {
@@ -658,7 +685,11 @@ impl Workspace {
             KeyCode::PageDown => return self.conversation.scroll_by(page),
             KeyCode::Home if control => return self.conversation.scroll_to(0),
             KeyCode::End if control => return self.conversation.scroll_to(usize::MAX),
-            KeyCode::Up if self.composer.logical_cursor_row() == 0 && !self.history.is_empty() => {
+            KeyCode::Up
+                if self.focus == Focus::Composer
+                    && self.composer.logical_cursor_row() == 0
+                    && !self.history.is_empty() =>
+            {
                 if self.history_index == self.history.len() {
                     self.history_draft = self.composer.value();
                 }
@@ -667,7 +698,8 @@ impl Workspace {
                 return self.set_composer(&entry);
             }
             KeyCode::Down
-                if self.history_index < self.history.len()
+                if self.focus == Focus::Composer
+                    && self.history_index < self.history.len()
                     && self.composer.logical_cursor_row() + 1
                         >= self.composer.logical_line_count() =>
             {
@@ -681,29 +713,33 @@ impl Workspace {
             }
             _ => {}
         }
-        match self.focus {
-            Focus::Composer => match self.composer.handle_key(key) {
-                EditOutcome::Submit if !self.dialogs.is_open() => {
-                    let value = self.composer.value();
-                    self.submit(&value, None);
+        // A focused scroll area scrolls by a fifth of its height with the arrows; any other key
+        // returns focus to the composer and is typed there, so typing after a click is not lost.
+        // Enter only returns focus: a draft is not sent by a key pressed outside the composer.
+        if self.focus != Focus::Composer {
+            let scroll = if self.focus == Focus::Sidebar {
+                &mut self.side
+            } else {
+                &mut self.conversation
+            };
+            let step = (scroll.viewport as f64 / 5.0).round().max(1.0) as i64;
+            match key.code {
+                KeyCode::Up => return scroll.scroll_by(-step),
+                KeyCode::Down => return scroll.scroll_by(step),
+                KeyCode::Enter => {
+                    self.focus = Focus::Composer;
+                    return;
                 }
-                EditOutcome::Changed => self.content_changed(),
-                _ => {}
-            },
-            // A focused scroll area scrolls by a fifth of its height and drops other keys.
-            Focus::Conversation | Focus::Sidebar => {
-                let scroll = if self.focus == Focus::Sidebar {
-                    &mut self.side
-                } else {
-                    &mut self.conversation
-                };
-                let step = (scroll.viewport as f64 / 5.0).round().max(1.0) as i64;
-                match key.code {
-                    KeyCode::Up | KeyCode::Char('k') => scroll.scroll_by(-step),
-                    KeyCode::Down | KeyCode::Char('j') => scroll.scroll_by(step),
-                    _ => {}
-                }
+                _ => self.focus = Focus::Composer,
             }
+        }
+        match self.composer.handle_key(key) {
+            EditOutcome::Submit if !self.dialogs.is_open() => {
+                let value = self.composer.value();
+                self.submit(&value, None);
+            }
+            EditOutcome::Changed => self.content_changed(),
+            _ => {}
         }
     }
 
@@ -834,11 +870,12 @@ impl Workspace {
                 } else {
                     1
                 };
+                // A notch moves the long panes three rows, as terminals and browsers do.
                 if targets.conversation.contains(at) {
                     self.wheel_events += 1;
-                    self.conversation.scroll_by(rows);
+                    self.conversation.scroll_by(rows * WHEEL_ROWS);
                 } else if targets.sidebar_list.contains(at) {
-                    self.side.scroll_by(rows);
+                    self.side.scroll_by(rows * WHEEL_ROWS);
                 } else if targets.input.contains(at) {
                     self.composer.scroll(rows as i32);
                 }
@@ -847,12 +884,14 @@ impl Workspace {
         }
     }
 
-    /// Bracketed paste goes only to the focused widget (§7.8).
+    /// Bracketed paste goes to the open dialog, else to the composer, which takes focus back from
+    /// a scroll area as a typed key does (§7.8 dropped it there).
     fn handle_paste(&mut self, text: &str) {
         if self.dialogs.handle_paste(text) {
             return;
         }
-        if self.focus == Focus::Composer && self.composer.paste(text) == EditOutcome::Changed {
+        self.focus = Focus::Composer;
+        if self.composer.paste(text) == EditOutcome::Changed {
             self.content_changed();
         }
     }
@@ -868,6 +907,7 @@ impl Workspace {
                 .find(|project| project.project_id == state.project_id)
                 .map(|project| project.repository_root.clone()),
             error: state.error.clone(),
+            notice: state.notice.clone(),
             busy: state.busy,
             selection: state.selection.clone(),
             no_model: state.models_checked && state.models.is_empty(),
@@ -1014,14 +1054,17 @@ impl Workspace {
         } else {
             THEME.muted
         };
-        let armed =
-            !self.composer.value().is_empty() && now - self.escape_armed_at < ESCAPE_WINDOW_MS;
+        let draft = !self.composer.value().is_empty();
+        let armed = draft && now - self.escape_armed_at < ESCAPE_WINDOW_MS;
+        let quit_armed = draft && now - self.quit_armed_at < ESCAPE_WINDOW_MS;
         let staged = self.controller.pending_action();
         let receipt = entries
             .last()
             .filter(|entry| entry.kind == EntryKind::Receipt);
         let status = safe_text_str(&if !snapshot.error.is_empty() {
             format!("! {}", snapshot.error)
+        } else if quit_armed {
+            "ctrl+c again to detach · the draft is not kept".into()
         } else if armed {
             "esc again to clear the draft".into()
         } else if working {
@@ -1033,6 +1076,8 @@ impl Workspace {
             format!("{spinner} {label}  ·  daemon continues if you detach")
         } else if snapshot.connection.starts_with("reconnecting") {
             format!("○ {} · retrying automatically", snapshot.connection)
+        } else if !snapshot.notice.is_empty() {
+            format!("✓ {}", snapshot.notice)
         } else if staged.is_some() {
             "? Action staged · /confirm to review · /discard to dismiss".into()
         } else if let Some(receipt) = receipt {
@@ -1099,8 +1144,11 @@ impl Workspace {
                 "paths" => snapshot.detail.as_str(),
                 _ => empty_view(view).unwrap_or("Nothing to show."),
             };
-            self.inspector
-                .update(&self.controller.inspector_rows(), fallback);
+            self.inspector.update(
+                &self.controller.inspector_rows(),
+                fallback,
+                view == "detail",
+            );
         }
         // Called on every render, even with the sidebar hidden: it starts the lazy section load.
         let side_rows = self.controller.sidebar_rows();
@@ -1198,10 +1246,20 @@ impl Workspace {
             } else {
                 "ctrl+g map  ctrl+b hide"
             };
+            // Rows cut off above or below the list, which the wheel reaches.
+            let more = match (self.side.offset > 0, self.side.offset < self.side.max()) {
+                (true, true) => "↕ ",
+                (false, true) => "↓ ",
+                (true, false) => "↑ ",
+                (false, false) => "",
+            };
             draw_line(
                 buf,
                 side.footer,
-                &first_row(Line::styled(footer, muted), side.footer.width),
+                &first_row(
+                    Line::from(vec![Span::styled(more, text), Span::styled(footer, muted)]),
+                    side.footer.width,
+                ),
             );
             self.targets.sidebar_list = side.list;
         }

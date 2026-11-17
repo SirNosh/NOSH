@@ -39,14 +39,15 @@ pub const MAP_REFRESH_MS: f64 = 2500.0;
 /// `CHAT_TIMEOUT`: the request timeout of `POST /chat` and `POST /projects/open`.
 pub const CHAT_TIMEOUT: u64 = 120_000;
 
-/// `HELP`: the command reference, byte-exact (57 lines, no trailing newline; controller §4). It is
-/// the initial `detail` and the inspector text of the `help` view.
+/// `HELP`: the command reference (58 lines, no trailing newline; controller §4, with keys Windows
+/// Terminal does not take: `ctrl+j`, not `alt+enter`, and undo on `ctrl+z`). It is the initial
+/// `detail` and the inspector text of the `help` view.
 pub const HELP: &str = r#"NOSH / research workspace
 Type a message to chat with the project's Nosh agent.
 
 Keys
   enter                 send
-  shift+enter           newline (also alt+enter)
+  shift+enter           newline (also ctrl+j)
   ctrl+p                commands
   ctrl+o                switch project
   f2                    select model
@@ -55,10 +56,11 @@ Keys
   ctrl+g                research map (what is running, live)
   esc                   back to conversation
   esc esc               clear the draft
+  ctrl+z / ctrl+y       undo / redo
   up / down             input history
   pgup / pgdn           scroll
   ctrl+home / ctrl+end  top / bottom
-  ctrl+c                detach (daemon and jobs keep running)
+  ctrl+c                detach, twice with a draft (daemon and jobs keep running)
 
 Project and model
   /projects                       list registered projects
@@ -162,6 +164,9 @@ pub struct ControllerState {
     pub connection: String,
     /// `error`: the last command error, sanitized; the workspace clears it on typing and Esc.
     pub error: String,
+    /// What a command that shows no view did (`/discard`, `/refresh`); cleared like `error` and
+    /// by the next command.
+    pub notice: String,
     /// `busy`: a command (`execute`) is in flight.
     pub busy: bool,
     pub selection: Option<Selection>,
@@ -558,6 +563,7 @@ impl Controller {
             detail: HELP.into(),
             connection: "connecting".into(),
             error: String::new(),
+            notice: String::new(),
             busy: false,
             selection: None,
             models_checked: false,
@@ -989,9 +995,10 @@ impl Controller {
         }
     }
 
-    /// `sidebarRows`: the sidebar families plus durable job and proposal updates, last 40; the first
-    /// call after bootstrap starts the once-per-project section load (controller §7.13,
-    /// DECISIONS.md item 4).
+    /// `sidebarRows`: the sidebar families plus durable job and proposal updates; the first call
+    /// after bootstrap starts the once-per-project section load (controller §7.13, DECISIONS.md
+    /// item 4). Unlike TS's last 40, every row is kept (each family is at most 80): a global cap
+    /// dropped whole families, and the sidebar scrolls.
     pub fn sidebar_rows(self: &Rc<Self>) -> Vec<ViewRow> {
         let load = {
             let private = self.private.borrow();
@@ -1103,7 +1110,7 @@ impl Controller {
             }
         }
         let rows: Vec<ViewRow> = rows.into_iter().map(|(_, row)| row).collect();
-        bound_rows(&rows[rows.len().saturating_sub(40)..], 40)
+        bound_rows(&rows, rows.len())
     }
 
     /// `activity`: who is working and with which model (controller §7.14).
@@ -1688,6 +1695,7 @@ impl Controller {
             }
             state.busy = true;
             state.error.clear();
+            state.notice.clear();
             (
                 self.generation(),
                 (state.view.clone(), state.detail.clone(), state.rows.clone()),
@@ -2017,6 +2025,19 @@ impl Controller {
                 if rest.is_empty() || args.len() != 1 {
                     return Err("Job ID required".into());
                 }
+                // Staging it for a finished job would only fail at /confirm.
+                let path = format!("/jobs/{}{}", encode_uri_component(rest), self.query()?);
+                let data = request(&path, None, None).await?;
+                if !current() {
+                    return Ok(());
+                }
+                let job_state = text(record(data.get("job")).get("state"), TEXT_LIMIT);
+                if ["completed", "failed", "cancelled", "lost"].contains(&job_state.as_str()) {
+                    return Err(format!(
+                        "Job {rest} is already {job_state}; there is nothing to {}",
+                        &command[1..]
+                    ));
+                }
                 self.stage(
                     &format!("/jobs/{}/{}", encode_uri_component(rest), &command[1..]),
                     JsObject::new(),
@@ -2050,7 +2071,9 @@ impl Controller {
             "/approve" => {
                 self.require_project()?;
                 if args.len() != 2 {
-                    return Err("Proposal ID and inspected version required".into());
+                    return Err(
+                        "Proposal ID and inspected version required; /approvals lists them".into(),
+                    );
                 }
                 let mut body = JsObject::new();
                 body.set("expectedProposalVersion", version(arg(1))?.into());
@@ -2063,7 +2086,7 @@ impl Controller {
                 self.require_project()?;
                 let family = plural(arg(0).unwrap_or_default());
                 if args.len() != 4 || !FAMILIES.contains(&family) {
-                    return Err("Use /transition <family> <id> <inspected-version> <state>".into());
+                    return Err("Use /transition <family> <id> <inspected-version> <state>; /status <family> lists ids and versions".into());
                 }
                 let mut body = JsObject::new();
                 body.set("expectedVersion", version(arg(2))?.into());
@@ -2078,7 +2101,7 @@ impl Controller {
                 let family = plural(arg(0).unwrap_or_default());
                 if args.len() != 3 || !FAMILIES.contains(&family) {
                     return Err(
-                        "Use /start <missions|directions|autoresearch> <id> <inspected-version>"
+                        "Use /start <missions|directions|autoresearch> <id> <inspected-version>; /status <family> lists ids and versions"
                             .into(),
                     );
                 }
@@ -2094,7 +2117,7 @@ impl Controller {
                 let family = plural(arg(0).unwrap_or_default());
                 if args.len() != 4 || !["missions", "directions"].contains(&family) {
                     return Err(
-                        "Use /retry <missions|directions> <id> <inspected-version> <nodeId>".into(),
+                        "Use /retry <missions|directions> <id> <inspected-version> <nodeId>; /status <family> lists ids and versions".into(),
                     );
                 }
                 let mut body = JsObject::new();
@@ -2116,7 +2139,7 @@ impl Controller {
                     .map_or_else(String::new, |words| words.join(" "));
                 let message = js_trim(&message);
                 if args.len() < 3 || message.is_empty() {
-                    return Err("Use /steer <missionId> <inspected-version> <message>".into());
+                    return Err("Use /steer <missionId> <inspected-version> <message>; /status missions lists ids and versions".into());
                 }
                 let mut body = JsObject::new();
                 body.set("expectedVersion", version(arg(1))?.into());
@@ -2135,7 +2158,7 @@ impl Controller {
                     || !["safe", "checkpoint", "immediate"].contains(&mode)
                 {
                     return Err(
-                        "Use /control <missionId> <version> <pause|resume|stop> [mode]".into(),
+                        "Use /control <missionId> <version> <pause|resume|stop> [mode]; /status missions lists ids and versions".into(),
                     );
                 }
                 let mut body = JsObject::new();
@@ -2218,7 +2241,14 @@ impl Controller {
             }
             "/discard" => {
                 let pending = self.private.borrow_mut().pending.take();
-                self.state.borrow_mut().view = if pending.is_some_and(|pending| pending.from_map) {
+                let mut state = self.state.borrow_mut();
+                state.notice = if pending.is_some() {
+                    "Discarded the staged action"
+                } else {
+                    "Nothing was staged"
+                }
+                .into();
+                state.view = if pending.is_some_and(|pending| pending.from_map) {
                     "map"
                 } else {
                     "chat"
@@ -2251,6 +2281,9 @@ impl Controller {
                 } else {
                     self.poll().await;
                     let _ = self.load_models().await;
+                }
+                if current() {
+                    self.state.borrow_mut().notice = "Refreshed".into();
                 }
             }
             _ => return Err("Unknown command. Use /help.".into()),
@@ -2330,7 +2363,7 @@ mod tests {
 
     #[test]
     fn help_is_verbatim() {
-        assert_eq!(HELP.split('\n').count(), 57);
+        assert_eq!(HELP.split('\n').count(), 58);
         assert!(HELP.starts_with("NOSH / research workspace\nType a message"));
         assert!(HELP.ends_with("/quit detaches; the daemon and supervised jobs keep running."));
         assert!(HELP.is_ascii() && !HELP.contains('\t') && !HELP.contains('\r'));
