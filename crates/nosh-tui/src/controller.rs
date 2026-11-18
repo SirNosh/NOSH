@@ -1188,10 +1188,17 @@ impl Controller {
                 model_name(Some(&JsValue::from(&selection.model)))
             });
         let durable = selections.get(&agent_id);
+        // Rust-only: the durable selection is flat, as `event_entries` reads it.
         let observed_model = non_empty(inspection.map_or_else(String::new, |agent| {
             model_name(Some(&JsValue::Object(agent.clone())))
         }))
-        .unwrap_or_else(|| model_name(durable.and_then(|selection| selection.get("model"))));
+        .unwrap_or_else(|| {
+            model_name(
+                durable
+                    .map(|selection| JsValue::Object(selection.clone()))
+                    .as_ref(),
+            )
+        });
         let model = if active.is_empty() {
             non_empty(explicit_model).unwrap_or(observed_model)
         } else {

@@ -992,9 +992,13 @@ impl Workspace {
             .next()
             .map(|first| first.to_uppercase().chain(chars).collect())
             .unwrap_or_default();
+        // Rust-only: an observed `provider/id` shows its id alone, as an explicit selection does.
         let model_name = match &snapshot.selection {
             Some(selection) => selection.model.id.clone(),
-            None => activity.model.clone(),
+            None => activity
+                .model
+                .split_once('/')
+                .map_or_else(|| activity.model.clone(), |(_, id)| id.to_owned()),
         };
         let level = snapshot
             .selection

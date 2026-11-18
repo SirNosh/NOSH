@@ -840,11 +840,13 @@ pub fn event_entries(events: &[JsValue]) -> Vec<TranscriptEntry> {
         let kind = e.get("type").and_then(JsValue::as_str).unwrap_or("");
         let agent_id = text(first([scope.get("agentId"), p.get("agentId")]), TEXT_LIMIT);
         if kind == "chat.user_message" && !agent_id.is_empty() {
+            // Rust-only: the daemon stores the selection flat (`{provider, id, thinkingLevel}`);
+            // TS read `selection.model`, so no reply ever named its model.
             let selection = record(p.get("selection"));
             selections.insert(
                 agent_id.clone(),
                 (
-                    non_empty(model_name(selection.get("model"))),
+                    non_empty(model_name(p.get("selection"))),
                     non_empty(text(selection.get("thinkingLevel"), TEXT_LIMIT)),
                 ),
             );

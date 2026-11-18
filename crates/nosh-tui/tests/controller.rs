@@ -802,7 +802,7 @@ fn t25_projects_durable_user_assistant_tool_failure_and_host_receipts_with_stabl
             Some(1),
             "chat.user_message",
             json(
-                r#"{"message":"Read the paper","agentId":"a","selection":{"model":{"provider":"x","id":"m"},"thinkingLevel":"low"}}"#,
+                r#"{"message":"Read the paper","agentId":"a","selection":{"provider":"x","id":"m","thinkingLevel":"low"}}"#,
             ),
             "a",
         ),
@@ -1003,7 +1003,7 @@ fn t29_tracks_concurrent_agent_work_and_does_not_claim_new_composer_model_ran_th
             Some(1),
             "chat.user_message",
             json(
-                r#"{"message":"hello","selection":{"model":{"provider":"current","id":"active"},"thinkingLevel":"low"}}"#,
+                r#"{"message":"hello","selection":{"provider":"current","id":"active","thinkingLevel":"low"}}"#,
             ),
             "a",
         ),
