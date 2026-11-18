@@ -165,14 +165,14 @@ pub fn compact_logo() -> Line<'static> {
     gradient_lines(&["N O S H"]).remove(0)
 }
 
-/// `keyHints`: each key in `accent`, then ` label` in `muted`, three spaces between pairs
-/// (workspace §2.10).
+/// `keyHints`: each key in `text` (Rust-only; TS has `accent`), then ` label` in `muted`, three
+/// spaces between pairs (workspace §2.10).
 pub fn key_hints(pairs: &[(&str, &str)]) -> Line<'static> {
     let last = pairs.len().saturating_sub(1);
     let spans = pairs.iter().enumerate().flat_map(|(index, (key, label))| {
         let gap = if index < last { "   " } else { "" };
         [
-            Span::styled(key.to_string(), Style::new().fg(THEME.accent)),
+            Span::styled(key.to_string(), Style::new().fg(THEME.text)),
             Span::styled(format!(" {label}{gap}"), Style::new().fg(THEME.muted)),
         ]
     });

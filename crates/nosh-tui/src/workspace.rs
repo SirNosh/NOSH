@@ -76,6 +76,27 @@ pub fn clip(value: &str, width: usize) -> String {
     }
 }
 
+/// `path` with a leading home directory shown as `~` (Rust-only, display only); the comparison
+/// ignores ASCII case on Windows, where paths do.
+fn home_relative(path: &str) -> String {
+    let home =
+        std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).unwrap_or_default();
+    let home = home.trim_end_matches(['/', '\\']);
+    let rest = path.get(home.len()..).unwrap_or_default();
+    let same = path.get(..home.len()).is_some_and(|head| {
+        if cfg!(windows) {
+            head.eq_ignore_ascii_case(home)
+        } else {
+            head == home
+        }
+    });
+    if !home.is_empty() && same && (rest.is_empty() || rest.starts_with(['/', '\\'])) {
+        format!("~{rest}")
+    } else {
+        path.to_owned()
+    }
+}
+
 /// `basename`: the last `/`- or `\`-separated segment after stripping trailing separators; the
 /// original value when that segment is empty (workspace §6.2 vectors).
 pub fn basename(value: &str) -> String {
@@ -947,9 +968,10 @@ impl Workspace {
             _ => view.to_uppercase(),
         };
         let heading = clip(&format!("NOSH  /  {place}"), main_width);
+        // Rust-only: no `·  ctrl+p commands` here, which the hints under the prompt already give.
         let context = clip(
             &format!(
-                "{}  ·  {}  ·  ctrl+p commands",
+                "{}  ·  {}",
                 basename(root_or("No project")),
                 if view == "chat" {
                     "Research conversation"
@@ -1030,14 +1052,14 @@ impl Workspace {
         } else if project.is_none() {
             &[("ctrl+o", "choose a project"), ("ctrl+p", "commands")]
         } else if main_width < 72 {
+            // Rust-only: no `enter send` (every prompt sends on Enter) in either list.
             &[
-                ("enter", "send"),
                 ("⇧enter", "newline"),
                 ("ctrl+p", "commands"),
+                ("ctrl+g", "map"),
             ]
         } else {
             &[
-                ("enter", "send"),
                 ("⇧enter", "newline"),
                 ("ctrl+p", "commands"),
                 ("ctrl+g", "map"),
@@ -1128,7 +1150,7 @@ impl Workspace {
             _ => ("○ reconnecting", THEME.warning),
         };
         let cwd = clip(
-            root_or("No project · ctrl+o to choose"),
+            &home_relative(root_or("No project · ctrl+o to choose")),
             usize::from(width).saturating_sub(38).max(8),
         );
         let side_project = clip(
