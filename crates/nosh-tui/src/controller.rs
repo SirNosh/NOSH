@@ -762,21 +762,18 @@ impl Controller {
         });
     }
 
-    /// `refreshAgentMetadata`: agent events carry no role or model, so `/agents` is loaded once per
-    /// unknown agent, at most every 5 s (controller §7.4).
+    /// `refreshAgentMetadata`: agent events carry no role or model, so `/agents` is loaded at most
+    /// every 5 s (controller §7.4). Rust-only: while the project has agents at all; TS loads only
+    /// for an unknown id, but the chat agent keeps its id when a turn changes its level or model
+    /// and across a daemon restart, so the composer kept naming a stale level.
     fn refresh_agent_metadata(self: &Rc<Self>, generation: u64) {
         {
             let private = self.private.borrow();
-            let known: HashSet<String> = private
-                .agent_metadata
-                .iter()
-                .map(|agent| text(agent.get("agentId"), TEXT_LIMIT))
-                .collect();
-            let unknown = self.state.borrow().events.iter().any(|event| {
-                let id = text(scope(event).get("agentId"), TEXT_LIMIT);
-                !id.is_empty() && event_type(event).starts_with("agent.") && !known.contains(&id)
+            let agents = self.state.borrow().events.iter().any(|event| {
+                !text(scope(event).get("agentId"), TEXT_LIMIT).is_empty()
+                    && event_type(event).starts_with("agent.")
             });
-            if !unknown || (self.now_ms)() - private.agents_requested_at < 5000.0 {
+            if !agents || (self.now_ms)() - private.agents_requested_at < 5000.0 {
                 return;
             }
         }
