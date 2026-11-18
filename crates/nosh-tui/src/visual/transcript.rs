@@ -32,6 +32,8 @@ struct Block {
     tint: Color,
     entry: TranscriptEntry,
     title: String,
+    /// The model, thinking level and `writing…` of the entry, ` · `-joined (may be empty).
+    meta: String,
     body: String,
     streaming: bool,
     cache: Option<(u16, Vec<Line<'static>>)>,
@@ -119,6 +121,7 @@ impl Transcript {
                         tint: tint(entry.kind),
                         entry: entry.clone(),
                         title: String::new(),
+                        meta: String::new(),
                         body: String::new(),
                         streaming: false,
                         cache: None,
@@ -137,13 +140,15 @@ impl Transcript {
             .flatten()
             .filter(|part| !part.is_empty())
             .collect();
-            let meta = if meta.is_empty() {
+            let meta = safe_text_str(&meta.join(" · "));
+            let block = self.blocks.get_mut(&entry.id).expect("created above");
+            let suffix = if meta.is_empty() {
                 String::new()
             } else {
-                format!("  ·  {}", meta.join(" · "))
+                format!("  ·  {meta}")
             };
-            let block = self.blocks.get_mut(&entry.id).expect("created above");
-            block.title = safe_text_str(&format!("{} {}{meta}", icon(entry.kind), entry.title));
+            block.title = safe_text_str(&format!("{} {}{suffix}", icon(entry.kind), entry.title));
+            block.meta = meta;
             block.body = safe_text_str(&entry.text);
             block.streaming = streaming;
             block.entry = entry.clone();
@@ -225,25 +230,46 @@ impl Transcript {
     }
 }
 
-/// One block's rows: `paddingX 2`, the user block's `paddingY 1`, a left `┃` and panel fill for
-/// accent kinds, and the `marginBottom 1` row.
+/// One block's rows: text from column 3 (after the `┃` and panel fill of accent kinds, else after 3
+/// spaces), the user block's `paddingY 1`, and the `marginBottom 1` row.
+///
+/// Rust-only, departing from the TS look: user and assistant blocks carry no title row (the bar and
+/// panel mark the user's; the rest is NOSH's), and an assistant reply with a known model, or still
+/// `writing…`, ends in a muted `▣` row with its model, thinking level and `writing…`.
 fn block_lines(block: &Block, width: u16) -> Vec<Line<'static>> {
     let accent = matches!(
         block.kind,
         EntryKind::User | EntryKind::Failure | EntryKind::Approval
     );
-    let content = width.saturating_sub(if accent { 5 } else { 4 });
-    let mut rows = text_rows(
-        &block.title,
-        content,
-        Style::new().fg(block.tint).add_modifier(Modifier::BOLD),
-    );
+    let content = width.saturating_sub(5);
+    let mut rows = if matches!(block.kind, EntryKind::User | EntryKind::Assistant) {
+        Vec::new()
+    } else {
+        text_rows(
+            &block.title,
+            content,
+            Style::new().fg(block.tint).add_modifier(Modifier::BOLD),
+        )
+    };
     let body_color = match block.kind {
         EntryKind::Tool | EntryKind::Receipt => THEME.muted,
         _ => THEME.text,
     };
     if block.kind == EntryKind::Assistant {
         rows.extend(render_markdown(&block.body, content));
+        // A thinking level alone (`▣ low`) says too little to earn a row.
+        let model = block
+            .entry
+            .model
+            .as_deref()
+            .is_some_and(|model| !model.is_empty());
+        if model || block.streaming {
+            rows.push(Line::default());
+            rows.push(Line::from(vec![
+                Span::styled("▣ ", Style::new().fg(block.tint)),
+                Span::styled(block.meta.clone(), Style::new().fg(THEME.muted)),
+            ]));
+        }
     } else {
         rows.extend(text_rows(&block.body, content, Style::new().fg(body_color)));
     }
@@ -266,7 +292,7 @@ fn block_lines(block: &Block, width: u16) -> Vec<Line<'static>> {
                 Style::new().fg(block.tint),
             ));
         }
-        spans.push(Span::raw("  "));
+        spans.push(Span::raw(if accent { "  " } else { "   " }));
         spans.extend(row.spans);
         lines.push(Line::from(spans).style(Style::new().bg(background)));
     }
