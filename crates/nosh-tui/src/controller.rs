@@ -1187,8 +1187,10 @@ impl Controller {
             .map_or_else(String::new, |selection| {
                 model_name(Some(&JsValue::from(&selection.model)))
             });
-        let durable = selections.get(&agent_id);
-        // Rust-only: the durable selection is flat, as `event_entries` reads it.
+        // Rust-only: the durable selection (flat, as `event_entries` reads it) names only what a
+        // running turn uses. Idle, a turn sent without a pick runs on the live agent's model (the
+        // inspection) or, after a daemon restart, on NOSH's default, so the last turn's is not shown.
+        let durable = selections.get(&agent_id).filter(|_| !active.is_empty());
         let observed_model = non_empty(inspection.map_or_else(String::new, |agent| {
             model_name(Some(&JsValue::Object(agent.clone())))
         }))
