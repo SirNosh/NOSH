@@ -142,12 +142,9 @@ impl Transcript {
             .collect();
             let meta = safe_text_str(&meta.join(" · "));
             let block = self.blocks.get_mut(&entry.id).expect("created above");
-            let suffix = if meta.is_empty() {
-                String::new()
-            } else {
-                format!("  ·  {meta}")
-            };
-            block.title = safe_text_str(&format!("{} {}{suffix}", icon(entry.kind), entry.title));
+            // Rust-only: the model and level show once, in a reply's `▣` row, not after every tool,
+            // receipt or failure title.
+            block.title = safe_text_str(&format!("{} {}", icon(entry.kind), entry.title));
             block.meta = meta;
             block.body = safe_text_str(&entry.text);
             block.streaming = streaming;
