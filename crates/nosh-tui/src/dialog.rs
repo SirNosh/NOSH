@@ -1654,7 +1654,8 @@ mod tests {
         );
     }
 
-    /// A long staged action keeps its three choices and the hint on screen down to 60×20.
+    /// A long staged action keeps its three choices and the hint on screen down to 60×20, when the
+    /// review is the first dialog drawn on that screen.
     #[test]
     fn confirmation_fits_short_screens() {
         let fake = Rc::new(Fake::default());
@@ -1671,8 +1672,8 @@ mod tests {
                 })
                 .collect(),
         });
-        let mut manager = DialogManager::new(fake);
         for (width, height) in [(80, 24), (60, 20)] {
+            let mut manager = DialogManager::new(fake.clone());
             screen(&mut manager, width, height);
             manager.open_confirmation();
             let rows = screen(&mut manager, width, height);
