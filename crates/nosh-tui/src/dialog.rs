@@ -555,7 +555,10 @@ impl DialogManager {
                     .map(|field| format!("{}: {}", field.label, field.value)),
             )
             .collect();
-        let limit = (i64::from(height) - 17).clamp(1, 8) as usize;
+        // As many lines as leave the three choices room under the panel's top, beside its 12 other
+        // rows and the "More fields" line (Rust-only: the panel's blank rows outgrew `height - 17`).
+        let rows = i64::from(height);
+        let limit = (rows - panel_top(rows) - 16).clamp(1, 8) as usize;
         let budget = (i64::from(width) - 8).clamp(10, 70) as usize;
         let mut lines: Vec<String> = summary
             .iter()
@@ -1171,8 +1174,9 @@ impl DialogManager {
     /// on its right and a blank row under it; the chosen row is a filled accent bar; keybinds and
     /// categories are muted.
     pub fn draw(&mut self, buf: &mut Buffer, screen: Rect) -> Option<Position> {
-        self.state.as_ref()?;
+        // Kept while closed too: a confirmation sizes its summary for the screen it opens on.
         self.screen = (screen.width, screen.height);
+        self.state.as_ref()?;
         for cell in &mut buf.content {
             cell.fg = dim(cell.fg);
             cell.bg = dim(cell.bg);
@@ -1215,14 +1219,23 @@ impl DialogManager {
                 if count == 0 {
                     rows.text(&dialog_text(&state.empty, 200), 2, THEME.muted, None);
                 }
+                // Until a row is picked, Enter runs a typed slash line that no command begins.
+                let typed = state.typed_slash();
                 for position in start..start + count {
                     let item = &state.choices[state.filtered[position]].item;
                     let tag = item.keybind.as_deref().unwrap_or(&item.category);
+                    let mark = if position as i64 != state.index {
+                        Mark::Plain
+                    } else if typed.is_some() {
+                        Mark::Cursor
+                    } else {
+                        Mark::Chosen
+                    };
                     rows.choice(
                         &dialog_text(&item.title, DIALOG_TEXT_MAX),
                         &dialog_text(tag, DIALOG_TEXT_MAX),
                         THEME.text,
-                        position as i64 == state.index,
+                        mark,
                     );
                 }
                 let current = usize::try_from(state.index)
@@ -1244,10 +1257,7 @@ impl DialogManager {
                 let counter = current.map_or(String::new(), |_| {
                     format!("{}/{}", state.index + 1, state.filtered.len())
                 });
-                // Until a row is picked, Enter runs a typed slash line that no command begins.
-                let typed = state
-                    .typed_slash()
-                    .map(|typed| format!("↑↓ select   Enter run {typed}   Esc close"));
+                let typed = typed.map(|typed| format!("↑↓ select   Enter run {typed}   Esc close"));
                 let hint = if locked {
                     "Working…  Esc dismiss"
                 } else {
@@ -1281,12 +1291,19 @@ impl DialogManager {
                     "What are we investigating?",
                     THEME.selected,
                 );
+                let mark = |focus: i64| {
+                    if state.focus == focus {
+                        Mark::Chosen
+                    } else {
+                        Mark::Plain
+                    }
+                };
                 let checked = if state.create_repository { 'x' } else { ' ' };
                 rows.choice(
                     &format!("[{checked}] Create a new repository"),
                     "",
                     THEME.text,
-                    state.focus == 2,
+                    mark(2),
                 );
                 let verb = if state.create_repository {
                     "Create project"
@@ -1297,9 +1314,9 @@ impl DialogManager {
                     &format!("{verb} and start intake"),
                     "",
                     THEME.accent,
-                    state.focus == 3,
+                    mark(3),
                 );
-                rows.choice("Cancel", "", THEME.muted, state.focus == 4);
+                rows.choice("Cancel", "", THEME.muted, mark(4));
                 let error_color = if state.error_muted {
                     THEME.muted
                 } else {
@@ -1337,6 +1354,15 @@ fn dim(color: Color) -> Color {
         }
         other => other,
     }
+}
+
+/// How a list row stands out: not at all, as the row the arrows move from while Enter would run a
+/// typed slash line instead, or as the row Enter picks.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mark {
+    Plain,
+    Cursor,
+    Chosen,
 }
 
 /// Stacks the panel's text widgets top to bottom inside the inner area, clipping at its bottom.
@@ -1381,14 +1407,16 @@ impl Rows<'_> {
         self.y += 2;
     }
 
-    /// A list row: `label`, and `tag` right-aligned in muted; when `selected`, both on a filled
-    /// accent bar reaching one column past the text on each side.
-    fn choice(&mut self, label: &str, tag: &str, fg: Color, selected: bool) {
+    /// A list row: `label`, and `tag` right-aligned in muted, on a band reaching one column past
+    /// the text on each side: the panel, a faint band for [`Mark::Cursor`], or a filled accent bar
+    /// with dark text for [`Mark::Chosen`].
+    fn choice(&mut self, label: &str, tag: &str, fg: Color, mark: Mark) {
         if self.y < self.inner.bottom() {
-            let (fg, tag_fg, bg) = if selected {
-                (THEME.panel, THEME.panel, THEME.accent)
-            } else {
-                (fg, THEME.muted, THEME.panel)
+            let selected = mark == Mark::Chosen;
+            let (fg, tag_fg, bg) = match mark {
+                Mark::Chosen => (THEME.panel, THEME.panel, THEME.accent),
+                Mark::Cursor => (fg, THEME.muted, THEME.selected),
+                Mark::Plain => (fg, THEME.muted, THEME.panel),
             };
             let bar = Rect::new(self.inner.x - 1, self.y, self.inner.width + 2, 1);
             self.buf
@@ -1624,5 +1652,42 @@ mod tests {
                 .iter()
                 .any(|row| row.contains("The staged action changed."))
         );
+    }
+
+    /// A long staged action keeps its three choices and the hint on screen down to 60×20.
+    #[test]
+    fn confirmation_fits_short_screens() {
+        let fake = Rc::new(Fake::default());
+        *fake.project_id.borrow_mut() = "p".into();
+        *fake.pending.borrow_mut() = Some(PendingAction {
+            path: "/jobs/j1/cancel".into(),
+            body: crate::js::JsObject::new(),
+            project_id: "p".into(),
+            title: "Review cancel".into(),
+            fields: (0..12)
+                .map(|n| crate::view_model::ViewField {
+                    label: format!("Field {n}"),
+                    value: "x".into(),
+                })
+                .collect(),
+        });
+        let mut manager = DialogManager::new(fake);
+        for (width, height) in [(80, 24), (60, 20)] {
+            screen(&mut manager, width, height);
+            manager.open_confirmation();
+            let rows = screen(&mut manager, width, height);
+            for text in [
+                "Go back",
+                "Discard staged",
+                "Apply this action",
+                "More fields",
+                "Esc keep staged",
+            ] {
+                assert!(
+                    rows.iter().any(|row| row.contains(text)),
+                    "{text} at {width}×{height}"
+                );
+            }
+        }
     }
 }
