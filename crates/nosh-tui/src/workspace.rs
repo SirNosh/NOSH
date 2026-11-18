@@ -42,7 +42,7 @@ use crate::layout::{
     sidebar_visible, sidebar_width, wrap_ranges, wrap_words,
 };
 use crate::map_graph::GraphDirection;
-use crate::palette::slash_query;
+use crate::palette::{action_fingerprint, slash_query};
 use crate::render::{fill, scrollbar, split_bar};
 use crate::theme::{THEME, compact_logo, key_hints, logo};
 use crate::view_model::{CLIMB_MAXIMUM, EntryKind, climb_lines, safe_text_str};
@@ -275,6 +275,8 @@ pub struct Workspace {
     history: Vec<String>,
     history_index: usize,
     history_draft: String,
+    /// The fingerprint of the staged action seen after the last submission: its review opens once.
+    reviewed: Option<String>,
     transcript: Transcript,
     inspector: Inspector,
     map: ResearchMap,
@@ -315,6 +317,7 @@ impl Workspace {
             history: Vec::new(),
             history_index: 0,
             history_draft: String::new(),
+            reviewed: None,
             transcript: Transcript::new(),
             inspector: Inspector::new(),
             map: ResearchMap::new(),
@@ -373,9 +376,16 @@ impl Workspace {
                     }
                     self.history_index = self.history.len();
                     // Opening it bumps the generation, so the originating dialog stays open.
-                    if self.controller.pending_action().is_some() {
+                    // Rust-only: only a newly staged action opens it; TS reopened the review after
+                    // every later message too, over the reply being written.
+                    let staged = self
+                        .controller
+                        .pending_action()
+                        .map(|action| action_fingerprint(&action));
+                    if staged.is_some() && staged != self.reviewed {
                         self.dialogs.open_confirmation();
                     }
+                    self.reviewed = staged;
                 }
                 // A composer failure keeps the draft; `controller.error` is shown in the status.
                 if let Origin::Dialog { generation, .. } = origin {
