@@ -60,14 +60,14 @@ pub const NOSH_LOGO_LINES: [&str; 6] = [
     "╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝",
 ];
 
-/// The dialog colors (`DialogTheme`); the bg token is unused by the dialogs and omitted.
+/// The dialog colors (`DialogTheme`); the bg token is unused by the dialogs and omitted, as is the
+/// border token, since the panel has no border (Rust-only).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DialogTheme {
     pub panel: Color,
     pub text: Color,
     pub muted: Color,
     pub accent: Color,
-    pub border: Color,
     pub selected: Color,
     pub error: Color,
 }
@@ -79,7 +79,6 @@ pub const DIALOG_THEME: DialogTheme = DialogTheme {
     text: Color::Rgb(0xee, 0xee, 0xee),
     muted: Color::Rgb(0x90, 0x90, 0x90),
     accent: Color::Rgb(0x5f, 0xd4, 0xc4),
-    border: Color::Rgb(0x3c, 0x3c, 0x3c),
     selected: Color::Rgb(0x1e, 0x1e, 0x1e),
     error: Color::Rgb(0xe0, 0x6c, 0x75),
 };

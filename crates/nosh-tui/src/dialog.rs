@@ -23,12 +23,12 @@ use std::rc::Rc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 
 use crate::controller::{Controller, Model, Project, Selection};
 use crate::editor::{EditOutcome, Input, PATH_MAX_LENGTH, SEARCH_MAX_LENGTH, TITLE_MAX_LENGTH};
 use crate::js::{JsValue, is_js_whitespace, string};
-use crate::layout::{round_half_up, wrap_words};
+use crate::layout::{cell_width, round_half_up, wrap_words};
 use crate::palette::{
     COMMANDS, CommandItem, CommandMode, DIALOG_TEXT_MAX, PaletteItem, ProjectFormValues,
     action_fingerprint, dialog_text, filter_palette, move_selection, project_form_command,
@@ -948,7 +948,8 @@ impl DialogManager {
         };
         let frame = self.frame();
         let (start, rows) = self.window(state);
-        let top = frame.inner.y + 3 + state.summary.len() as u16;
+        // Title, blank, search, summary, blank (the draw order of `draw`).
+        let top = frame.inner.y + 4 + state.summary.len() as u16;
         let inside =
             x >= frame.inner.x && x < frame.inner.right() && y >= top && y < frame.panel.bottom();
         let offset = i64::from(y.checked_sub(top)?);
@@ -1125,14 +1126,14 @@ impl DialogManager {
     /// The panel geometry of §3.18 for the open dialog at the last screen size.
     fn frame(&self) -> Frame {
         let (width, height) = (i64::from(self.screen.0), i64::from(self.screen.1));
-        let top = ((height - 12).div_euclid(3)).clamp(0, 4);
+        let top = panel_top(height);
         let panel_width = (width - 2).clamp(8, 76);
         let content = match &self.state {
             Some(DialogState::Select(state)) => {
                 let (_, rows) = self.window(state);
-                6 + state.summary.len() as i64 + if rows == 0 { 2 } else { rows as i64 }
+                8 + state.summary.len() as i64 + if rows == 0 { 2 } else { rows as i64 }
             }
-            _ => 13,
+            _ => 14,
         };
         let panel_height = (content + 4).min((height - 1).max(4));
         let left = i64::from(round_half_up((width - panel_width) as f64 / 2.0));
@@ -1151,9 +1152,13 @@ impl DialogManager {
         Frame { panel, inner }
     }
 
-    /// `paintChoices`' window: the first visible position and the number of rows shown.
+    /// `paintChoices`' window: the first visible position and the number of rows shown (Rust-only:
+    /// as many as fit under the panel's top beside its 12 other rows and the summary, up to 14, not
+    /// 9).
     fn window(&self, state: &SelectState) -> (usize, usize) {
-        let visible = (i64::from(self.screen.1) - 12).clamp(1, 9);
+        let height = i64::from(self.screen.1);
+        let room = height - panel_top(height) - 12 - state.summary.len() as i64;
+        let visible = room.clamp(1, 14);
         let count = state.filtered.len() as i64;
         let start = (state.index - visible / 2).min(count - visible).max(0);
         (start as usize, (count - start).clamp(0, visible) as usize)
@@ -1161,6 +1166,10 @@ impl DialogManager {
 
     /// Dims the already drawn workspace and draws the open dialog (geometry of workspace §5.3);
     /// returns the cursor cell of the focused input. Does nothing when no dialog is open.
+    ///
+    /// Rust-only, departing from the TS look: the panel has no border; the title is bold with `esc`
+    /// on its right and a blank row under it; the chosen row is a filled accent bar; keybinds and
+    /// categories are muted.
     pub fn draw(&mut self, buf: &mut Buffer, screen: Rect) -> Option<Position> {
         self.state.as_ref()?;
         self.screen = (screen.width, screen.height);
@@ -1174,12 +1183,6 @@ impl DialogManager {
         // The panel is opaque: without the clear, workspace text shows through its blank cells.
         ratatui::widgets::Widget::render(ratatui::widgets::Clear, panel, buf);
         buf.set_style(panel, style);
-        ratatui::widgets::Widget::render(
-            ratatui::widgets::Block::bordered()
-                .border_style(Style::new().fg(THEME.border).bg(THEME.panel)),
-            panel,
-            buf,
-        );
         let inner = frame.inner.intersection(*buf.area());
         let mut rows = Rows {
             buf,
@@ -1194,12 +1197,7 @@ impl DialogManager {
         };
         match &mut self.state {
             Some(DialogState::Select(state)) => {
-                rows.text(
-                    &dialog_text(&state.title, DIALOG_TEXT_MAX),
-                    1,
-                    THEME.accent,
-                    None,
-                );
+                rows.title(&dialog_text(&state.title, DIALOG_TEXT_MAX));
                 let placeholder = if state.searchable {
                     "Type to search…"
                 } else {
@@ -1219,23 +1217,13 @@ impl DialogManager {
                 }
                 for position in start..start + count {
                     let item = &state.choices[state.filtered[position]].item;
-                    let selected = position as i64 == state.index;
-                    let label = format!("{} {}", if selected { '›' } else { ' ' }, item.title);
                     let tag = item.keybind.as_deref().unwrap_or(&item.category);
-                    let content = if tag.is_empty() {
-                        label
-                    } else {
-                        let gap = row_width
-                            .saturating_sub(crate::js::length(&label) + crate::js::length(tag))
-                            .max(2);
-                        format!("{label}{}{tag}", " ".repeat(gap))
-                    };
-                    let (fg, bg) = if selected {
-                        (THEME.accent, Some(THEME.selected))
-                    } else {
-                        (THEME.text, None)
-                    };
-                    rows.text(&dialog_text(&content, row_width), 1, fg, bg);
+                    rows.choice(
+                        &dialog_text(&item.title, DIALOG_TEXT_MAX),
+                        &dialog_text(tag, DIALOG_TEXT_MAX),
+                        THEME.text,
+                        position as i64 == state.index,
+                    );
                 }
                 let current = usize::try_from(state.index)
                     .ok()
@@ -1251,6 +1239,7 @@ impl DialogManager {
                 } else {
                     THEME.muted
                 };
+                rows.y += 1;
                 rows.text(&detail, 2, color, None);
                 let counter = current.map_or(String::new(), |_| {
                     format!("{}/{}", state.index + 1, state.filtered.len())
@@ -1273,7 +1262,7 @@ impl DialogManager {
                 cursor
             }
             Some(DialogState::Form(state)) => {
-                rows.text(state.title, 1, THEME.accent, None);
+                rows.title(state.title);
                 rows.text(
                     "Enter a local repository path and working title.\nOpening starts project intake; no contract is approved.",
                     2,
@@ -1292,37 +1281,25 @@ impl DialogManager {
                     "What are we investigating?",
                     THEME.selected,
                 );
-                let marker = |focus: i64| if state.focus == focus { '›' } else { ' ' };
                 let checked = if state.create_repository { 'x' } else { ' ' };
-                let mode_color = if state.focus == 2 {
-                    THEME.accent
-                } else {
-                    THEME.text
-                };
-                rows.text(
-                    &format!("{} [{checked}] Create a new repository", marker(2)),
-                    1,
-                    mode_color,
-                    None,
+                rows.choice(
+                    &format!("[{checked}] Create a new repository"),
+                    "",
+                    THEME.text,
+                    state.focus == 2,
                 );
                 let verb = if state.create_repository {
                     "Create project"
                 } else {
                     "Open project"
                 };
-                let submit_bg = (state.focus == 3).then_some(THEME.selected);
-                rows.text(
-                    &format!("{} {verb} and start intake", marker(3)),
-                    1,
+                rows.choice(
+                    &format!("{verb} and start intake"),
+                    "",
                     THEME.accent,
-                    submit_bg,
+                    state.focus == 3,
                 );
-                let cancel_color = if state.focus == 4 {
-                    THEME.accent
-                } else {
-                    THEME.muted
-                };
-                rows.text(&format!("{} Cancel", marker(4)), 1, cancel_color, None);
+                rows.choice("Cancel", "", THEME.muted, state.focus == 4);
                 let error_color = if state.error_muted {
                     THEME.muted
                 } else {
@@ -1344,6 +1321,11 @@ impl DialogManager {
             None => None,
         }
     }
+}
+
+/// The panel's top row on a screen `height` rows tall (§3.18).
+fn panel_top(height: i64) -> i64 {
+    (height - 12).div_euclid(3).clamp(0, 4)
 }
 
 /// The overlay's `RGBA(0,0,0,160)` over a drawn cell color: `round(c × 95 / 255)` per channel.
@@ -1380,6 +1362,59 @@ impl Rows<'_> {
             self.y += 1;
         }
         self.y += height.saturating_sub(lines.len() as u16);
+    }
+
+    /// The title in bold with `esc` right-aligned in muted, then a blank row.
+    fn title(&mut self, title: &str) {
+        if self.y < self.inner.bottom() {
+            let style = Style::new().fg(THEME.text).bg(THEME.panel);
+            let row = Rect::new(self.inner.x, self.y, self.inner.width, 1);
+            self.buf.set_style(row, style);
+            let room = usize::from(self.inner.width).saturating_sub(5);
+            let bold = style.add_modifier(Modifier::BOLD);
+            self.buf.set_stringn(row.x, row.y, title, room, bold);
+            if row.width >= 3 {
+                let muted = style.fg(THEME.muted);
+                self.buf.set_string(row.right() - 3, row.y, "esc", muted);
+            }
+        }
+        self.y += 2;
+    }
+
+    /// A list row: `label`, and `tag` right-aligned in muted; when `selected`, both on a filled
+    /// accent bar reaching one column past the text on each side.
+    fn choice(&mut self, label: &str, tag: &str, fg: Color, selected: bool) {
+        if self.y < self.inner.bottom() {
+            let (fg, tag_fg, bg) = if selected {
+                (THEME.panel, THEME.panel, THEME.accent)
+            } else {
+                (fg, THEME.muted, THEME.panel)
+            };
+            let bar = Rect::new(self.inner.x - 1, self.y, self.inner.width + 2, 1);
+            self.buf
+                .set_style(bar.intersection(*self.buf.area()), Style::new().bg(bg));
+            let width = usize::from(self.inner.width);
+            let tag_width = cell_width(tag);
+            let room = if tag.is_empty() || tag_width + 2 > width {
+                width
+            } else {
+                width - tag_width - 2
+            };
+            let style = Style::new().fg(fg).bg(bg);
+            let style = if selected {
+                style.add_modifier(Modifier::BOLD)
+            } else {
+                style
+            };
+            self.buf
+                .set_stringn(self.inner.x, self.y, label, room, style);
+            if room < width {
+                let x = self.inner.right() - tag_width as u16;
+                self.buf
+                    .set_string(x, self.y, tag, Style::new().fg(tag_fg).bg(bg));
+            }
+        }
+        self.y += 1;
     }
 
     fn input(
@@ -1462,7 +1497,8 @@ mod tests {
             .collect()
     }
 
-    /// The palette at 100×30 (dialogs-visual §3.18's worked example).
+    /// The palette at 100×30: the panel of dialogs-visual §3.18's worked example, borderless, with
+    /// the Rust-only rows (`esc`, the blank rows, 14 choices).
     #[test]
     fn palette_geometry() {
         let mut manager = DialogManager::new(Rc::new(Fake::default()));
@@ -1471,24 +1507,25 @@ mod tests {
         let cells = |y: usize, from: usize, to: usize| -> String {
             rows[y].chars().skip(from).take(to - from).collect()
         };
-        assert_eq!(cells(4, 12, 13), "┌");
+        assert_eq!(cells(4, 12, 88), " ".repeat(76));
         assert_eq!(cells(6, 14, 22), "Commands");
-        assert_eq!(cells(7, 14, 29), "Type to search…");
+        assert_eq!(cells(6, 83, 86), "esc");
+        assert_eq!(cells(8, 14, 29), "Type to search…");
         assert_eq!(
-            cells(9, 14, 84),
-            format!("› Switch project{}ctrl+o", " ".repeat(48))
+            cells(10, 14, 86),
+            format!("Switch project{}ctrl+o", " ".repeat(52))
         );
         assert_eq!(
-            cells(10, 14, 84),
-            format!("  Open project{}Project", " ".repeat(49))
+            cells(11, 14, 86),
+            format!("Open project{}Project", " ".repeat(53))
         );
-        assert_eq!(cells(18, 14, 44), "Choose a registered repository");
+        assert_eq!(cells(23, 14, 30), "Discard staged a");
+        assert_eq!(cells(25, 14, 44), "Choose a registered repository");
         assert_eq!(
-            cells(20, 14, 56),
+            cells(27, 14, 56),
             "↑↓ select   Enter choose   Esc close  1/29"
         );
-        assert_eq!(cells(22, 12, 13), "└");
-        assert_eq!(cells(22, 87, 88), "┘");
+        assert_eq!(cells(29, 12, 88), " ".repeat(76));
     }
 
     /// `run`: a synchronous action closes in its generation; an action that opens a dialog keeps
