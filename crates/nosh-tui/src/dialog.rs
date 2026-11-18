@@ -436,17 +436,19 @@ impl DialogManager {
                 action: Action::Execute(format!("/model {} {} {level}", model.provider, model.id)),
             })
             .collect();
-        let current = self
-            .controller
-            .selection()
-            .map(|selection| selection.thinking_level);
+        // Rust-only: without an explicit selection, the level the composer line shows, as the model
+        // picker starts on the running model; TS started on the first level ("off").
+        let current = match self.controller.selection() {
+            Some(selection) => selection.thinking_level,
+            None => self.controller.activity().thinking_level,
+        };
         let name = if model.name.is_empty() {
             &model.id
         } else {
             &model.name
         };
         let settings = Settings {
-            current: current.as_deref(),
+            current: Some(&current),
             empty: Some("This model advertises no supported thinking levels. Esc to close."),
             searchable: true,
             ..Settings::default()
