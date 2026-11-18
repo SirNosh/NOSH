@@ -229,9 +229,12 @@ impl Items {
         self.text(id, content, style.add_modifier(Modifier::BOLD));
     }
 
-    /// `line(id, title, state, (same, word))`: `● title` in the state color (or `· title` muted),
-    /// clipped, and the state right-aligned in muted. A title that would clip to the same text as a
-    /// sibling's shows its start, `…`, and its words from `word` on, where the two differ.
+    /// `line(id, title, state, (same, word))`: `● title` (or `· title`), clipped with `…`, and the
+    /// state right-aligned in muted. A title that would clip to the same text as a sibling's shows
+    /// its start, `…`, and its words from `word` on, where the two differ.
+    ///
+    /// Rust-only, departing from the TS look: only the marker takes the state color; the title is
+    /// plain text, muted where the state is (idle, closed) or absent.
     fn line(&mut self, id: &str, title: &str, state: &str, (same, word): (usize, usize)) {
         let width = usize::from(self.width);
         let tag = safe_text_str(state);
@@ -257,27 +260,43 @@ impl Items {
         } else {
             title.to_owned()
         };
-        let label = safe_text_str(&format!("{marker} {title}"));
+        let title = safe_text_str(&title);
+        // The title's room after `● `; a cut title gives its last column to `…`.
+        let fit = room.saturating_sub(2);
         let mut clipped = String::new();
-        for char in label.chars() {
-            if (clipped.as_str().width()
-                + unicode_width::UnicodeWidthChar::width(char).unwrap_or(0))
-                > room
-            {
-                break;
+        if title.width() > fit {
+            for char in title.chars() {
+                if clipped.as_str().width()
+                    + unicode_width::UnicodeWidthChar::width(char).unwrap_or(0)
+                    >= fit
+                {
+                    break;
+                }
+                clipped.push(char);
             }
-            clipped.push(char);
+            if fit > 0 {
+                clipped = format!("{}…", clipped.trim_end());
+            }
+        } else {
+            clipped = title;
         }
         let color = if state.is_empty() {
             THEME.muted
         } else {
             state_color(state)
         };
-        let mut spans = vec![Span::styled(clipped.clone(), Style::new().fg(color))];
+        let title_color = if color == THEME.muted {
+            THEME.muted
+        } else {
+            THEME.text
+        };
+        let used = 2 + clipped.as_str().width();
+        let mut spans = vec![
+            Span::styled(format!("{marker} "), Style::new().fg(color)),
+            Span::styled(clipped, Style::new().fg(title_color)),
+        ];
         if !tag.is_empty() {
-            let gap = width
-                .saturating_sub(clipped.as_str().width() + tag.width())
-                .max(1);
+            let gap = width.saturating_sub(used + tag.width()).max(1);
             spans.push(Span::raw(" ".repeat(gap)));
             spans.push(Span::styled(tag, Style::new().fg(THEME.muted)));
         }
