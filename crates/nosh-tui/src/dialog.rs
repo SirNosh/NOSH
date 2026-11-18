@@ -1127,6 +1127,9 @@ impl DialogManager {
     }
 
     /// The panel geometry of §3.18 for the open dialog at the last screen size.
+    ///
+    /// Rust-only: a blank row parts the two-row description (or form error) from the hints; it
+    /// comes out of the bottom padding, so panel heights are unchanged.
     fn frame(&self) -> Frame {
         let (width, height) = (i64::from(self.screen.0), i64::from(self.screen.1));
         let top = panel_top(height);
@@ -1134,11 +1137,11 @@ impl DialogManager {
         let content = match &self.state {
             Some(DialogState::Select(state)) => {
                 let (_, rows) = self.window(state);
-                8 + state.summary.len() as i64 + if rows == 0 { 2 } else { rows as i64 }
+                9 + state.summary.len() as i64 + if rows == 0 { 2 } else { rows as i64 }
             }
-            _ => 14,
+            _ => 15,
         };
-        let panel_height = (content + 4).min((height - 1).max(4));
+        let panel_height = (content + 3).min((height - 1).max(4));
         let left = i64::from(round_half_up((width - panel_width) as f64 / 2.0));
         let panel = Rect::new(
             left as u16,
@@ -1150,7 +1153,7 @@ impl DialogManager {
             panel.x + 2,
             panel.y + 2,
             panel.width.saturating_sub(4),
-            panel.height.saturating_sub(4),
+            panel.height.saturating_sub(3),
         );
         Frame { panel, inner }
     }
@@ -1254,6 +1257,7 @@ impl DialogManager {
                 };
                 rows.y += 1;
                 rows.text(&detail, 2, color, None);
+                rows.y += 1;
                 let counter = current.map_or(String::new(), |_| {
                     format!("{}/{}", state.index + 1, state.filtered.len())
                 });
@@ -1323,6 +1327,7 @@ impl DialogManager {
                     THEME.error
                 };
                 rows.text(&state.error, 2, error_color, None);
+                rows.y += 1;
                 rows.text(
                     "Tab / ↑↓ focus   Enter select   Esc cancel",
                     1,
@@ -1549,8 +1554,9 @@ mod tests {
         );
         assert_eq!(cells(23, 14, 30), "Discard staged a");
         assert_eq!(cells(25, 14, 44), "Choose a registered repository");
+        assert_eq!(cells(27, 12, 88), " ".repeat(76));
         assert_eq!(
-            cells(27, 14, 56),
+            cells(28, 14, 56),
             "↑↓ select   Enter choose   Esc close  1/29"
         );
         assert_eq!(cells(29, 12, 88), " ".repeat(76));
